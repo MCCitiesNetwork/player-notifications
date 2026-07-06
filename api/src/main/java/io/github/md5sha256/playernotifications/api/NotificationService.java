@@ -1,17 +1,28 @@
 package io.github.md5sha256.playernotifications.api;
 
-import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Public API entry point for sending notifications to players.
  */
 public interface NotificationService {
 
-    /**
-     * Sends a notification message to the given player.
-     *
-     * @param player  the recipient
-     * @param message the message to deliver
-     */
-    void notify(Player player, String message);
+    void enqueueNotification(@NotNull ResolvedNotification notification, boolean overwriteAllowed);
+
+    @NotNull
+    List<ResolvedNotification> resolveAndClearNotifications(@NotNull UUID playerId);
+
+    void clearNotification(@NotNull String notificationKey);
+
+    void clearNotifications(@NotNull UUID playerId);
+
+    void clearNotifications(@NotNull String notificationDataType);
+
+    void clearExpiredNotifications();
+
+    @NotNull NotificationDataTypeRegistry dataTypeRegistry();
+
 }
