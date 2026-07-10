@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.api;
 
+import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collections;
