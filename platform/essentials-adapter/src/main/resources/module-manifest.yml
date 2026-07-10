@@ -1,0 +1,6 @@
+# Manifest for the PlayerNotifications Essentials mail adapter module.
+moduleName: essentials-mail-adapter
+entryClass: io.github.md5sha256.playernotifications.essentials.EssentialsMailModule
+author: md5sha256
+expectedPluginClass: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
+reloadable: false
