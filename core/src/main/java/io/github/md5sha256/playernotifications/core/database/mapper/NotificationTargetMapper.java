@@ -31,6 +31,14 @@ public interface NotificationTargetMapper {
 
     @NotNull List<UUID> selectPlayerUuids(int notifTargetId);
 
+    /**
+     * Removes the given players from the target group. The caller must ensure {@code playerUuids} is
+     * non-empty; an empty collection would produce invalid SQL.
+     *
+     * @return the number of member rows removed
+     */
+    int deleteMembers(int notifTargetId, @NotNull Collection<UUID> playerUuids);
+
     int deleteByTargetId(int notifTargetId);
 
 }

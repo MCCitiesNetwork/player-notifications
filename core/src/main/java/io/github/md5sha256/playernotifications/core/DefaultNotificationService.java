@@ -13,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -69,7 +70,7 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
-    public @NotNull List<ResolvedNotification> resolveAndClearNotifications(@NotNull UUID playerId) {
+    public @NotNull List<ResolvedNotification> resolveNotifications(@NotNull UUID playerId) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             NotificationMapper notificationMapper = wrapper.notificationMapper();
             NotificationTargetMapper targetMapper = wrapper.notificationTargetMapper();
@@ -86,8 +87,6 @@ public class DefaultNotificationService implements NotificationService {
                         entity.notifPriority()
                 ));
             }
-            notificationMapper.deleteByPlayer(playerId);
-            wrapper.session().commit();
             return resolved;
         }
     }
@@ -96,6 +95,26 @@ public class DefaultNotificationService implements NotificationService {
     public void clearNotification(@NotNull String notificationKey) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             wrapper.notificationMapper().deleteByKey(notificationKey);
+            wrapper.session().commit();
+        }
+    }
+
+    @Override
+    public void deleteNotificationTarget(@NotNull String notificationKey, @NotNull UUID playerId) {
+        deleteNotificationTargets(notificationKey, List.of(playerId));
+    }
+
+    @Override
+    public void deleteNotificationTargets(@NotNull String notificationKey, @NotNull Collection<UUID> playerIds) {
+        if (playerIds.isEmpty()) {
+            return;
+        }
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            NotificationEntity entity = wrapper.notificationMapper().selectByKey(notificationKey);
+            if (entity != null) {
+                // Removing the last member triggers deletion of the notification itself (DB trigger).
+                wrapper.notificationTargetMapper().deleteMembers(entity.notifTargetId(), playerIds);
+            }
             wrapper.session().commit();
         }
     }

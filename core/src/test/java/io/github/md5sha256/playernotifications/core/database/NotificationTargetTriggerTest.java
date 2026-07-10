@@ -5,11 +5,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.nio.ByteBuffer;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -29,7 +24,7 @@ class NotificationTargetTriggerTest extends AbstractDatabaseTest {
 
     @Test
     @DisplayName("notification is deleted only once its last target member is removed")
-    void deletesWhenLastMemberRemoved() throws SQLException {
+    void deletesWhenLastMemberRemoved() {
         int targetId = insertNotification("trigger-incremental", PLAYER_A, PLAYER_B);
 
         deleteMember(targetId, PLAYER_A);
@@ -56,7 +51,7 @@ class NotificationTargetTriggerTest extends AbstractDatabaseTest {
 
     @Test
     @DisplayName("emptying one group leaves notifications of other groups untouched")
-    void leavesOtherNotifications() throws SQLException {
+    void leavesOtherNotifications() {
         int targetA = insertNotification("gone", PLAYER_A);
         insertNotification("kept", PLAYER_C);
 
@@ -83,25 +78,10 @@ class NotificationTargetTriggerTest extends AbstractDatabaseTest {
         }
     }
 
-    /**
-     * Deletes a single {@code (notifTargetId, playerUuid)} membership row directly, so the trigger
-     * fires per removed member (the mappers only expose whole-group deletion).
-     */
-    private static void deleteMember(int targetId, UUID player) throws SQLException {
-        try (Connection conn = DriverManager.getConnection(
-                CONTAINER.getJdbcUrl(), CONTAINER.getUsername(), CONTAINER.getPassword());
-             PreparedStatement ps = conn.prepareStatement(
-                     "DELETE FROM NotificationTarget WHERE notifTargetId = ? AND playerUuid = ?")) {
-            ps.setInt(1, targetId);
-            ps.setBytes(2, toBytes(player));
-            ps.executeUpdate();
+    private static void deleteMember(int targetId, UUID player) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            wrapper.notificationTargetMapper().deleteMembers(targetId, List.of(player));
+            wrapper.session().commit();
         }
-    }
-
-    private static byte[] toBytes(UUID uuid) {
-        ByteBuffer buffer = ByteBuffer.allocate(16);
-        buffer.putLong(uuid.getMostSignificantBits());
-        buffer.putLong(uuid.getLeastSignificantBits());
-        return buffer.array();
     }
 }

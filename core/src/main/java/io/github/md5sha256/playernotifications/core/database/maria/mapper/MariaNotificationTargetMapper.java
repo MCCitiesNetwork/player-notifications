@@ -46,6 +46,20 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
 
     @Override
     @Delete("""
+            <script>
+            DELETE FROM NotificationTarget
+            WHERE notifTargetId = #{notifTargetId}
+            AND playerUuid IN
+            <foreach item="playerUuid" collection="playerUuids" open="(" separator="," close=")">
+                #{playerUuid}
+            </foreach>
+            </script>
+            """)
+    int deleteMembers(@Param("notifTargetId") int notifTargetId,
+                      @Param("playerUuids") @NotNull Collection<UUID> playerUuids);
+
+    @Override
+    @Delete("""
             DELETE FROM NotificationTarget
             WHERE notifTargetId = #{notifTargetId}
             """)
