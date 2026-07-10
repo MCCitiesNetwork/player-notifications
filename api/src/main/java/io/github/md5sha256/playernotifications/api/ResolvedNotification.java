@@ -10,6 +10,7 @@ public record ResolvedNotification(
         @NotNull Instant notifScheduledTime,
         @Nullable Instant notifExpiryTime,
         @NotNull NotificationTarget notifTarget,
+        @NotNull String notifPayloadType,
         @NotNull String notifPayload,
         int notifPriority
 ) {

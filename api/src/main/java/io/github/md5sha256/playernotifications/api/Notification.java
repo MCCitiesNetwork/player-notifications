@@ -10,6 +10,7 @@ public record Notification(
         @NotNull Instant notifScheduledTime,
         @Nullable Instant notifExpiryTime,
         int notifTargetId,
+        @NotNull String notifPayloadType,
         @NotNull String notifPayload,
         int notifPriority
 ) {
