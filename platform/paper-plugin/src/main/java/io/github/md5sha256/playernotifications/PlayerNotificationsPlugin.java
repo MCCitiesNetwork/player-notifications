@@ -5,6 +5,8 @@ import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase;
+import net.democracrycraft.pluginInfrastructure.modules.ModuleLifecycleManager;
+import net.democracrycraft.pluginInfrastructure.modules.ModuleLoader;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -27,9 +29,21 @@ import java.util.logging.Level;
 public final class PlayerNotificationsPlugin extends JavaPlugin {
 
     private static final Path MIGRATIONS_DIR = Path.of("sql/migrations");
+    private static final String MODULES_DIR_NAME = "modules";
 
     private Database database;
     private NotificationService notificationService;
+    private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
+
+    @NotNull
+    public Database database() {
+        return this.database;
+    }
+
+    @NotNull
+    public NotificationService notificationService() {
+        return this.notificationService;
+    }
 
     @Override
     public void onEnable() {
@@ -49,7 +63,9 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         try {
             mariaDatabase.initializeSchema(MIGRATIONS_DIR);
         } catch (IOException | SQLException ex) {
-            getLogger().log(Level.SEVERE, "Database schema migration failed; disabling plugin.", ex);
+            getLogger().log(Level.SEVERE,
+                    "Database schema migration failed; disabling plugin.",
+                    ex);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -63,7 +79,33 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         );
 
         schedulePruneTask(pluginSettings.pruneIntervalSeconds());
+
+        // Start modules last so they can look up the registered NotificationService.
+        startModules();
         getLogger().info("PlayerNotifications enabled");
+    }
+
+    /**
+     * Loads and initializes feature modules from {@code <dataFolder>/modules}. Module
+     * failures are logged by the lifecycle manager and never fail the host plugin.
+     */
+    private void startModules() {
+        Path moduleDir = getDataFolder().toPath().resolve(MODULES_DIR_NAME);
+        try {
+            Files.createDirectories(moduleDir);
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING,
+                    "Could not create the modules directory; skipping module loading.",
+                    ex);
+            return;
+        }
+        this.moduleLifecycleManager = new ModuleLifecycleManager<>(this,
+                new ModuleLoader(moduleDir));
+        try {
+            this.moduleLifecycleManager.start();
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING, "Failed to load plugin modules.", ex);
+        }
     }
 
     /**
@@ -83,7 +125,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Cancel the prune task first so it cannot run against a closing database.
+        // Shut modules down first: they may still use the service and database below.
+        if (this.moduleLifecycleManager != null) {
+            this.moduleLifecycleManager.stop();
+            this.moduleLifecycleManager = null;
+        }
+        // Cancel the prune task so it cannot run against a closing database.
         getServer().getScheduler().cancelTasks(this);
         if (this.notificationService != null) {
             getServer().getServicesManager().unregisterAll(this);

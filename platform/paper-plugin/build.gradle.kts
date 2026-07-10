@@ -5,9 +5,15 @@ plugins {
     id("com.gradleup.shadow") version "9.3.1"
 }
 
+repositories {
+    // plugin-infrastructure is published here (see its README). Use /releases for release versions.
+    maven("https://maven.democracycraft.net/snapshots")
+}
+
 dependencies {
     api(projects.api)
     implementation(projects.core)
+    implementation("net.democracrycraft:plugin-infrastructure:1.0.0-SNAPSHOT")
     compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
 }
 
