@@ -6,8 +6,8 @@ plugins {
 }
 
 dependencies {
-    api(project(":api"))
-    implementation(project(":core"))
+    api(projects.api)
+    implementation(projects.core)
     compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
 }
 

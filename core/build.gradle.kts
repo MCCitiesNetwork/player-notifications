@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    api(project(":api"))
+    api(projects.api)
     compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains:annotations:26.0.2-1")
     api("org.spongepowered:configurate-yaml:4.2.0")

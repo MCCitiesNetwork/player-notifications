@@ -1,3 +1,6 @@
 rootProject.name = "player-notifications-parent"
 
-include("api", "core", "plugin")
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
+include("api", "core")
+include("platform:paper-plugin")
