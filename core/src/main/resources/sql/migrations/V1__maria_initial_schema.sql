@@ -23,3 +23,13 @@ CREATE INDEX idx_notification_payload_type ON Notification (notifPayloadType);
 CREATE INDEX idx_notification_scheduled_time ON Notification (notifScheduledTime);
 
 CREATE INDEX idx_notification_expiry_time ON Notification (notifExpiryTime);
+
+-- When the last member of a target group is removed, the notifications that point at that group
+-- have no remaining audience, so delete them. Single-statement trigger body (no BEGIN...END) so the
+-- schema migrator, which splits the script on ';', executes it as one statement.
+CREATE TRIGGER trg_delete_targetless_notification
+    AFTER DELETE ON NotificationTarget
+    FOR EACH ROW
+    DELETE FROM Notification
+    WHERE notifTargetId = OLD.notifTargetId
+      AND NOT EXISTS(SELECT 1 FROM NotificationTarget WHERE notifTargetId = OLD.notifTargetId);
