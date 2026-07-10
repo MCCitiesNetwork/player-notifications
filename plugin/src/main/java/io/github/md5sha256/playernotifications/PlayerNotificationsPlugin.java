@@ -33,16 +33,18 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        DatabaseSettings settings;
+        DatabaseSettings databaseSettings;
+        PluginSettings pluginSettings;
         try {
-            settings = loadDatabaseSettings();
+            databaseSettings = loadDatabaseSettings();
+            pluginSettings = loadPluginSettings();
         } catch (IOException ex) {
-            getLogger().log(Level.SEVERE, "Failed to load database configuration; disabling plugin.", ex);
+            getLogger().log(Level.SEVERE, "Failed to load configuration; disabling plugin.", ex);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
 
-        MariaDatabase mariaDatabase = new MariaDatabase(settings, getLogger());
+        MariaDatabase mariaDatabase = new MariaDatabase(databaseSettings, getLogger());
         this.database = mariaDatabase;
         try {
             mariaDatabase.initializeSchema(MIGRATIONS_DIR);
@@ -59,11 +61,30 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this,
                 ServicePriority.Normal
         );
+
+        schedulePruneTask(pluginSettings.pruneIntervalSeconds());
         getLogger().info("PlayerNotifications enabled");
+    }
+
+    /**
+     * Schedules an async task that prunes expired notifications on the given
+     * interval. Runs off the main thread since it performs database I/O.
+     */
+    private void schedulePruneTask(long intervalSeconds) {
+        long periodTicks = Math.max(1L, intervalSeconds * 20L);
+        getServer().getScheduler().runTaskTimerAsynchronously(
+                this,
+                () -> this.notificationService.clearExpiredNotifications(),
+                periodTicks,
+                periodTicks
+        );
+        getLogger().info("Pruning expired notifications every " + intervalSeconds + "s");
     }
 
     @Override
     public void onDisable() {
+        // Cancel the prune task first so it cannot run against a closing database.
+        getServer().getScheduler().cancelTasks(this);
         if (this.notificationService != null) {
             getServer().getServicesManager().unregisterAll(this);
             this.notificationService = null;
@@ -84,6 +105,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         DatabaseSettings settings = root.get(DatabaseSettings.class);
         if (settings == null) {
             throw new IOException("database.yml could not be deserialized into DatabaseSettings");
+        }
+        return settings;
+    }
+
+    private PluginSettings loadPluginSettings() throws IOException {
+        ConfigurationNode root = copyDefaultsYaml("settings");
+        PluginSettings settings = root.get(PluginSettings.class);
+        if (settings == null) {
+            throw new IOException("settings.yml could not be deserialized into PluginSettings");
         }
         return settings;
     }

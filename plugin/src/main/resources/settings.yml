@@ -1,0 +1,5 @@
+# PlayerNotifications settings
+
+# How often expired notifications are pruned from the database, in seconds.
+# Default 3600 = 1 hour.
+prune-interval-seconds: 3600

@@ -24,8 +24,10 @@ public record DatabaseSettings(
         @Required
         @NotNull String url,
         @Setting("username")
+        @Required
         @NotNull String username,
         @Setting("password")
+        @Required
         @NotNull String password
 ) {
 }
