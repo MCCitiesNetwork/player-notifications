@@ -22,11 +22,11 @@ public interface NotificationProcessor<T> {
     @NotNull
     default NotificationProcessor<T> andThenIf(@NotNull NotificationProcessor<T> next,
                                                @NotNull BiPredicate<T, List<UUID>> predicate) {
-        return ((payload, targets) -> {
+        return (payload, targets) -> {
             receiveNotification(payload, targets);
             if (predicate.test(payload, targets)) {
                 next.receiveNotification(payload, targets);
             }
-        });
+        };
     }
 }
