@@ -1,4 +1,4 @@
-package io.github.md5sha256.playernotifications;
+package io.github.md5sha256.playernotifications.paper;
 
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;

@@ -12,9 +12,9 @@ repositories {
 
 dependencies {
     api(projects.api)
-    implementation(projects.core)
-    implementation("net.democracrycraft:plugin-infrastructure:1.0.0-SNAPSHOT")
-    compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+    api(projects.core)
+    api("net.democracrycraft:plugin-infrastructure:1.0.0-SNAPSHOT")
+    compileOnlyApi("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
 }
 
 tasks {

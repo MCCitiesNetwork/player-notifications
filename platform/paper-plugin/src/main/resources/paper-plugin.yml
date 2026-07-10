@@ -1,6 +1,6 @@
 name: PlayerNotifications
 version: "${version}"
-main: io.github.md5sha256.playernotifications.PlayerNotificationsPlugin
+main: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
 api-version: "1.21.8"
 authors: [ md5sha256 ]
 description: Player notifications plugin.

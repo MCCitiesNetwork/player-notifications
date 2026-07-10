@@ -1,4 +1,4 @@
-package io.github.md5sha256.playernotifications;
+package io.github.md5sha256.playernotifications.paper;
 
 import org.spongepowered.configurate.objectmapping.ConfigSerializable;
 import org.spongepowered.configurate.objectmapping.meta.Setting;

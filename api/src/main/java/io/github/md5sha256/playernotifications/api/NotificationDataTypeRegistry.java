@@ -23,6 +23,17 @@ public class NotificationDataTypeRegistry {
         this.processors.put(payloadClass, processor);
     }
 
+    public void unregisterPayloadMapping(@NotNull String dataType) {
+        Class<?> processor = this.payloadMapping.remove(dataType);
+        if (processor != null) {
+            unregisterProcessor(processor);
+        }
+    }
+
+    public void unregisterProcessor(@NotNull Class<?> payloadClass) {
+        this.processors.remove(payloadClass);
+    }
+
     @NotNull
     @SuppressWarnings("unchecked")
     public <T> Optional<NotificationProcessor<T>> getProcessor(@NotNull Class<T> payloadClass) {
