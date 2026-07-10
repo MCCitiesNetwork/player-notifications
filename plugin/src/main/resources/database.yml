@@ -1,0 +1,5 @@
+# PlayerNotifications database configuration
+# JDBC url without the leading "jdbc:" prefix.
+url: mariadb://localhost:3306/player_notifications
+username: ''
+password: ''

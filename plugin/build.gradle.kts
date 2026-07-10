@@ -16,6 +16,16 @@ tasks {
         dependsOn(shadowJar)
     }
 
+    shadowJar {
+        val base = "io.github.md5sha256.playernotifications.libraries"
+        relocate("org.mariadb", "${base}.org.mariadb")
+        relocate("org.mybatis", "${base}.org.mybatis")
+        relocate("org.apache.ibatis", "${base}.org.apache.ibatis")
+        relocate("org.spongepowered", "${base}.org.spongepowered")
+        relocate("io.leangen.geantyref", "${base}.io.leangen.geantyref")
+        mergeServiceFiles()
+    }
+
     processResources {
         val projectVersion = version
         filesMatching("paper-plugin.yml") {
