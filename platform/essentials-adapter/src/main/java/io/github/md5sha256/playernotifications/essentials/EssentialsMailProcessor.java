@@ -2,7 +2,7 @@ package io.github.md5sha256.playernotifications.essentials;
 
 import com.earth2me.essentials.Console;
 import com.earth2me.essentials.IEssentials;
-import io.github.md5sha256.playernotifications.api.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import net.ess3.api.IUser;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
