@@ -23,12 +23,6 @@ import java.util.UUID;
  */
 public class DefaultNotificationService implements NotificationService {
 
-    // ResolvedNotification does not currently carry the payload's data-type
-    // string, so enqueued rows store this placeholder for notifPayloadType.
-    // Until the API record exposes a type, clearNotifications(String dataType)
-    // cannot match rows enqueued through this service.
-    private static final String UNKNOWN_PAYLOAD_TYPE = "";
-
     private final Database database;
     private final NotificationDataTypeRegistry dataTypeRegistry;
 
@@ -60,7 +54,7 @@ public class DefaultNotificationService implements NotificationService {
                     notification.notifScheduledTime(),
                     notification.notifExpiryTime(),
                     targetId,
-                    UNKNOWN_PAYLOAD_TYPE,
+                    notification.notifPayloadType(),
                     notification.notifPayload(),
                     notification.notifPriority()
             );
@@ -83,6 +77,7 @@ public class DefaultNotificationService implements NotificationService {
                         entity.notifScheduledTime(),
                         entity.notifExpiryTime(),
                         new NotificationTarget(members),
+                        entity.notifPayloadType(),
                         entity.notifPayload(),
                         entity.notifPriority()
                 ));

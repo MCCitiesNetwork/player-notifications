@@ -20,7 +20,7 @@ class DefaultNotificationServiceTest extends AbstractDatabaseTest {
     private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.SECONDS);
 
     private static ResolvedNotification notification(String key, int priority, List<UUID> targets) {
-        return new ResolvedNotification(key, NOW, null, new NotificationTarget(targets), "{}", priority);
+        return new ResolvedNotification(key, NOW, null, new NotificationTarget(targets), "test", "{}", priority);
     }
 
     @Test
@@ -122,9 +122,9 @@ class DefaultNotificationServiceTest extends AbstractDatabaseTest {
     @DisplayName("clearExpiredNotifications removes only expired notifications")
     void clearExpired() {
         ResolvedNotification expired = new ResolvedNotification(
-                "expired", NOW, NOW.minus(1, ChronoUnit.HOURS), new NotificationTarget(List.of(PLAYER_A)), "{}", 0);
+                "expired", NOW, NOW.minus(1, ChronoUnit.HOURS), new NotificationTarget(List.of(PLAYER_A)), "test", "{}", 0);
         ResolvedNotification live = new ResolvedNotification(
-                "live", NOW, NOW.plus(1, ChronoUnit.HOURS), new NotificationTarget(List.of(PLAYER_A)), "{}", 0);
+                "live", NOW, NOW.plus(1, ChronoUnit.HOURS), new NotificationTarget(List.of(PLAYER_A)), "test", "{}", 0);
         service.enqueueNotification(expired, false);
         service.enqueueNotification(live, false);
 

@@ -61,6 +61,29 @@ public interface MariaNotificationMapper extends NotificationMapper {
     @NotNull List<NotificationEntity> selectByPlayer(@Param("playerId") @NotNull UUID playerId);
 
     @Override
+    @Select("""
+            SELECT n.notifKey, n.notifScheduledTime, n.notifExpiryTime, n.notifTargetId,
+                   n.notifPayloadType, n.notifPayload, n.notifPriority
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid = #{playerId}
+            AND n.notifScheduledTime <= #{now}
+            AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+            ORDER BY n.notifPriority DESC, n.notifScheduledTime ASC
+            """)
+    @ConstructorArgs({
+            @Arg(column = "notifKey", javaType = String.class),
+            @Arg(column = "notifScheduledTime", javaType = Instant.class),
+            @Arg(column = "notifExpiryTime", javaType = Instant.class),
+            @Arg(column = "notifTargetId", javaType = int.class),
+            @Arg(column = "notifPayloadType", javaType = String.class),
+            @Arg(column = "notifPayload", javaType = String.class),
+            @Arg(column = "notifPriority", javaType = int.class)
+    })
+    @NotNull List<NotificationEntity> selectDueByPlayer(@Param("playerId") @NotNull UUID playerId,
+                                                        @Param("now") @NotNull Instant now);
+
+    @Override
     @Insert("""
             INSERT INTO Notification (notifKey, notifScheduledTime, notifExpiryTime, notifTargetId,
                                       notifPayloadType, notifPayload, notifPriority)

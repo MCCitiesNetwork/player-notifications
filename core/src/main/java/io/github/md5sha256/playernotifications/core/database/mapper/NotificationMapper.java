@@ -24,6 +24,13 @@ public interface NotificationMapper {
      */
     @NotNull List<NotificationEntity> selectByPlayer(@NotNull UUID playerId);
 
+    /**
+     * Selects the notifications targeting the given player that are currently due
+     * for delivery: scheduled at or before {@code now} and not yet expired. Ordered
+     * by descending priority then ascending scheduled time.
+     */
+    @NotNull List<NotificationEntity> selectDueByPlayer(@NotNull UUID playerId, @NotNull Instant now);
+
     int insert(@NotNull NotificationEntity notification);
 
     int deleteByKey(@NotNull String notifKey);
