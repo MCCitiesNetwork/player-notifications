@@ -41,14 +41,15 @@ public class DefaultNotificationService implements NotificationService {
                                       @NotNull NotificationDataTypeRegistry dataTypeRegistry) {
         this.database = database;
         this.dataTypeRegistry = dataTypeRegistry;
+        // No Jackson modules are registered: the only payload this plugin serializes is String, and
+        // records/POJOs are handled by Jackson's native reflection support. If payloads ever need
+        // java.time (or similar) support, register that module explicitly here (e.g.
+        // registerModule(new JavaTimeModule())) rather than relying on runtime module discovery,
+        // which is non-deterministic under Bukkit's per-plugin class loaders.
         this.objectMapper = new ObjectMapper();
         // A default String serializer keeps plain-text payloads working: JSON-quoted on write,
         // unquoted on read, so the notifPayload JSON column stays valid.
         this.dataTypeRegistry.registerSerializer(String.class, jsonSerializer(String.class));
-    }
-
-    public void rebuildObjectMapper() {
-        this.objectMapper.findAndRegisterModules();
     }
 
     @Override

@@ -82,7 +82,6 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         // Start modules last so they can look up the registered NotificationService.
         startModules();
-        this.notificationService.rebuildObjectMapper();
         getLogger().info("PlayerNotifications enabled");
     }
 
