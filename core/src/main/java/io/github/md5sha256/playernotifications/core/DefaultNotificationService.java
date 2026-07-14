@@ -1,14 +1,20 @@
 package io.github.md5sha256.playernotifications.core;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.ResolvedNotification;
+import io.github.md5sha256.playernotifications.api.TypedNotification;
+import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializationException;
+import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
+import io.github.md5sha256.playernotifications.core.serialize.JacksonPayloadSerializer;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Instant;
@@ -25,6 +31,7 @@ public class DefaultNotificationService implements NotificationService {
 
     private final Database database;
     private final NotificationDataTypeRegistry dataTypeRegistry;
+    private final ObjectMapper objectMapper;
 
     public DefaultNotificationService(@NotNull Database database) {
         this(database, new NotificationDataTypeRegistry());
@@ -34,6 +41,14 @@ public class DefaultNotificationService implements NotificationService {
                                       @NotNull NotificationDataTypeRegistry dataTypeRegistry) {
         this.database = database;
         this.dataTypeRegistry = dataTypeRegistry;
+        this.objectMapper = new ObjectMapper();
+        // A default String serializer keeps plain-text payloads working: JSON-quoted on write,
+        // unquoted on read, so the notifPayload JSON column stays valid.
+        this.dataTypeRegistry.registerSerializer(String.class, jsonSerializer(String.class));
+    }
+
+    public void rebuildObjectMapper() {
+        this.objectMapper.findAndRegisterModules();
     }
 
     @Override
@@ -61,6 +76,37 @@ public class DefaultNotificationService implements NotificationService {
             notificationMapper.insert(entity);
             wrapper.session().commit();
         }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> void enqueueNotification(@NotNull TypedNotification<T> notification, boolean overwriteAllowed) {
+        PayloadSerializer<T> serializer = (PayloadSerializer<T>) this.dataTypeRegistry
+                .getSerializer(notification.notifPayloadType())
+                .orElseThrow(() -> new PayloadSerializationException(
+                        "No serializer registered for data type " + notification.notifPayloadType()));
+        String payload = serializer.serialize(notification.notifPayload());
+        enqueueNotification(new ResolvedNotification(
+                notification.notifKey(),
+                notification.notifScheduledTime(),
+                notification.notifExpiryTime(),
+                notification.notifTarget(),
+                notification.notifPayloadType(),
+                payload,
+                notification.notifPriority()
+        ), overwriteAllowed);
+    }
+
+    @Override
+    public <T> void registerJsonPayload(@NotNull String dataType, @NotNull Class<T> type,
+                                        @NotNull NotificationProcessor<T> processor) {
+        this.dataTypeRegistry.registerPayloadMapping(dataType, type);
+        this.dataTypeRegistry.registerSerializer(type, jsonSerializer(type));
+        this.dataTypeRegistry.registerProcessor(type, processor);
+    }
+
+    private <T> PayloadSerializer<T> jsonSerializer(@NotNull Class<T> type) {
+        return new JacksonPayloadSerializer<>(this.objectMapper, type);
     }
 
     @Override

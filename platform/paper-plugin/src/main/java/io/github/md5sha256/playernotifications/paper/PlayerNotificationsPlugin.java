@@ -32,7 +32,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private static final String MODULES_DIR_NAME = "modules";
 
     private Database database;
-    private NotificationService notificationService;
+    private DefaultNotificationService notificationService;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
     @NotNull
@@ -82,6 +82,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         // Start modules last so they can look up the registered NotificationService.
         startModules();
+        this.notificationService.rebuildObjectMapper();
         getLogger().info("PlayerNotifications enabled");
     }
 

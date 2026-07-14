@@ -29,6 +29,7 @@ tasks {
         relocate("org.apache.ibatis", "${base}.org.apache.ibatis")
         relocate("org.spongepowered", "${base}.org.spongepowered")
         relocate("io.leangen.geantyref", "${base}.io.leangen.geantyref")
+        relocate("com.fasterxml.jackson", "${base}.com.fasterxml.jackson")
         mergeServiceFiles()
     }
 

@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.api;
 
+import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -12,6 +13,25 @@ import java.util.UUID;
 public interface NotificationService {
 
     void enqueueNotification(@NotNull ResolvedNotification notification, boolean overwriteAllowed);
+
+    /**
+     * Enqueues a notification with a typed payload, serializing it through the
+     * {@link io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer} registered for
+     * {@link TypedNotification#notifPayloadType()}.
+     *
+     * @throws io.github.md5sha256.playernotifications.api.serialize.PayloadSerializationException
+     *         if no serializer is registered for the data type, or serialization fails
+     */
+    <T> void enqueueNotification(@NotNull TypedNotification<T> notification, boolean overwriteAllowed);
+
+    /**
+     * Registers a payload type served by the default JSON serializer: binds the data-type mapping, a
+     * reflective JSON serializer for {@code type}, and the processor in one call. Authors needing
+     * custom serialization use {@link #dataTypeRegistry()} directly with their own
+     * {@link io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer}.
+     */
+    <T> void registerJsonPayload(@NotNull String dataType, @NotNull Class<T> type,
+                                 @NotNull NotificationProcessor<T> processor);
 
     /**
      * Resolves (without deleting) every notification currently targeting the given player. Use

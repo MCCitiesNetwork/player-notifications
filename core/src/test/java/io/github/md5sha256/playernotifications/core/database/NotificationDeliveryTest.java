@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.core.database;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.ResolvedNotification;
@@ -7,6 +8,7 @@ import io.github.md5sha256.playernotifications.api.processor.NotificationDisposi
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
+import io.github.md5sha256.playernotifications.core.serialize.JacksonPayloadSerializer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,20 +29,21 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     private static final Instant DUE = NOW.minus(1, ChronoUnit.MINUTES);
 
     private static final String TYPE = "test";
-    // notifPayload is a JSON column, so payloads must be valid JSON.
-    private static final String PAYLOAD = "{}";
+    // notifPayload is a JSON column; a String payload is stored JSON-quoted and decoded on delivery.
+    private static final String STORED = "\"hello\"";
+    private static final String DECODED = "hello";
 
     @Test
     @DisplayName("processes a due notification for the target and prunes it on DELETE")
     void deliversAndPrunes() {
         RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
         NotificationDelivery delivery = deliveryFor(processor);
-        insert("n1", TYPE, PAYLOAD, DUE, null, PLAYER_A, PLAYER_B);
+        insert("n1", TYPE, STORED, DUE, null, PLAYER_A, PLAYER_B);
 
         delivery.deliver(PLAYER_A, NOW);
 
-        // Invoked once, for PLAYER_A only, with the stored payload.
-        Assertions.assertEquals(List.of(PAYLOAD), processor.payloads);
+        // Invoked once, for PLAYER_A only, with the decoded payload.
+        Assertions.assertEquals(List.of(DECODED), processor.payloads);
         Assertions.assertEquals(List.of(PLAYER_A), processor.targets);
         // PLAYER_A pruned; the notification lives on for PLAYER_B.
         Assertions.assertTrue(keysFor(PLAYER_A).isEmpty());
@@ -52,7 +55,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     void retainKeepsTarget() {
         RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.RETAIN);
         NotificationDelivery delivery = deliveryFor(processor);
-        insert("n1", TYPE, PAYLOAD, DUE, null, PLAYER_A);
+        insert("n1", TYPE, STORED, DUE, null, PLAYER_A);
 
         delivery.deliver(PLAYER_A, NOW);
 
@@ -64,7 +67,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @DisplayName("delivering to the last target deletes the notification")
     void lastTargetDeletesNotification() {
         NotificationDelivery delivery = deliveryFor(new RecordingProcessor(NotificationDisposition.DELETE));
-        insert("solo", TYPE, PAYLOAD, DUE, null, PLAYER_A);
+        insert("solo", TYPE, STORED, DUE, null, PLAYER_A);
 
         delivery.deliver(PLAYER_A, NOW);
 
@@ -76,7 +79,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     void skipsFutureScheduled() {
         RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
         NotificationDelivery delivery = deliveryFor(processor);
-        insert("future", TYPE, PAYLOAD, NOW.plus(1, ChronoUnit.HOURS), null, PLAYER_A);
+        insert("future", TYPE, STORED, NOW.plus(1, ChronoUnit.HOURS), null, PLAYER_A);
 
         delivery.deliver(PLAYER_A, NOW);
 
@@ -89,7 +92,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     void skipsExpired() {
         RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
         NotificationDelivery delivery = deliveryFor(processor);
-        insert("expired", TYPE, PAYLOAD, DUE, NOW.minus(1, ChronoUnit.MINUTES), PLAYER_A);
+        insert("expired", TYPE, STORED, DUE, NOW.minus(1, ChronoUnit.MINUTES), PLAYER_A);
 
         delivery.deliver(PLAYER_A, NOW);
 
@@ -102,7 +105,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     void retainsWhenNoProcessor() {
         RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
         NotificationDelivery delivery = deliveryFor(processor);
-        insert("unhandled", "other-type", PAYLOAD, DUE, null, PLAYER_A);
+        insert("unhandled", "other-type", STORED, DUE, null, PLAYER_A);
 
         delivery.deliver(PLAYER_A, NOW);
 
@@ -120,7 +123,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
                 new NotificationDelivery(database, service.dataTypeRegistry(), Logger.getLogger("test"));
 
         service.enqueueNotification(new ResolvedNotification(
-                "e2e", DUE, null, new NotificationTarget(List.of(PLAYER_A)), TYPE, PAYLOAD, 0), false);
+                "e2e", DUE, null, new NotificationTarget(List.of(PLAYER_A)), TYPE, STORED, 0), false);
 
         delivery.deliver(PLAYER_A, NOW);
 
@@ -134,6 +137,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
         NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
         registry.registerPayloadMapping(TYPE, String.class);
         registry.registerProcessor(String.class, processor);
+        registry.registerSerializer(String.class, new JacksonPayloadSerializer<>(new ObjectMapper(), String.class));
         return new NotificationDelivery(database, registry, Logger.getLogger("test"));
     }
 

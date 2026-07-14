@@ -3,6 +3,7 @@ package io.github.md5sha256.playernotifications.core;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationDisposition;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
@@ -105,17 +106,25 @@ public class NotificationDelivery {
     }
 
     /**
-     * Decodes the stored payload into the registered payload type. Payloads are persisted as their
-     * raw string form, so a {@link String} payload type is used directly. Typed payloads have no
-     * decoder wired yet and are retained rather than mis-delivered.
+     * Decodes the stored JSON payload into the registered payload type via its
+     * {@link PayloadSerializer}. Returns {@code null} — retaining the notification — when no
+     * serializer is registered or deserialization fails, so a single poison payload never crashes the
+     * delivery loop nor is silently dropped.
      */
     private @Nullable Object decodePayload(@NotNull String rawPayload, @NotNull Class<?> payloadClass) {
-        if (payloadClass.isInstance(rawPayload)) {
-            return rawPayload;
+        Optional<? extends PayloadSerializer<?>> serializer = registry.getSerializer(payloadClass);
+        if (serializer.isEmpty()) {
+            logger.warning("No serializer registered for payload type " + payloadClass.getName()
+                    + "; retaining notification");
+            return null;
         }
-        logger.warning("No decoder registered for payload type " + payloadClass.getName()
-                + "; retaining notification");
-        return null;
+        try {
+            return serializer.get().deserialize(rawPayload);
+        } catch (RuntimeException e) {
+            logger.warning("Failed to deserialize payload of type " + payloadClass.getName()
+                    + "; retaining notification: " + e.getMessage());
+            return null;
+        }
     }
 
     @SuppressWarnings("unchecked")
