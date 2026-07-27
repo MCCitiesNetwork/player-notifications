@@ -1,8 +1,13 @@
 package io.github.md5sha256.playernotifications.paper;
 
 import io.github.md5sha256.playernotifications.api.NotificationService;
+import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
+import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
+import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
+import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
+import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase;
 import net.democracrycraft.pluginInfrastructure.modules.ModuleLifecycleManager;
@@ -33,6 +38,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
     private Database database;
     private DefaultNotificationService notificationService;
+    private NotificationSinkRegistry sinkRegistry;
+    private NotificationDelivery notificationDelivery;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
     @NotNull
@@ -43,6 +50,20 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     @NotNull
     public NotificationService notificationService() {
         return this.notificationService;
+    }
+
+    /**
+     * The registry feature modules (e.g. the future Discord adapter) register their own
+     * {@link io.github.md5sha256.playernotifications.api.render.NotificationSink}s against.
+     */
+    @NotNull
+    public NotificationSinkRegistry sinkRegistry() {
+        return this.sinkRegistry;
+    }
+
+    @NotNull
+    public NotificationDelivery notificationDelivery() {
+        return this.notificationDelivery;
     }
 
     @Override
@@ -76,6 +97,19 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.notificationService,
                 this,
                 ServicePriority.Normal
+        );
+
+        this.sinkRegistry = new NotificationSinkRegistry();
+        this.sinkRegistry.registerSink(new ChatSink(this));
+        this.sinkRegistry.registerSink(new DialogSink(this));
+        DatabaseNotificationPreferences preferences =
+                new DatabaseNotificationPreferences(mariaDatabase, pluginSettings.defaultMedia());
+        this.notificationDelivery = new NotificationDelivery(
+                mariaDatabase,
+                this.notificationService.dataTypeRegistry(),
+                this.sinkRegistry,
+                preferences,
+                getLogger()
         );
 
         schedulePruneTask(pluginSettings.pruneIntervalSeconds());
@@ -136,6 +170,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             getServer().getServicesManager().unregisterAll(this);
             this.notificationService = null;
         }
+        this.sinkRegistry = null;
+        this.notificationDelivery = null;
         if (this.database != null) {
             try {
                 this.database.close();

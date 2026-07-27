@@ -3,8 +3,10 @@ package io.github.md5sha256.playernotifications.core.database.maria;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
+import io.github.md5sha256.playernotifications.core.database.mapper.PlayerNotificationPreferenceMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaNotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaNotificationTargetMapper;
+import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaPlayerNotificationPreferenceMapper;
 import org.apache.ibatis.session.SqlSession;
 import org.jetbrains.annotations.NotNull;
 
@@ -22,6 +24,11 @@ public record MariaSqlSession(@NotNull SqlSession session) implements SqlSession
     @Override
     public @NotNull NotificationTargetMapper notificationTargetMapper() {
         return session.getMapper(MariaNotificationTargetMapper.class);
+    }
+
+    @Override
+    public @NotNull PlayerNotificationPreferenceMapper playerNotificationPreferenceMapper() {
+        return session.getMapper(MariaPlayerNotificationPreferenceMapper.class);
     }
 
     @Override

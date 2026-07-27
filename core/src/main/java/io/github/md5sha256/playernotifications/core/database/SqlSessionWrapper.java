@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.core.database;
 
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
+import io.github.md5sha256.playernotifications.core.database.mapper.PlayerNotificationPreferenceMapper;
 import org.apache.ibatis.session.SqlSession;
 import org.jetbrains.annotations.NotNull;
 
@@ -20,6 +21,8 @@ public interface SqlSessionWrapper extends Closeable {
     @NotNull NotificationMapper notificationMapper();
 
     @NotNull NotificationTargetMapper notificationTargetMapper();
+
+    @NotNull PlayerNotificationPreferenceMapper playerNotificationPreferenceMapper();
 
     @Override
     void close();

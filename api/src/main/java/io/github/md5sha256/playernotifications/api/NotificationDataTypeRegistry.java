@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.api;
 
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import org.jetbrains.annotations.NotNull;
 
@@ -14,6 +15,8 @@ public class NotificationDataTypeRegistry {
     private final Map<Class<?>, NotificationProcessor<?>> processors
             = Collections.synchronizedMap(new HashMap<>());
     private final Map<Class<?>, PayloadSerializer<?>> serializers
+            = Collections.synchronizedMap(new HashMap<>());
+    private final Map<Class<?>, NotificationRenderer<?>> renderers
             = Collections.synchronizedMap(new HashMap<>());
     private final Map<String, Class<?>> payloadMapping = Collections.synchronizedMap(new HashMap<>());
 
@@ -32,11 +35,17 @@ public class NotificationDataTypeRegistry {
         this.serializers.put(payloadClass, serializer);
     }
 
+    public <T> void registerRenderer(@NotNull Class<T> payloadClass,
+                                     @NotNull NotificationRenderer<T> renderer) {
+        this.renderers.put(payloadClass, renderer);
+    }
+
     public void unregisterPayloadMapping(@NotNull String dataType) {
         Class<?> payloadClass = this.payloadMapping.remove(dataType);
         if (payloadClass != null) {
             unregisterProcessor(payloadClass);
             unregisterSerializer(payloadClass);
+            unregisterRenderer(payloadClass);
         }
     }
 
@@ -46,6 +55,10 @@ public class NotificationDataTypeRegistry {
 
     public void unregisterSerializer(@NotNull Class<?> payloadClass) {
         this.serializers.remove(payloadClass);
+    }
+
+    public void unregisterRenderer(@NotNull Class<?> payloadClass) {
+        this.renderers.remove(payloadClass);
     }
 
     @NotNull
@@ -76,6 +89,21 @@ public class NotificationDataTypeRegistry {
     @NotNull
     public Optional<? extends PayloadSerializer<?>> getSerializer(@NotNull String dataType) {
         return resolvePayloadClass(dataType).flatMap(this::getSerializer);
+    }
+
+    @NotNull
+    @SuppressWarnings("unchecked")
+    public <T> Optional<NotificationRenderer<T>> getRenderer(@NotNull Class<T> payloadClass) {
+        var rawRenderer = this.renderers.get(payloadClass);
+        if (rawRenderer == null) {
+            return Optional.empty();
+        }
+        return Optional.of((NotificationRenderer<T>) rawRenderer);
+    }
+
+    @NotNull
+    public Optional<? extends NotificationRenderer<?>> getRenderer(@NotNull String dataType) {
+        return resolvePayloadClass(dataType).flatMap(this::getRenderer);
     }
 
     @NotNull

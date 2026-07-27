@@ -161,7 +161,10 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
 4. Fold: return `DELETE` if any sink returned `DELIVERED`, otherwise `RETAIN`.
 5. If at least one sink returned `DELIVERED` and another did not, log which media were dropped, so the
    partial-delivery limitation is observable: `UNREACHABLE` at `fine` (expected and transient),
-   `UNSUPPORTED` at `warning` (a standing misconfiguration an operator should fix).
+   `UNSUPPORTED` at `warning` (a standing misconfiguration an operator should fix). If **nothing** was
+   delivered and at least one sink returned `UNSUPPORTED`, log a `warning` naming those media — otherwise
+   a player whose only preferred media are permanently unsupported accumulates notifications until
+   expiry with no operator-visible signal.
 
 A sink throwing a `RuntimeException` is caught, logged, and treated as `UNREACHABLE`, so one broken
 sink cannot abort delivery to the others or crash the delivery loop — matching how `decodePayload`
@@ -266,7 +269,10 @@ via `:platform:paper-plugin:runServer`.
   pass. Fixing the transient case requires per-medium delivery tracking, deliberately deferred. Retaining
   instead is *not* a workaround: chat is not idempotent, so the player would be messaged twice.
 - **A player whose only preferred medium is permanently `UNSUPPORTED`** (prefers Discord alone, never
-  links an account) accumulates notifications until `notifExpiryTime` prunes them.
+  links an account) accumulates notifications until `notifExpiryTime` prunes them. `RenderingProcessor`
+  logs a `warning` naming the unsupported media on every such delivery attempt, so an operator can see the
+  standing misconfiguration; it does not otherwise change the outcome — the notification still accumulates
+  until expiry.
 - **`RenderableNotification` is a lossy common denominator.** A three-button dialog and a chat line are
   genuinely different media; the neutral form serves the intersection.
 

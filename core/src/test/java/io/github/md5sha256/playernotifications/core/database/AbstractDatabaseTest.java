@@ -69,6 +69,7 @@ abstract class AbstractDatabaseTest {
                     SET FOREIGN_KEY_CHECKS = 0;
                     TRUNCATE TABLE Notification;
                     TRUNCATE TABLE NotificationTarget;
+                    TRUNCATE TABLE PlayerNotificationPreference;
                     SET FOREIGN_KEY_CHECKS = 1;
                     """);
         }

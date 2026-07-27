@@ -1,8 +1,12 @@
 package io.github.md5sha256.playernotifications.core;
 
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
+import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationDisposition;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
+import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
+import io.github.md5sha256.playernotifications.api.render.RenderingProcessor;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
@@ -31,18 +35,46 @@ import java.util.logging.Logger;
  *
  * <p>Processors are invoked outside any open database transaction, so their side effects (which may
  * marshal onto another thread) do not hold database resources.
+ *
+ * <p>Dispatch precedence: an explicitly registered {@link NotificationProcessor} always wins (so
+ * {@code EssentialsMailProcessor} and other bespoke processors keep working unchanged). Otherwise, if a
+ * {@link NotificationRenderer} is registered for the payload class, the notification is dispatched
+ * through a framework-supplied {@link RenderingProcessor}, which fans it out to the target's preferred
+ * media. Otherwise the notification is logged and retained.
  */
 public class NotificationDelivery {
 
     private final Database database;
     private final NotificationDataTypeRegistry registry;
+    private final NotificationSinkRegistry sinkRegistry;
+    private final NotificationPreferences preferences;
     private final Logger logger;
 
+    /**
+     * Constructs a delivery loop with no rendering path: only explicitly registered
+     * {@link NotificationProcessor}s are dispatched. A payload with only a {@link NotificationRenderer}
+     * registered is retained, exactly as one with neither.
+     */
     public NotificationDelivery(@NotNull Database database,
                                 @NotNull NotificationDataTypeRegistry registry,
                                 @NotNull Logger logger) {
+        this(database, registry, null, null, logger);
+    }
+
+    /**
+     * Constructs a delivery loop with the rendering path enabled: a payload with a registered
+     * {@link NotificationRenderer} (and no explicit processor) is dispatched through a
+     * {@link RenderingProcessor} built from the given sink registry and preferences.
+     */
+    public NotificationDelivery(@NotNull Database database,
+                                @NotNull NotificationDataTypeRegistry registry,
+                                @Nullable NotificationSinkRegistry sinkRegistry,
+                                @Nullable NotificationPreferences preferences,
+                                @NotNull Logger logger) {
         this.database = database;
         this.registry = registry;
+        this.sinkRegistry = sinkRegistry;
+        this.preferences = preferences;
         this.logger = logger;
     }
 
@@ -91,18 +123,41 @@ public class NotificationDelivery {
                     + "'; retaining " + notification.notifKey());
             return NotificationDisposition.RETAIN;
         }
+
+        // Precedence: an explicitly registered processor always wins.
         Optional<? extends NotificationProcessor<?>> processor =
                 registry.getProcessor(notification.notifPayloadType());
-        if (processor.isEmpty()) {
-            logger.fine(() -> "No processor for data type '" + notification.notifPayloadType()
-                    + "'; retaining " + notification.notifKey());
-            return NotificationDisposition.RETAIN;
+        if (processor.isPresent()) {
+            Object payload = decodePayload(notification.notifPayload(), payloadClass.get());
+            if (payload == null) {
+                return NotificationDisposition.RETAIN;
+            }
+            return invoke(processor.get(), payload, target);
         }
-        Object payload = decodePayload(notification.notifPayload(), payloadClass.get());
-        if (payload == null) {
-            return NotificationDisposition.RETAIN;
+
+        // Otherwise, dispatch through the rendering path if a renderer is registered and the delivery
+        // loop was constructed with the sink registry and preferences it requires.
+        Optional<? extends NotificationRenderer<?>> renderer =
+                registry.getRenderer(notification.notifPayloadType());
+        if (renderer.isPresent() && this.sinkRegistry != null && this.preferences != null) {
+            Object payload = decodePayload(notification.notifPayload(), payloadClass.get());
+            if (payload == null) {
+                return NotificationDisposition.RETAIN;
+            }
+            NotificationProcessor<?> renderingProcessor =
+                    new RenderingProcessor<>(castRenderer(renderer.get()), this.sinkRegistry,
+                            this.preferences, this.logger);
+            return invoke(renderingProcessor, payload, target);
         }
-        return invoke(processor.get(), payload, target);
+
+        logger.fine(() -> "No processor or renderer for data type '" + notification.notifPayloadType()
+                + "'; retaining " + notification.notifKey());
+        return NotificationDisposition.RETAIN;
+    }
+
+    @SuppressWarnings("unchecked")
+    private @NotNull NotificationRenderer<Object> castRenderer(@NotNull NotificationRenderer<?> renderer) {
+        return (NotificationRenderer<Object>) renderer;
     }
 
     /**

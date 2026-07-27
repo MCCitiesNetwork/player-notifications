@@ -3,3 +3,8 @@
 # How often expired notifications are pruned from the database, in seconds.
 # Default 3600 = 1 hour.
 prune-interval-seconds: 3600
+
+# The media a player is assumed to prefer when they have not set any preference of their own.
+# Valid keys are whatever sinks are registered, e.g. "chat", "dialog", "essentials-mail", "discord".
+default-media:
+  - chat
