@@ -4,12 +4,16 @@ import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
+import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
+import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
+import io.github.md5sha256.playernotifications.paper.preferences.NotificationPreferencesDialog;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.democracrycraft.pluginInfrastructure.modules.ModuleLifecycleManager;
 import net.democracrycraft.pluginInfrastructure.modules.ModuleLoader;
 import org.bukkit.plugin.ServicePriority;
@@ -29,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.logging.Level;
 
 public final class PlayerNotificationsPlugin extends JavaPlugin {
@@ -39,6 +44,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private Database database;
     private DefaultNotificationService notificationService;
     private NotificationSinkRegistry sinkRegistry;
+    private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
@@ -64,6 +70,14 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     @NotNull
     public NotificationDelivery notificationDelivery() {
         return this.notificationDelivery;
+    }
+
+    /**
+     * The persisted per-player medium preferences the {@code /notifications} dialog reads and writes.
+     */
+    @NotNull
+    public DatabaseNotificationPreferences preferences() {
+        return this.preferences;
     }
 
     @Override
@@ -102,21 +116,41 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.sinkRegistry = new NotificationSinkRegistry();
         this.sinkRegistry.registerSink(new ChatSink(this));
         this.sinkRegistry.registerSink(new DialogSink(this));
-        DatabaseNotificationPreferences preferences =
+        // Backs an explicit mute; not offered as a choice in the preferences dialog.
+        this.sinkRegistry.registerSink(new NullSink());
+        this.preferences =
                 new DatabaseNotificationPreferences(mariaDatabase, pluginSettings.defaultMedia());
         this.notificationDelivery = new NotificationDelivery(
                 mariaDatabase,
                 this.notificationService.dataTypeRegistry(),
                 this.sinkRegistry,
-                preferences,
+                this.preferences,
                 getLogger()
         );
 
+        registerCommands();
         schedulePruneTask(pluginSettings.pruneIntervalSeconds());
 
         // Start modules last so they can look up the registered NotificationService.
         startModules();
         getLogger().info("PlayerNotifications enabled");
+    }
+
+    /**
+     * Registers the player-facing commands through Paper's Brigadier lifecycle event. This plugin ships
+     * a {@code paper-plugin.yml}, which has no {@code commands:} block, so Brigadier is the only
+     * registration path available.
+     */
+    @SuppressWarnings("UnstableApiUsage")
+    private void registerCommands() {
+        NotificationPreferencesDialog dialog =
+                new NotificationPreferencesDialog(this, this.sinkRegistry, this.preferences);
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
+                event.registrar().register(
+                        NotificationsCommand.create(dialog),
+                        NotificationsCommand.DESCRIPTION,
+                        List.of("notifs")
+                ));
     }
 
     /**
@@ -171,6 +205,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             this.notificationService = null;
         }
         this.sinkRegistry = null;
+        this.preferences = null;
         this.notificationDelivery = null;
         if (this.database != null) {
             try {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-PlayerNotifications is a PaperMC (Spigot) plugin for Minecraft **1.21.8**, targeting **Java 21**. It stores per-player notifications in a MariaDB database and delivers them to players via pluggable, payload-typed processors. Persistence is implemented with MyBatis in the `core` module; the Paper bootstrap and platform integrations live under `platform/`. Cross-cutting infrastructure (a runtime module system, schema migrator, Configurate helpers) comes from the external `plugin-infrastructure` library.
+PlayerNotifications is a PaperMC (Spigot) plugin for Minecraft **1.21.8**, targeting **Java 21**. It stores per-player notifications in a MariaDB database and delivers them to players via pluggable, payload-typed processors — or, more commonly, via the **renderer/sink** path, which fans a notification out to whichever media a player prefers (chat, dialog, Essentials mail, planned Discord). Persistence is implemented with MyBatis in the `core` module; the Paper bootstrap and platform integrations live under `platform/`. Cross-cutting infrastructure (a runtime module system, schema migrator, Configurate helpers) comes from the external `plugin-infrastructure` library.
 
 ## Build & run
 
@@ -24,11 +24,14 @@ Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts`
 
 - **`api`** (`io.github.md5sha256.playernotifications.api`) — Public, dependency-light API. Uses `compileOnlyApi` for `paper-api`. Key types:
   - `NotificationService` — entry point: `enqueueNotification`, `resolveNotifications(UUID)` (a pure read — does **not** delete), `clearNotification`/`clearNotifications`, `deleteNotificationTarget(key, UUID)` / `deleteNotificationTargets(key, Collection<UUID>)`, `clearExpiredNotifications`, and `dataTypeRegistry()`.
-  - `NotificationDataTypeRegistry` — maps a string `dataType` → payload `Class<?>`, and payload class → `NotificationProcessor`. The extension point: callers register their own payload types and processors.
+  - `NotificationDataTypeRegistry` — maps a string `dataType` → payload `Class<?>`, and payload class → `NotificationProcessor`, `PayloadSerializer`, and `NotificationRenderer`. The extension point: callers register their own payload types, processors/renderers, and serializers.
+  - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"essentials-mail"`, `"discord"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`.
   - `Notification` / `ResolvedNotification` — records for the persisted vs. target-resolved forms. `ResolvedNotification` holds a `NotificationTarget` (list of player UUIDs) and carries `notifPayloadType` (the registry data-type string) plus the `String` payload.
   - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or flagged for `DELETE`. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with DELETE-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
-- **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, and `NotificationDelivery` (the delivery loop). `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly. See "Persistence layer" below.
-- **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config, builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, schedules the async prune task, and starts the module system. Exposes `database()` / `notificationService()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`) and `run-paper`.
+  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them. `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink`, `DialogSink`, and `NullSink` (the `"none"` medium backing an explicit mute — see "Player commands").
+  - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
+- **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop), `DatabaseNotificationPreferences` (the persisted `NotificationPreferences` impl), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
+- **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config, builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`) and `DatabaseNotificationPreferences`, constructs `NotificationDelivery` with both, registers the Brigadier commands, schedules the async prune task, and starts the module system. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`) and `run-paper`.
 - **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
 
 ### Build conventions
@@ -59,11 +62,91 @@ reloadable: false
 
 `expectedPluginClass` must equal the host plugin's runtime FQCN, or the module is skipped.
 
+## Rendering & delivery media
+
+Design doc: `docs/superpowers/specs/2026-07-27-notification-renderers-design.md`.
+
+Payload *rendering* and medium *delivery* are separate axes, so a payload is converted **once** and can
+fan out to any number of media. Registrations are **N + M**, not N × M: adding a medium (e.g. the
+planned Discord sink) requires no change to any existing payload.
+
+- A payload author registers a `NotificationRenderer<T>` (payload → `RenderableNotification`) and never
+  writes per-medium or preference-lookup logic.
+- A medium owner registers one `NotificationSink` in the `NotificationSinkRegistry`.
+- `RenderingProcessor<T>` — the **single** framework-supplied processor — reads
+  `NotificationPreferences#preferredMedia(target)`, renders once, and delivers to each preferred
+  medium's sink. A medium with no registered sink is logged at `fine` and skipped.
+
+**Dispatch precedence in `NotificationDelivery`:** an explicitly registered `NotificationProcessor`
+always wins (so `EssentialsMailProcessor` and other bespoke processors keep working unchanged);
+otherwise a registered `NotificationRenderer` dispatches through `RenderingProcessor`; otherwise the
+notification is logged and retained. `NotificationDelivery` has a 3-arg constructor (no rendering path)
+and a 5-arg one taking the sink registry and preferences.
+
+**Fan-out is DELETE-wins:** if any sink returns `DELIVERED`, the notification is consumed. Consequences,
+deliberate and documented in the design doc's "Known limitations":
+- **Partial delivery is silent and unrecoverable.** If a player prefers `chat + discord`, chat succeeds
+  and Discord transiently fails, the notification is consumed and Discord never receives it. Fixing this
+  needs per-medium delivery tracking, which was deliberately deferred. Retaining instead is *not* a
+  workaround — chat is not idempotent, so the player would be messaged twice.
+- When **nothing** was delivered and at least one medium returned `UNSUPPORTED`, a `warning` is logged
+  (a player whose only preferred medium is permanently unreachable would otherwise accumulate
+  notifications silently until expiry).
+- A sink throwing a `RuntimeException` is caught, logged, and treated as `UNREACHABLE`, so one broken
+  sink cannot abort delivery to the others.
+
+`RenderableNotification` holds **no `Player` and no `Audience`** — Essentials mail and Discord deliver to
+absent players. `Component` is the lingua franca; non-Minecraft sinks serialize it down, so bodies must
+not rely on in-game-only affordances such as click events. Actions/buttons are intentionally **out of
+scope** (a dialog button and a Discord button share no execution model), so dialogs render as
+read-and-dismiss.
+
+## Player commands
+
+Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Brigadier API
+(`LifecycleEvents.COMMANDS`) — **not** a `commands:` block, which `paper-plugin.yml` does not support.
+
+- `/notifications` (alias `/notifs`, also `/notifications preferences`) — opens the notification
+  preferences dialog. Permission `playernotifications.command.preferences`, declared in
+  `paper-plugin.yml` with `default: true`. Player-only.
+
+`paper.command.NotificationsCommand` builds the Brigadier node; `paper.preferences.NotificationPreferencesDialog`
+builds and shows the dialog (a `MultiActionType` with one `BooleanDialogInput` per user-selectable
+medium plus Save / Use server default / Cancel).
+
+**Three preference states.** The dialog is the only place all three are expressible:
+
+| State | Storage | `preferredMedia()` returns |
+|---|---|---|
+| Unconfigured | zero rows | `default-media` from `settings.yml` |
+| Explicit selection | one row per medium | that set |
+| Explicit mute | a single `medium = 'none'` row | `{none}` |
+
+Saving with **nothing** checked is a real permanent mute, stored as `none` rather than as zero rows
+(zero rows already means "unconfigured"). `NullSink` is registered for `"none"` and returns
+`DELIVERED`, so a muted player's notifications are **consumed** rather than accumulating until expiry —
+a mute means "do not tell me", not "queue this for later". `NullSink` is excluded from the checkbox
+list, since checking nothing already says the same thing. **Use server default** writes the empty set,
+clearing the player's rows.
+
+Implementation notes:
+- `DatabaseNotificationPreferences` does blocking JDBC while `Player#showDialog` must run on the main
+  thread, so the dialog reads/writes on the async scheduler and marshals UI work back.
+- The dialog is a snapshot: the selection is re-validated against `registeredMedia()` on save, so a
+  medium unregistered meanwhile is dropped rather than persisted as an unroutable preference.
+- Dialog input keys are **positional** (`medium_0`, `medium_1`, …) with a key→medium map, because medium
+  keys are arbitrary strings and any sanitizing transform risks two media colliding onto one input.
+- Button callbacks use `ClickCallback.Options` with `uses(1)` and a one-hour lifetime; a dialog left
+  open past that has inert buttons and must be reopened.
+- **Known quirk:** an explicitly registered `NotificationProcessor` wins the dispatch-precedence rule and
+  bypasses preferences entirely, so a muted player still receives `EssentialsMailProcessor` mail.
+  Pre-existing; fixing it means converting those processors into sinks.
+
 ## Configuration
 
 All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getConfig()`. On enable the plugin copies bundled defaults into the data folder, merges in any new keys, and deserializes into `@ConfigSerializable` records:
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
-- `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications.
+- `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows.
 
 Conventions when editing config:
 - Every non-null (`@NotNull`, reference-typed) `@Setting` field must also be annotated `@Required`, so a missing key fails loudly instead of deserializing to null.
@@ -73,23 +156,37 @@ Conventions when editing config:
 
 MyBatis over MariaDB, structured like a smaller version of the sibling `realty` project:
 - `database.Database` / `database.SqlSessionWrapper` — vendor-neutral interfaces; `SqlSessionWrapper` exposes the typed mappers bound to one `SqlSession`/transaction.
-- `database.entity` — record entities mirroring the DDL (`NotificationEntity`, `NotificationTargetEntity`).
-- `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`).
+- `database.entity` — record entities mirroring the DDL (`NotificationEntity`, `NotificationTargetEntity`, `PlayerNotificationPreferenceEntity`).
+- `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`).
 - `database.maria` — `MariaDatabase` (builds the `SqlSessionFactory`, registers mappers + the `UUIDAsBin16Handler` UUID↔`BINARY(16)` type handler), `MariaSqlSession`, `MariaSchemaMigrator`.
 - `database.maria.mapper` — MariaDB mappers with `@Select`/`@Insert`/`@Delete` (and `<script>`/`<foreach>` for batch ops), extending the neutral interfaces.
-- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once.
+- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath.
 
 Schema (`V1__maria_initial_schema.sql`), two tables:
 - `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
 
+`V2__player_notification_preferences.sql` adds a third table:
+- `PlayerNotificationPreference(playerUuid BINARY(16), medium VARCHAR(64), PRIMARY KEY(playerUuid, medium))` — one row per preferred medium, so a player's preference is **set-valued** (`chat` + `discord` is two rows). No rows means "use `default-media` from `settings.yml`".
+
 `player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns).
+
+## Testing gotchas
+
+- `:core:test` needs a **running Docker daemon** (Testcontainers, `mariadb:11.7`). Without it the suite fails rather than skipping.
+- Both `api` and `core` declare **`testRuntimeOnly("io.papermc.paper:paper-api")`**. `compileOnlyApi` is not on the test runtime classpath, so without it tests touching Adventure/Bukkit types die at discovery with `NoClassDefFoundError: net/kyori/adventure/text/Component`.
+- **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
+- `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
+
+Current baseline: **50 tests in `:core:test`, 12 in `:api:test`**, all passing.
 
 ## Current state
 
-The project builds end-to-end and the `core` persistence layer — including the delivery loop — is covered by Testcontainers-backed tests. The enqueue → deliver path is complete: `enqueueNotification` persists the notification's `notifPayloadType`; `NotificationDelivery.deliver(UUID[, Instant])` resolves a player's due notifications, looks up the processor for each payload type, invokes it per target, and prunes targets whose processor returns `NotificationDisposition.DELETE` (the trigger then removes notifications with no remaining targets). Known gaps / notes:
-- **`NotificationDelivery` is not wired into the plugin yet** — nothing calls `deliver(UUID)` (e.g. on player join). That bootstrap step remains.
-- **`notifPayload` is a `JSON` column**, so payloads must be valid JSON; a plain message string must be JSON-encoded. The current String-payload processors therefore receive the JSON-encoded form — consider a `TEXT` column or decoding on the way out.
-- Typed (non-`String`) payloads have no decoder wired in `NotificationDelivery` yet; they are logged and retained rather than mis-delivered.
+The project builds end-to-end; `:core:test` and `:api:test` pass. The enqueue → deliver path is complete: `enqueueNotification` persists the notification's `notifPayloadType`; `NotificationDelivery.deliver(UUID[, Instant])` resolves a player's due notifications, decodes each payload through its registered `PayloadSerializer`, dispatches by the precedence rule above, and prunes targets whose processor returns `NotificationDisposition.DELETE` (the trigger then removes notifications with no remaining targets). Known gaps / notes:
+- **Nothing calls `deliver(UUID)`.** `PlayerNotificationsPlugin` now constructs `NotificationDelivery` and exposes it via `notificationDelivery()`, but there is **no join listener** — no `Listener` is registered anywhere in `platform/`. Wiring delivery to an actual trigger (player join, a command, a scheduled task) is the remaining bootstrap step.
+- **`ChatSink`, `DialogSink`, and the `/notifications` preferences dialog are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
+- **`notifPayload` is a `JSON` column**, so payloads must be valid JSON; a plain message string must be JSON-encoded. String-payload processors therefore receive the JSON-encoded form — consider a `TEXT` column or decoding on the way out.
+- **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
+- Deferred to their own designs: the **Discord sink and account linking**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (`/notifications` covers preferences only — there is no listing or player-initiated clear, and no admin commands).
