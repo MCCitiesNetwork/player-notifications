@@ -10,6 +10,7 @@ import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -19,18 +20,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * Editor for one notification category: a checkbox per registered medium, plus "use server default" to
- * stage clearing this category's explicit configuration. Save writes into the session only; nothing is
- * persisted until the root screen's Apply.
+ * stage clearing every data type this category claims. Checking or unchecking a medium fans out to a
+ * per-data-type write on Save; if the category's members currently disagree on a medium, that
+ * checkbox's label shows "(mixed)" until this editor overwrites them uniformly. Save writes into the
+ * session only; nothing is persisted until the root screen's Apply.
  */
 final class CategoryEditorDialog {
 
     private static final Component BACK_LABEL = Component.text("Back");
     private static final Component SAVE_LABEL = Component.text("Save");
     private static final Component USE_DEFAULT_LABEL = Component.text("Use server default");
+    private static final Component MIXED_SUFFIX = Component.text(" (mixed)", NamedTextColor.GRAY);
 
     private final PreferenceDialogRouter router;
 
@@ -39,6 +42,8 @@ final class CategoryEditorDialog {
     }
 
     void show(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull String categoryKey) {
+        Set<String> memberDataTypes = this.router.categories()
+                .dataTypesForCategory(categoryKey, this.router.dataTypeRegistry().dataTypes());
         List<String> media = PreferenceDialogs.selectableMedia(this.router.sinkRegistry());
         Map<String, String> inputKeyToMedium = new LinkedHashMap<>();
         List<DialogInput> inputs = new ArrayList<>(media.size());
@@ -46,26 +51,32 @@ final class CategoryEditorDialog {
             String medium = media.get(i);
             String inputKey = PreferenceDialogs.inputKey("medium", i);
             inputKeyToMedium.put(inputKey, medium);
-            boolean initial = session.mediaFor(categoryKey).contains(medium);
-            inputs.add(DialogInput.bool(inputKey, PreferenceDialogs.mediumLabel(this.router.sinkRegistry(), medium))
-                    .initial(initial).build());
+            MixedState state = mixedStateFor(session, memberDataTypes, medium);
+            Component label = PreferenceDialogs.mediumLabel(this.router.sinkRegistry(), medium);
+            if (state == MixedState.MIXED) {
+                label = label.append(MIXED_SUFFIX);
+            }
+            inputs.add(DialogInput.bool(inputKey, label).initial(state == MixedState.ALL_CHECKED).build());
         }
 
         ActionButton save = ActionButton.builder(SAVE_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
-                    Set<String> selected = new TreeSet<>();
+                    Instant now = Instant.now();
                     for (Map.Entry<String, String> entry : inputKeyToMedium.entrySet()) {
-                        if (Boolean.TRUE.equals(response.getBoolean(entry.getKey()))) {
-                            selected.add(entry.getValue());
+                        boolean checked = Boolean.TRUE.equals(response.getBoolean(entry.getKey()));
+                        for (String dataType : memberDataTypes) {
+                            session.toggleDataTypeMedium(dataType, entry.getValue(), checked, now);
                         }
                     }
-                    session.setCategoryMedia(categoryKey, selected, Instant.now());
                     this.router.showCategoryPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
                 .build();
         ActionButton useDefault = ActionButton.builder(USE_DEFAULT_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
-                    session.resetCategory(categoryKey, Instant.now());
+                    Instant now = Instant.now();
+                    for (String dataType : memberDataTypes) {
+                        session.resetDataType(dataType, now);
+                    }
                     this.router.showCategoryPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
                 .build();
@@ -86,5 +97,25 @@ final class CategoryEditorDialog {
                     .columns(2).build());
         });
         player.showDialog(dialog);
+    }
+
+    private enum MixedState { ALL_CHECKED, ALL_UNCHECKED, MIXED }
+
+    @NotNull
+    private static MixedState mixedStateFor(@NotNull PreferenceEditSession session,
+                                            @NotNull Set<String> memberDataTypes, @NotNull String medium) {
+        boolean anyChecked = false;
+        boolean anyUnchecked = false;
+        for (String dataType : memberDataTypes) {
+            if (session.mediaFor(dataType).contains(medium)) {
+                anyChecked = true;
+            } else {
+                anyUnchecked = true;
+            }
+        }
+        if (anyChecked && anyUnchecked) {
+            return MixedState.MIXED;
+        }
+        return anyChecked ? MixedState.ALL_CHECKED : MixedState.ALL_UNCHECKED;
     }
 }
