@@ -20,9 +20,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Editor for one medium: a checkbox per notification category, indicating whether it currently reaches
- * the player through this medium. Save writes into the session only; nothing is persisted until the
- * root screen's Apply.
+ * Editor for one medium: a checkbox per notification data type (grouped for readability by its primary
+ * category), indicating whether it currently reaches the player through this medium. Save writes into
+ * the session only; nothing is persisted until the root screen's Apply.
  */
 final class MediumEditorDialog {
 
@@ -36,24 +36,24 @@ final class MediumEditorDialog {
     }
 
     void show(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull String mediumKey) {
-        List<String> categoryKeys = PreferenceDialogs.sortedCategoryKeys(this.router.categories());
-        Map<String, String> inputKeyToCategory = new LinkedHashMap<>();
-        List<DialogInput> inputs = new ArrayList<>(categoryKeys.size());
-        for (int i = 0; i < categoryKeys.size(); i++) {
-            String category = categoryKeys.get(i);
-            String inputKey = PreferenceDialogs.inputKey("category", i);
-            inputKeyToCategory.put(inputKey, category);
-            boolean initial = session.mediaFor(category).contains(mediumKey);
-            inputs.add(DialogInput.bool(inputKey, PreferenceDialogs.categoryLabel(this.router.categories(), category))
+        List<String> dataTypes = PreferenceDialogs.sortedDataTypes(this.router.categories(), this.router.dataTypeRegistry());
+        Map<String, String> inputKeyToDataType = new LinkedHashMap<>();
+        List<DialogInput> inputs = new ArrayList<>(dataTypes.size());
+        for (int i = 0; i < dataTypes.size(); i++) {
+            String dataType = dataTypes.get(i);
+            String inputKey = PreferenceDialogs.inputKey("dataType", i);
+            inputKeyToDataType.put(inputKey, dataType);
+            boolean initial = session.mediaFor(dataType).contains(mediumKey);
+            inputs.add(DialogInput.bool(inputKey, PreferenceDialogs.dataTypeLabel(this.router.categories(), dataType))
                     .initial(initial).build());
         }
 
         ActionButton save = ActionButton.builder(SAVE_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
                     Instant now = Instant.now();
-                    for (Map.Entry<String, String> entry : inputKeyToCategory.entrySet()) {
+                    for (Map.Entry<String, String> entry : inputKeyToDataType.entrySet()) {
                         boolean checked = Boolean.TRUE.equals(response.getBoolean(entry.getKey()));
-                        session.toggleCategoryMedium(entry.getValue(), mediumKey, checked, now);
+                        session.toggleDataTypeMedium(entry.getValue(), mediumKey, checked, now);
                     }
                     this.router.showMediaPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
