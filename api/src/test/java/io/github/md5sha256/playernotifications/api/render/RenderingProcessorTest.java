@@ -198,6 +198,36 @@ class RenderingProcessorTest {
                 processor.receiveNotification("payload", TARGET));
     }
 
+    @Test
+    @DisplayName("passes the given category through to the two-argument preference lookup")
+    void passesCategoryToPreferenceLookup() {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
+        sinks.registerSink(chat);
+
+        List<String> categoriesSeen = new ArrayList<>();
+        NotificationPreferences preferences = new NotificationPreferences() {
+            @Override
+            public Set<String> preferredMedia(UUID player) {
+                categoriesSeen.add(null);
+                return Set.of();
+            }
+
+            @Override
+            public Set<String> preferredMedia(UUID player, String category) {
+                categoriesSeen.add(category);
+                return Set.of("chat");
+            }
+        };
+
+        RenderingProcessor<String> processor = new RenderingProcessor<>(
+                RENDERER, sinks, preferences, "economy", Logger.getLogger("test"));
+
+        Assertions.assertEquals(NotificationDisposition.DELETE,
+                processor.receiveNotification("payload", TARGET));
+        Assertions.assertEquals(List.of("economy"), categoriesSeen);
+    }
+
     private static NotificationPreferences fixedPreferences(String... media) {
         Set<String> set = Set.of(media);
         return target -> set;

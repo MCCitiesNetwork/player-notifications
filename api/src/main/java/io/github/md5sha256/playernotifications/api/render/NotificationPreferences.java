@@ -13,10 +13,20 @@ import java.util.UUID;
 public interface NotificationPreferences {
 
     /**
-     * Returns the media keys the given player currently prefers. Implementations are expected to fall
-     * back to some configured default set when the player has expressed no preference, so a player is
-     * never silently cut off from all notifications.
+     * Returns the media keys the given player currently prefers, with no notification-category context.
+     * Implementations are expected to fall back to some configured default set when the player has
+     * expressed no preference, so a player is never silently cut off from all notifications.
      */
     @NotNull Set<String> preferredMedia(@NotNull UUID player);
+
+    /**
+     * Returns the media keys the given player prefers for the given notification category. The default
+     * implementation ignores the category and delegates to {@link #preferredMedia(UUID)}, so existing
+     * single-argument implementations (including lambdas) keep compiling unchanged.
+     */
+    @NotNull
+    default Set<String> preferredMedia(@NotNull UUID player, @NotNull String category) {
+        return preferredMedia(player);
+    }
 
 }
