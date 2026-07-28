@@ -33,3 +33,11 @@ CREATE TRIGGER trg_delete_targetless_notification
     DELETE FROM Notification
     WHERE notifTargetId = OLD.notifTargetId
       AND NOT EXISTS(SELECT 1 FROM NotificationTarget WHERE notifTargetId = OLD.notifTargetId);
+
+CREATE TABLE IF NOT EXISTS PlayerNotificationPreference
+(
+    playerUuid BINARY(16)  NOT NULL,
+    category   VARCHAR(64) NOT NULL,
+    medium     VARCHAR(64) NOT NULL,
+    PRIMARY KEY (playerUuid, category, medium)
+);
