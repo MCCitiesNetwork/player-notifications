@@ -140,9 +140,14 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications types` — jumps straight to the "by notification type" picker.
 - `/notifications mute` — mutes every category **immediately** (no staging).
 - `/notifications reset` — clears every stored preference **immediately** (no staging).
+- `/notifications reload` — reloads `categories.yml` and `settings.yml` without a restart. Admin-only
+  (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
+  subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
+  dispatches it outside the player-only `run()` helper the rest of the tree uses. Deliberately does
+  **not** reload `database.yml`, since that would mean rebuilding the MariaDB connection pool mid-request.
 
-All player-only, under permission `playernotifications.command.preferences`, declared in
-`paper-plugin.yml` with `default: true`.
+The player-facing subcommands are player-only, under permission `playernotifications.command.preferences`,
+declared in `paper-plugin.yml` with `default: true`.
 
 `paper.command.NotificationsCommand` builds the Brigadier node and delegates every subcommand to a
 `paper.preferences.PreferenceDialogRouter`, the single object owning the five dialog screens and the
@@ -196,6 +201,16 @@ Implementation notes:
   `EssentialsMailProcessor` mail. Pre-existing; fixing it means converting those processors into sinks.
 - The five dialog classes and the router are **unverified by automated tests** — they need a live
   server. Check them by hand with `:platform:paper-plugin:runServer`.
+- `PlayerNotificationsPlugin.reload()` swaps the reloaded `NotificationCategories` into a freshly
+  constructed `NotificationDelivery` and into `PreferenceDialogRouter` (via
+  `PreferenceDialogRouter.reloadCategories`, a mutable field rather than a final one), and swaps the
+  reloaded `default-media` into `DatabaseNotificationPreferences` (via `reloadDefaultMedia`, a `volatile`
+  field) — both without reconstructing objects other code already holds references to. A player with an
+  already-open, staged `PreferenceEditSession` keeps editing against whatever category set was in effect
+  when the session was loaded; its category keys are still valid strings to write on Apply even if the
+  reload renamed or removed one, matching how a category removed from config is already handled
+  elsewhere (see "Current state"). The prune task is cancelled and rescheduled if
+  `prune-interval-seconds` changed.
 
 ## Configuration
 
