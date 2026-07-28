@@ -10,3 +10,6 @@ build/
 .DS_Store
 
 .idea
+
+# Superpowers SDD workspace
+.superpowers/
