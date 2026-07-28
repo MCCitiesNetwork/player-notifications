@@ -46,7 +46,14 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
         ChainedDiscordAccountProvider accounts =
                 ChainedDiscordAccountProvider.of(settings.linkProviders(), providers, logger);
 
-        this.bot = DiscordBot.start(settings.botToken());
+        try {
+            this.bot = DiscordBot.start(settings.botToken());
+        } catch (RuntimeException exception) {
+            // A rejected token surfaces from build(); report it as a module failure rather than an
+            // unhandled exception out of the lifecycle manager.
+            throw new ModuleInitializationException(
+                    "Failed to start the Discord bot: " + exception.getMessage());
+        }
         DiscordMessageFactory factory = new DiscordMessageFactory(
                 settings.resolvedMessageFormat(), settings.resolvedEmbedColor());
         DiscordMessenger messenger =
