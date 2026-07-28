@@ -134,4 +134,10 @@ class DefaultNotificationServiceTest extends AbstractDatabaseTest {
         Assertions.assertEquals(1, remaining.size());
         Assertions.assertEquals("live", remaining.get(0).notifKey());
     }
+
+    @Test
+    void categoryRegistryIsNeverNullAndStartsEmpty() {
+        Assertions.assertNotNull(service.categoryRegistry());
+        Assertions.assertEquals(java.util.Set.of(), service.categoryRegistry().categoryKeys());
+    }
 }

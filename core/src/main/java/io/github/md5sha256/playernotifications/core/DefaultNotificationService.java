@@ -6,6 +6,8 @@ import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.ResolvedNotification;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
+import io.github.md5sha256.playernotifications.api.category.DefaultNotificationCategoryRegistry;
+import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializationException;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
@@ -31,16 +33,24 @@ public class DefaultNotificationService implements NotificationService {
 
     private final Database database;
     private final NotificationDataTypeRegistry dataTypeRegistry;
+    private final NotificationCategoryRegistry categoryRegistry;
     private final ObjectMapper objectMapper;
 
     public DefaultNotificationService(@NotNull Database database) {
-        this(database, new NotificationDataTypeRegistry());
+        this(database, new NotificationDataTypeRegistry(), new DefaultNotificationCategoryRegistry());
     }
 
     public DefaultNotificationService(@NotNull Database database,
                                       @NotNull NotificationDataTypeRegistry dataTypeRegistry) {
+        this(database, dataTypeRegistry, new DefaultNotificationCategoryRegistry());
+    }
+
+    public DefaultNotificationService(@NotNull Database database,
+                                      @NotNull NotificationDataTypeRegistry dataTypeRegistry,
+                                      @NotNull NotificationCategoryRegistry categoryRegistry) {
         this.database = database;
         this.dataTypeRegistry = dataTypeRegistry;
+        this.categoryRegistry = categoryRegistry;
         // No Jackson modules are registered: the only payload this plugin serializes is String, and
         // records/POJOs are handled by Jackson's native reflection support. If payloads ever need
         // java.time (or similar) support, register that module explicitly here (e.g.
@@ -188,5 +198,10 @@ public class DefaultNotificationService implements NotificationService {
     @Override
     public @NotNull NotificationDataTypeRegistry dataTypeRegistry() {
         return this.dataTypeRegistry;
+    }
+
+    @Override
+    public @NotNull NotificationCategoryRegistry categoryRegistry() {
+        return this.categoryRegistry;
     }
 }

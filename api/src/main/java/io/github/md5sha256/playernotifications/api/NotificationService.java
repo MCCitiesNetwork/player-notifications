@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.api;
 
+import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import org.jetbrains.annotations.NotNull;
 
@@ -62,5 +63,7 @@ public interface NotificationService {
     void clearExpiredNotifications();
 
     @NotNull NotificationDataTypeRegistry dataTypeRegistry();
+
+    @NotNull NotificationCategoryRegistry categoryRegistry();
 
 }
