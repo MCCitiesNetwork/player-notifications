@@ -105,8 +105,8 @@ class NotificationDeliveryPrecedenceTest extends AbstractDatabaseTest {
     }
 
     @Test
-    @DisplayName("the rendering path resolves preferred media through the notification's category")
-    void rendererPathResolvesCategory() {
+    @DisplayName("rendering path passes the notification's dataType directly to preferredMedia, no category involved")
+    void rendererPathPassesDataTypeDirectly() {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         sinks.registerSink(chat);
@@ -117,36 +117,29 @@ class NotificationDeliveryPrecedenceTest extends AbstractDatabaseTest {
         registry.registerRenderer(String.class, (payload, target) -> new RenderableNotification(
                 Component.text("title"), Component.text(payload)));
 
-        List<String> categoriesSeen = new ArrayList<>();
+        List<String> dataTypesSeen = new ArrayList<>();
         io.github.md5sha256.playernotifications.api.render.NotificationPreferences preferences =
                 new io.github.md5sha256.playernotifications.api.render.NotificationPreferences() {
                     @Override
                     public Set<String> preferredMedia(UUID player) {
+                        dataTypesSeen.add(null);
                         return Set.of();
                     }
 
                     @Override
-                    public Set<String> preferredMedia(UUID player, String category) {
-                        categoriesSeen.add(category);
+                    public Set<String> preferredMedia(UUID player, String dataType) {
+                        dataTypesSeen.add(dataType);
                         return Set.of("chat");
                     }
                 };
 
-        io.github.md5sha256.playernotifications.core.category.NotificationCategories categories =
-                new io.github.md5sha256.playernotifications.core.category.NotificationCategories(
-                        new io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig(
-                                "Other", java.util.Map.of(
-                                        "economy", new io.github.md5sha256.playernotifications.core.category.NotificationCategoryDefinition(
-                                                "Economy", "desc", List.of(TYPE)))),
-                        Logger.getLogger("test"));
-
         NotificationDelivery delivery = new NotificationDelivery(
-                database, registry, sinks, preferences, categories, Logger.getLogger("test"));
+                database, registry, sinks, preferences, Logger.getLogger("test"));
         insert("category-resolved", DUE, PLAYER);
 
         delivery.deliver(PLAYER, NOW);
 
-        Assertions.assertEquals(List.of("economy"), categoriesSeen);
+        Assertions.assertEquals(List.of(TYPE), dataTypesSeen);
         Assertions.assertEquals(1, chat.received.size());
     }
 

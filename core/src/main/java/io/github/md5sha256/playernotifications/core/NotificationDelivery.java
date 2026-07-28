@@ -8,7 +8,6 @@ import io.github.md5sha256.playernotifications.api.render.NotificationPreference
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import io.github.md5sha256.playernotifications.api.render.RenderingProcessor;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
-import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
@@ -40,8 +39,9 @@ import java.util.logging.Logger;
  * <p>Dispatch precedence: an explicitly registered {@link NotificationProcessor} always wins (so
  * {@code EssentialsMailProcessor} and other bespoke processors keep working unchanged). Otherwise, if a
  * {@link NotificationRenderer} is registered for the payload class, the notification is dispatched
- * through a framework-supplied {@link RenderingProcessor}, which fans it out to the target's preferred
- * media. Otherwise the notification is logged and retained.
+ * through a framework-supplied {@link RenderingProcessor}, which resolves preferred media for the
+ * notification's {@code notifPayloadType} directly and fans it out to the target's preferred media.
+ * Otherwise the notification is logged and retained.
  */
 public class NotificationDelivery {
 
@@ -49,7 +49,6 @@ public class NotificationDelivery {
     private final NotificationDataTypeRegistry registry;
     private final NotificationSinkRegistry sinkRegistry;
     private final NotificationPreferences preferences;
-    private final NotificationCategories categories;
     private final Logger logger;
 
     /**
@@ -60,40 +59,25 @@ public class NotificationDelivery {
     public NotificationDelivery(@NotNull Database database,
                                 @NotNull NotificationDataTypeRegistry registry,
                                 @NotNull Logger logger) {
-        this(database, registry, null, null, null, logger);
+        this(database, registry, null, null, logger);
     }
 
     /**
-     * Constructs a delivery loop with the rendering path enabled but no category resolution: a payload
-     * with a registered {@link NotificationRenderer} (and no explicit processor) is dispatched through a
-     * {@link RenderingProcessor} built from the given sink registry and preferences, using the
-     * category-agnostic {@link NotificationPreferences#preferredMedia(UUID)} lookup.
-     */
-    public NotificationDelivery(@NotNull Database database,
-                                @NotNull NotificationDataTypeRegistry registry,
-                                @Nullable NotificationSinkRegistry sinkRegistry,
-                                @Nullable NotificationPreferences preferences,
-                                @NotNull Logger logger) {
-        this(database, registry, sinkRegistry, preferences, null, logger);
-    }
-
-    /**
-     * Constructs a delivery loop with the rendering path and category resolution both enabled: each
-     * notification's {@code notifPayloadType} is resolved to a category via {@code categories}, and
-     * preferred media are looked up per category through
+     * Constructs a delivery loop with the rendering path enabled: a payload with a registered
+     * {@link NotificationRenderer} (and no explicit processor) is dispatched through a
+     * {@link RenderingProcessor} built from the given sink registry and preferences, resolving preferred
+     * media directly against the notification's {@code notifPayloadType} via
      * {@link NotificationPreferences#preferredMedia(UUID, String)}.
      */
     public NotificationDelivery(@NotNull Database database,
                                 @NotNull NotificationDataTypeRegistry registry,
                                 @Nullable NotificationSinkRegistry sinkRegistry,
                                 @Nullable NotificationPreferences preferences,
-                                @Nullable NotificationCategories categories,
                                 @NotNull Logger logger) {
         this.database = database;
         this.registry = registry;
         this.sinkRegistry = sinkRegistry;
         this.preferences = preferences;
-        this.categories = categories;
         this.logger = logger;
     }
 
@@ -113,8 +97,6 @@ public class NotificationDelivery {
             due = wrapper.notificationMapper().selectDueByPlayer(target, now);
         }
 
-        // Invoke processors outside the transaction, collecting the notifications the target should
-        // be pruned from.
         List<NotificationEntity> toPrune = new ArrayList<>();
         for (NotificationEntity notification : due) {
             if (dispatch(notification, target) == NotificationDisposition.DELETE) {
@@ -143,7 +125,6 @@ public class NotificationDelivery {
             return NotificationDisposition.RETAIN;
         }
 
-        // Precedence: an explicitly registered processor always wins.
         Optional<? extends NotificationProcessor<?>> processor =
                 registry.getProcessor(notification.notifPayloadType());
         if (processor.isPresent()) {
@@ -154,8 +135,6 @@ public class NotificationDelivery {
             return invoke(processor.get(), payload, target);
         }
 
-        // Otherwise, dispatch through the rendering path if a renderer is registered and the delivery
-        // loop was constructed with the sink registry and preferences it requires.
         Optional<? extends NotificationRenderer<?>> renderer =
                 registry.getRenderer(notification.notifPayloadType());
         if (renderer.isPresent() && this.sinkRegistry != null && this.preferences != null) {
@@ -163,12 +142,9 @@ public class NotificationDelivery {
             if (payload == null) {
                 return NotificationDisposition.RETAIN;
             }
-            String category = this.categories != null
-                    ? this.categories.resolve(notification.notifPayloadType())
-                    : null;
             NotificationProcessor<?> renderingProcessor =
                     new RenderingProcessor<>(castRenderer(renderer.get()), this.sinkRegistry,
-                            this.preferences, category, this.logger);
+                            this.preferences, notification.notifPayloadType(), this.logger);
             return invoke(renderingProcessor, payload, target);
         }
 
@@ -182,12 +158,6 @@ public class NotificationDelivery {
         return (NotificationRenderer<Object>) renderer;
     }
 
-    /**
-     * Decodes the stored JSON payload into the registered payload type via its
-     * {@link PayloadSerializer}. Returns {@code null} — retaining the notification — when no
-     * serializer is registered or deserialization fails, so a single poison payload never crashes the
-     * delivery loop nor is silently dropped.
-     */
     private @Nullable Object decodePayload(@NotNull String rawPayload, @NotNull Class<?> payloadClass) {
         Optional<? extends PayloadSerializer<?>> serializer = registry.getSerializer(payloadClass);
         if (serializer.isEmpty()) {
