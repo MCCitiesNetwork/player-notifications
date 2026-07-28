@@ -15,6 +15,7 @@ dependencies {
     api(projects.core)
     api("net.democracrycraft:plugin-infrastructure:1.0.0-SNAPSHOT")
     compileOnlyApi("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+    testRuntimeOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
 }
 
 tasks {

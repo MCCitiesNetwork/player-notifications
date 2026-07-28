@@ -1,0 +1,183 @@
+package io.github.md5sha256.playernotifications.paper.preferences;
+
+import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
+import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
+import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
+import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
+import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Owns the five preference dialog screens and the single {@link PreferenceSessionManager} they share,
+ * and is the one object {@code NotificationsCommand} and {@code PreferenceQuitListener} need to hold.
+ */
+public final class PreferenceDialogRouter {
+
+    private final Plugin plugin;
+    private final NotificationSinkRegistry sinkRegistry;
+    private final NotificationCategories categories;
+    private final DatabaseNotificationPreferences preferences;
+    private final PreferenceSessionManager sessions;
+
+    private final PreferenceRootDialog rootDialog;
+    private final MediumPickerDialog mediumPickerDialog;
+    private final MediumEditorDialog mediumEditorDialog;
+    private final CategoryPickerDialog categoryPickerDialog;
+    private final CategoryEditorDialog categoryEditorDialog;
+
+    public PreferenceDialogRouter(@NotNull Plugin plugin,
+                                  @NotNull NotificationSinkRegistry sinkRegistry,
+                                  @NotNull NotificationCategories categories,
+                                  @NotNull DatabaseNotificationPreferences preferences) {
+        this.plugin = plugin;
+        this.sinkRegistry = sinkRegistry;
+        this.categories = categories;
+        this.preferences = preferences;
+        this.sessions = new PreferenceSessionManager();
+        this.rootDialog = new PreferenceRootDialog(this);
+        this.mediumPickerDialog = new MediumPickerDialog(this);
+        this.mediumEditorDialog = new MediumEditorDialog(this);
+        this.categoryPickerDialog = new CategoryPickerDialog(this);
+        this.categoryEditorDialog = new CategoryEditorDialog(this);
+    }
+
+    @NotNull
+    Plugin plugin() {
+        return this.plugin;
+    }
+
+    @NotNull
+    NotificationSinkRegistry sinkRegistry() {
+        return this.sinkRegistry;
+    }
+
+    @NotNull
+    NotificationCategories categories() {
+        return this.categories;
+    }
+
+    @NotNull
+    public PreferenceSessionManager sessions() {
+        return this.sessions;
+    }
+
+    public void openRoot(@NotNull Player player) {
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.categories, this.preferences,
+                player, session -> this.rootDialog.show(player, new PreferenceEditSessionHandle(session)));
+    }
+
+    public void openMediaPicker(@NotNull Player player) {
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.categories, this.preferences,
+                player, session -> this.mediumPickerDialog.show(player, session));
+    }
+
+    public void openCategoryPicker(@NotNull Player player) {
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.categories, this.preferences,
+                player, session -> this.categoryPickerDialog.show(player, session));
+    }
+
+    void showRoot(@NotNull Player player, @NotNull PreferenceEditSession session) {
+        this.rootDialog.show(player, new PreferenceEditSessionHandle(session));
+    }
+
+    void showMediaPicker(@NotNull Player player, @NotNull PreferenceEditSession session) {
+        this.mediumPickerDialog.show(player, session);
+    }
+
+    void showMediaEditor(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull String medium) {
+        this.mediumEditorDialog.show(player, session, medium);
+    }
+
+    void showCategoryPicker(@NotNull Player player, @NotNull PreferenceEditSession session) {
+        this.categoryPickerDialog.show(player, session);
+    }
+
+    void showCategoryEditor(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull String category) {
+        this.categoryEditorDialog.show(player, session, category);
+    }
+
+    void apply(@NotNull Player player, @NotNull PreferenceEditSession session) {
+        Map<String, Set<String>> explicit = session.explicitChanges();
+        Set<String> resets = session.categoriesToReset();
+        UUID uuid = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
+            try {
+                this.preferences.applyChanges(uuid, explicit, resets);
+            } catch (RuntimeException ex) {
+                this.plugin.getLogger().warning(
+                        "Failed to apply notification preferences for " + uuid + ": " + ex.getMessage());
+                PreferenceDialogs.message(this.plugin, player, Component.text(
+                        "Could not save your notification preferences; please try again.",
+                        NamedTextColor.RED));
+                return;
+            }
+            this.sessions.drop(uuid);
+            PreferenceDialogs.message(this.plugin, player,
+                    Component.text("Notification preferences saved.", NamedTextColor.GREEN));
+        });
+    }
+
+    /**
+     * Immediately mutes every category for the player and discards any staged, unapplied session — the
+     * one deliberate asymmetry with the root screen's staged "Mute everything" button.
+     */
+    public void muteImmediately(@NotNull Player player) {
+        UUID uuid = player.getUniqueId();
+        boolean hadSession = this.sessions.get(uuid).isPresent();
+        Set<String> categoryKeys = this.categories.categoryKeys();
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
+            try {
+                this.preferences.muteAll(uuid, categoryKeys);
+            } catch (RuntimeException ex) {
+                this.plugin.getLogger().warning("Failed to mute notifications for " + uuid + ": " + ex.getMessage());
+                PreferenceDialogs.message(this.plugin, player, Component.text(
+                        "Could not mute your notifications; please try again.", NamedTextColor.RED));
+                return;
+            }
+            this.sessions.drop(uuid);
+            Component message = Component.text("All notifications muted.", NamedTextColor.YELLOW);
+            if (hadSession) {
+                message = message.append(Component.text(" Any unsaved preference changes were discarded.",
+                        NamedTextColor.GRAY));
+            }
+            PreferenceDialogs.message(this.plugin, player, message);
+        });
+    }
+
+    /**
+     * Immediately clears every stored preference for the player and discards any staged, unapplied
+     * session — the one deliberate asymmetry with the root screen's staged "Reset all" button.
+     */
+    public void resetImmediately(@NotNull Player player) {
+        UUID uuid = player.getUniqueId();
+        boolean hadSession = this.sessions.get(uuid).isPresent();
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
+            try {
+                this.preferences.resetAll(uuid);
+            } catch (RuntimeException ex) {
+                this.plugin.getLogger().warning(
+                        "Failed to reset notification preferences for " + uuid + ": " + ex.getMessage());
+                PreferenceDialogs.message(this.plugin, player, Component.text(
+                        "Could not reset your notification preferences; please try again.", NamedTextColor.RED));
+                return;
+            }
+            this.sessions.drop(uuid);
+            Component message = Component.text("Notification preferences reset to the server default.",
+                    NamedTextColor.GREEN);
+            if (hadSession) {
+                message = message.append(Component.text(" Any unsaved preference changes were discarded.",
+                        NamedTextColor.GRAY));
+            }
+            PreferenceDialogs.message(this.plugin, player, message);
+        });
+    }
+}
