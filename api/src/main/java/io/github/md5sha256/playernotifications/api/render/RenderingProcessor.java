@@ -4,7 +4,6 @@ import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationDisposition;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -47,42 +46,28 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
     private final NotificationRenderer<T> renderer;
     private final NotificationSinkRegistry sinks;
     private final NotificationPreferences preferences;
-    private final String category;
+    private final String dataType;
     private final Logger logger;
 
     /**
-     * Constructs a processor with no notification-category context: preferred media are resolved via
-     * {@link NotificationPreferences#preferredMedia(UUID)}.
+     * Constructs a processor that resolves preferred media for the given payload's {@code dataType} via
+     * {@link NotificationPreferences#preferredMedia(UUID, String)}.
      */
     public RenderingProcessor(@NotNull NotificationRenderer<T> renderer,
                               @NotNull NotificationSinkRegistry sinks,
                               @NotNull NotificationPreferences preferences,
-                              @NotNull Logger logger) {
-        this(renderer, sinks, preferences, null, logger);
-    }
-
-    /**
-     * Constructs a processor that resolves preferred media for the given notification category via
-     * {@link NotificationPreferences#preferredMedia(UUID, String)}. Pass {@code null} for
-     * {@code category} to fall back to the category-agnostic lookup.
-     */
-    public RenderingProcessor(@NotNull NotificationRenderer<T> renderer,
-                              @NotNull NotificationSinkRegistry sinks,
-                              @NotNull NotificationPreferences preferences,
-                              @Nullable String category,
+                              @NotNull String dataType,
                               @NotNull Logger logger) {
         this.renderer = renderer;
         this.sinks = sinks;
         this.preferences = preferences;
-        this.category = category;
+        this.dataType = dataType;
         this.logger = logger;
     }
 
     @Override
     public @NotNull NotificationDisposition receiveNotification(@NotNull T payload, @NotNull UUID target) {
-        Set<String> media = this.category != null
-                ? this.preferences.preferredMedia(target, this.category)
-                : this.preferences.preferredMedia(target);
+        Set<String> media = this.preferences.preferredMedia(target, this.dataType);
         if (media.isEmpty()) {
             this.logger.fine(() -> "No preferred media for " + target + "; retaining notification");
             return NotificationDisposition.RETAIN;

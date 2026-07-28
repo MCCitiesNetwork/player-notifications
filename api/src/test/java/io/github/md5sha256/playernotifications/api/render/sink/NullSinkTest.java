@@ -38,7 +38,7 @@ class NullSinkTest {
         NotificationRenderer<String> renderer = (payload, target) -> RENDERED;
         NotificationPreferences muted = target -> Set.of(NullSink.MEDIUM_KEY);
         RenderingProcessor<String> processor =
-                new RenderingProcessor<>(renderer, sinks, muted, Logger.getLogger("test"));
+                new RenderingProcessor<>(renderer, sinks, muted, "test-type", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.DELETE,
                 processor.receiveNotification("payload", TARGET));

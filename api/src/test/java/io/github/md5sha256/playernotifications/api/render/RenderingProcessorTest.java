@@ -33,7 +33,7 @@ class RenderingProcessorTest {
         sinks.registerSink(discord);
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences("chat", "discord"), Logger.getLogger("test"));
+                RENDERER, sinks, fixedPreferences("chat", "discord"), "test-type", Logger.getLogger("test"));
 
         NotificationDisposition disposition = processor.receiveNotification("payload", TARGET);
 
@@ -50,7 +50,7 @@ class RenderingProcessorTest {
         sinks.registerSink(new RecordingSink("discord", DeliveryResult.DELIVERED));
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences("chat", "discord"), Logger.getLogger("test"));
+                RENDERER, sinks, fixedPreferences("chat", "discord"), "test-type", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.DELETE,
                 processor.receiveNotification("payload", TARGET));
@@ -64,7 +64,7 @@ class RenderingProcessorTest {
         sinks.registerSink(new RecordingSink("discord", DeliveryResult.UNSUPPORTED));
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences("chat", "discord"), Logger.getLogger("test"));
+                RENDERER, sinks, fixedPreferences("chat", "discord"), "test-type", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.RETAIN,
                 processor.receiveNotification("payload", TARGET));
@@ -85,7 +85,7 @@ class RenderingProcessorTest {
 
         try {
             RenderingProcessor<String> processor = new RenderingProcessor<>(
-                    RENDERER, sinks, fixedPreferences("chat", "discord"), logger);
+                    RENDERER, sinks, fixedPreferences("chat", "discord"), "test-type", logger);
 
             Assertions.assertEquals(NotificationDisposition.RETAIN,
                     processor.receiveNotification("payload", TARGET));
@@ -114,7 +114,7 @@ class RenderingProcessorTest {
 
         try {
             RenderingProcessor<String> processor = new RenderingProcessor<>(
-                    RENDERER, sinks, fixedPreferences("chat", "discord"), logger);
+                    RENDERER, sinks, fixedPreferences("chat", "discord"), "test-type", logger);
 
             Assertions.assertEquals(NotificationDisposition.RETAIN,
                     processor.receiveNotification("payload", TARGET));
@@ -153,7 +153,7 @@ class RenderingProcessorTest {
         sinks.registerSink(chat);
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences("chat", "carrier-pigeon"), Logger.getLogger("test"));
+                RENDERER, sinks, fixedPreferences("chat", "carrier-pigeon"), "test-type", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.DELETE,
                 processor.receiveNotification("payload", TARGET));
@@ -180,7 +180,7 @@ class RenderingProcessorTest {
         sinks.registerSink(chat);
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences("broken", "chat"), Logger.getLogger("test"));
+                RENDERER, sinks, fixedPreferences("broken", "chat"), "test-type", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.DELETE,
                 processor.receiveNotification("payload", TARGET));
@@ -192,40 +192,40 @@ class RenderingProcessorTest {
     void noPreferredMediaRetains() {
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences(), Logger.getLogger("test"));
+                RENDERER, sinks, fixedPreferences(), "test-type", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.RETAIN,
                 processor.receiveNotification("payload", TARGET));
     }
 
     @Test
-    @DisplayName("passes the given category through to the two-argument preference lookup")
-    void passesCategoryToPreferenceLookup() {
+    @DisplayName("passes the given dataType through to the two-argument preference lookup")
+    void passesDataTypeToPreferenceLookup() {
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
 
-        List<String> categoriesSeen = new ArrayList<>();
+        List<String> dataTypesSeen = new ArrayList<>();
         NotificationPreferences preferences = new NotificationPreferences() {
             @Override
             public Set<String> preferredMedia(UUID player) {
-                categoriesSeen.add(null);
+                dataTypesSeen.add(null);
                 return Set.of();
             }
 
             @Override
-            public Set<String> preferredMedia(UUID player, String category) {
-                categoriesSeen.add(category);
+            public Set<String> preferredMedia(UUID player, String dataType) {
+                dataTypesSeen.add(dataType);
                 return Set.of("chat");
             }
         };
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, preferences, "economy", Logger.getLogger("test"));
+                RENDERER, sinks, preferences, "economy-payout", Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.DELETE,
                 processor.receiveNotification("payload", TARGET));
-        Assertions.assertEquals(List.of("economy"), categoriesSeen);
+        Assertions.assertEquals(List.of("economy-payout"), dataTypesSeen);
     }
 
     private static NotificationPreferences fixedPreferences(String... media) {

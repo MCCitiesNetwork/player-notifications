@@ -20,12 +20,12 @@ public interface NotificationPreferences {
     @NotNull Set<String> preferredMedia(@NotNull UUID player);
 
     /**
-     * Returns the media keys the given player prefers for the given notification category. The default
-     * implementation ignores the category and delegates to {@link #preferredMedia(UUID)}, so existing
+     * Returns the media keys the given player prefers for the given notification dataType. The default
+     * implementation ignores the dataType and delegates to {@link #preferredMedia(UUID)}, so existing
      * single-argument implementations (including lambdas) keep compiling unchanged.
      */
     @NotNull
-    default Set<String> preferredMedia(@NotNull UUID player, @NotNull String category) {
+    default Set<String> preferredMedia(@NotNull UUID player, @NotNull String dataType) {
         return preferredMedia(player);
     }
 
