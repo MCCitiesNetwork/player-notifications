@@ -195,12 +195,10 @@ out) via the category editor:
 `NullSink` is registered for `"none"` and returns `DELIVERED`, so a muted `dataType`'s notifications are
 **consumed** rather than accumulating until expiry — a mute means "do not tell me", not "queue this for
 later". `NullSink` is excluded from every checkbox list, since checking nothing already says the same
-thing. **Known gap:** `/notifications mute` and the root dialog's "Mute everything" iterate
-`NotificationDataTypeRegistry#dataTypes()` and write one `{none}` row per currently-known `dataType` —
-they do **not** write a blanket `ALL_DATA_TYPES_KEY` (`"*"`) row, so (a) on a server with zero registered
-payload mappings, mute silently writes nothing while still reporting success, and (b) a `dataType`
-registered by a module installed *after* a player last muted is not covered and falls through to
-`default-media`.
+thing. `/notifications mute` and the root dialog's "Mute everything" both write one `{none}` row per
+currently-known `dataType` **and** a blanket `ALL_DATA_TYPES_KEY` (`"*"`) `{none}` row, so a mute also
+covers any `dataType` registered by a module installed later, and never silently no-ops on a server with
+zero registered payload mappings.
 
 Implementation notes:
 - `PreferenceSessionManager` expires a session after 15 minutes idle (`IDLE_TIMEOUT`) and
@@ -274,7 +272,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **67 tests in `:core:test`, 23 in `:api:test`, 17 in `:platform:paper-plugin:test`**, all passing.
+Current baseline: **68 tests in `:core:test`, 23 in `:api:test`, 17 in `:platform:paper-plugin:test`**, all passing.
 
 ## Current state
 
@@ -293,8 +291,6 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   category system (and the two-pass rebuild-after-`startModules()` ordering in
   `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
   never end-to-end by a real module through the real module class loader.
-- **Bulk mute doesn't cover `dataType`s registered later, and can silently no-op.** See the "Known gap"
-  note under "Player commands".
 - **Nothing calls `deliver(UUID)`.** `PlayerNotificationsPlugin` now constructs `NotificationDelivery` and exposes it via `notificationDelivery()`, but there is **no join listener** — no `Listener` is registered for it anywhere in `platform/` (the one `Listener` that does exist, `PreferenceQuitListener`, only drops staged preference-edit sessions). Wiring delivery to an actual trigger (player join, a command, a scheduled task) is the remaining bootstrap step.
 - **`ChatSink`, `DialogSink`, and the five preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON; a plain message string must be JSON-encoded. String-payload processors therefore receive the JSON-encoded form — consider a `TEXT` column or decoding on the way out.
