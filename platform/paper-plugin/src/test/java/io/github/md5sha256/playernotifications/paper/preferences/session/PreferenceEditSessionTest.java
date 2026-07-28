@@ -29,49 +29,49 @@ class PreferenceEditSessionTest {
     }
 
     @Test
-    void setCategoryMediaMarksItDirty() {
+    void setDataTypeMediaMarksItDirty() {
         PreferenceEditSession session = newSession(
                 Map.of("economy", Set.of("chat")), Set.of("economy"));
 
-        session.setCategoryMedia("economy", Set.of("discord"), NOW);
+        session.setDataTypeMedia("economy", Set.of("discord"), NOW);
 
         Assertions.assertTrue(session.isDirty());
-        Assertions.assertEquals(Set.of("economy"), session.dirtyCategories());
+        Assertions.assertEquals(Set.of("economy"), session.dirtyDataTypes());
         Assertions.assertEquals(Set.of("discord"), session.mediaFor("economy"));
     }
 
     @Test
-    void toggleCategoryMediumAddsAndRemoves() {
+    void toggleDataTypeMediumAddsAndRemoves() {
         PreferenceEditSession session = newSession(
                 Map.of("economy", Set.of("chat")), Set.of("economy"));
 
-        session.toggleCategoryMedium("economy", "discord", true, NOW);
+        session.toggleDataTypeMedium("economy", "discord", true, NOW);
         Assertions.assertEquals(Set.of("chat", "discord"), session.mediaFor("economy"));
 
-        session.toggleCategoryMedium("economy", "chat", false, NOW);
+        session.toggleDataTypeMedium("economy", "chat", false, NOW);
         Assertions.assertEquals(Set.of("discord"), session.mediaFor("economy"));
     }
 
     @Test
-    void emptyingACategoryStagesAMute() {
+    void emptyingADataTypeStagesAMute() {
         PreferenceEditSession session = newSession(
                 Map.of("economy", Set.of("chat")), Set.of("economy"));
 
-        session.setCategoryMedia("economy", Set.of(), NOW);
+        session.setDataTypeMedia("economy", Set.of(), NOW);
 
         Assertions.assertEquals(Map.of("economy", Set.of("none")), session.explicitChanges());
-        Assertions.assertEquals(Set.of(), session.categoriesToReset());
+        Assertions.assertEquals(Set.of(), session.dataTypesToReset());
     }
 
     @Test
-    void resetCategoryStagesAResetUsingFallbackMedia() {
+    void resetDataTypeStagesAResetUsingFallbackMedia() {
         PreferenceEditSession session = newSession(
                 Map.of("economy", Set.of("discord")), Set.of("economy"));
 
-        session.resetCategory("economy", NOW);
+        session.resetDataType("economy", NOW);
 
         Assertions.assertEquals(Set.of("chat"), session.mediaFor("economy"));
-        Assertions.assertEquals(Set.of("economy"), session.categoriesToReset());
+        Assertions.assertEquals(Set.of("economy"), session.dataTypesToReset());
         Assertions.assertTrue(session.explicitChanges().isEmpty());
     }
 
@@ -80,10 +80,10 @@ class PreferenceEditSessionTest {
         PreferenceEditSession session = newSession(
                 Map.of("economy", Set.of("discord")), Set.of("economy"));
 
-        session.resetCategory("economy", NOW);
-        session.setCategoryMedia("economy", Set.of("dialog"), NOW);
+        session.resetDataType("economy", NOW);
+        session.setDataTypeMedia("economy", Set.of("dialog"), NOW);
 
-        Assertions.assertEquals(Set.of(), session.categoriesToReset());
+        Assertions.assertEquals(Set.of(), session.dataTypesToReset());
         Assertions.assertEquals(Map.of("economy", Set.of("dialog")), session.explicitChanges());
     }
 
@@ -96,10 +96,10 @@ class PreferenceEditSessionTest {
         Assertions.assertFalse(session.isUsingServerDefault("economy"));
         Assertions.assertTrue(session.isUsingServerDefault("moderation"));
 
-        session.resetCategory("economy", NOW);
+        session.resetDataType("economy", NOW);
         Assertions.assertTrue(session.isUsingServerDefault("economy"));
 
-        session.setCategoryMedia("moderation", Set.of("discord"), NOW);
+        session.setDataTypeMedia("moderation", Set.of("discord"), NOW);
         Assertions.assertFalse(session.isUsingServerDefault("moderation"));
     }
 
@@ -116,7 +116,7 @@ class PreferenceEditSessionTest {
         PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")), Set.of("economy"));
 
         Instant later = NOW.plus(Duration.ofMinutes(10));
-        session.setCategoryMedia("economy", Set.of("discord"), later);
+        session.setDataTypeMedia("economy", Set.of("discord"), later);
 
         Assertions.assertFalse(session.isExpired(later.plus(Duration.ofMinutes(10)), Duration.ofMinutes(15)));
     }

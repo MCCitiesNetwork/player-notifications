@@ -14,7 +14,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * A player's in-progress edits to their category x medium preference matrix. Both preference dialogs
+ * A player's in-progress edits to their dataType x medium preference matrix. Both preference dialogs
  * (by delivery method, by notification type) mutate the same session, so the two pivots can never
  * disagree, and nothing is written to the database until {@code Apply}.
  *
@@ -27,17 +27,17 @@ public final class PreferenceEditSession {
     private final Map<String, Set<String>> media;
     private final Set<String> explicitAtLoad;
     private final Set<String> fallbackMedia;
-    private final Set<String> dirtyCategories = new HashSet<>();
-    private final Set<String> resetCategories = new HashSet<>();
+    private final Set<String> dirtyDataTypes = new HashSet<>();
+    private final Set<String> resetDataTypes = new HashSet<>();
     private Instant lastTouched;
 
     /**
-     * @param initialEffectiveMedia the matrix as it would currently apply, per category (exact rows,
+     * @param initialEffectiveMedia the matrix as it would currently apply, per data type (exact rows,
      *                              else the {@code *} fallback, else the configured default)
-     * @param explicitAtLoad        the categories that had exact stored rows when this session was
+     * @param explicitAtLoad        the data types that had exact stored rows when this session was
      *                              loaded, used by {@link #isUsingServerDefault(String)}
      * @param fallbackMedia         the plain {@code *}/configured-default media, used to populate a
-     *                              category when it is reset
+     *                              data type when it is reset
      */
     public PreferenceEditSession(@NotNull UUID player,
                                  @NotNull Map<String, Set<String>> initialEffectiveMedia,
@@ -60,92 +60,92 @@ public final class PreferenceEditSession {
     }
 
     @NotNull
-    public Set<String> mediaFor(@NotNull String category) {
-        return Set.copyOf(this.media.getOrDefault(category, Set.of()));
+    public Set<String> mediaFor(@NotNull String dataType) {
+        return Set.copyOf(this.media.getOrDefault(dataType, Set.of()));
     }
 
     /**
-     * Overwrites one category's staged media, marking it dirty. An empty set stages a mute, not a
-     * fall-through to the server default — only {@link #resetCategory(String, Instant)} does that.
+     * Overwrites one data type's staged media, marking it dirty. An empty set stages a mute, not a
+     * fall-through to the server default — only {@link #resetDataType(String, Instant)} does that.
      */
-    public void setCategoryMedia(@NotNull String category, @NotNull Set<String> newMedia, @NotNull Instant now) {
-        this.media.put(category, new TreeSet<>(newMedia));
-        this.dirtyCategories.add(category);
-        this.resetCategories.remove(category);
+    public void setDataTypeMedia(@NotNull String dataType, @NotNull Set<String> newMedia, @NotNull Instant now) {
+        this.media.put(dataType, new TreeSet<>(newMedia));
+        this.dirtyDataTypes.add(dataType);
+        this.resetDataTypes.remove(dataType);
         this.lastTouched = now;
     }
 
     /**
-     * Stages "use the server default" for one category: its staged media becomes the fallback media
+     * Stages "use the server default" for one data type: its staged media becomes the fallback media
      * captured at load time, and it is written by clearing its rows on {@code Apply} rather than by
      * writing the fallback media explicitly.
      */
-    public void resetCategory(@NotNull String category, @NotNull Instant now) {
-        this.media.put(category, new TreeSet<>(this.fallbackMedia));
-        this.dirtyCategories.add(category);
-        this.resetCategories.add(category);
+    public void resetDataType(@NotNull String dataType, @NotNull Instant now) {
+        this.media.put(dataType, new TreeSet<>(this.fallbackMedia));
+        this.dirtyDataTypes.add(dataType);
+        this.resetDataTypes.add(dataType);
         this.lastTouched = now;
     }
 
     /**
-     * Toggles a single medium within a single category — the operation the "by delivery method" editor
+     * Toggles a single medium within a single data type — the operation the "by delivery method" editor
      * performs on Save.
      */
-    public void toggleCategoryMedium(@NotNull String category, @NotNull String medium, boolean enabled,
+    public void toggleDataTypeMedium(@NotNull String dataType, @NotNull String medium, boolean enabled,
                                      @NotNull Instant now) {
-        Set<String> current = new TreeSet<>(this.media.getOrDefault(category, Set.of()));
+        Set<String> current = new TreeSet<>(this.media.getOrDefault(dataType, Set.of()));
         if (enabled) {
             current.add(medium);
         } else {
             current.remove(medium);
         }
-        setCategoryMedia(category, current, now);
+        setDataTypeMedia(dataType, current, now);
     }
 
     public boolean isDirty() {
-        return !this.dirtyCategories.isEmpty();
+        return !this.dirtyDataTypes.isEmpty();
     }
 
     public int dirtyCount() {
-        return this.dirtyCategories.size();
+        return this.dirtyDataTypes.size();
     }
 
     @NotNull
-    public Set<String> dirtyCategories() {
-        return Set.copyOf(this.dirtyCategories);
+    public Set<String> dirtyDataTypes() {
+        return Set.copyOf(this.dirtyDataTypes);
     }
 
     @NotNull
-    public Set<String> categoriesToReset() {
-        return Set.copyOf(this.resetCategories);
+    public Set<String> dataTypesToReset() {
+        return Set.copyOf(this.resetDataTypes);
     }
 
     /**
-     * Dirty categories that are explicit selections rather than resets, keyed to the media that should
+     * Dirty data types that are explicit selections rather than resets, keyed to the media that should
      * be written wholesale. An empty selection is encoded as {@link NullSink#MEDIUM_KEY}.
      */
     @NotNull
     public Map<String, Set<String>> explicitChanges() {
         Map<String, Set<String>> result = new LinkedHashMap<>();
-        for (String category : this.dirtyCategories) {
-            if (!this.resetCategories.contains(category)) {
-                Set<String> selected = this.media.getOrDefault(category, Set.of());
-                result.put(category, selected.isEmpty() ? Set.of(NullSink.MEDIUM_KEY) : Set.copyOf(selected));
+        for (String dataType : this.dirtyDataTypes) {
+            if (!this.resetDataTypes.contains(dataType)) {
+                Set<String> selected = this.media.getOrDefault(dataType, Set.of());
+                result.put(dataType, selected.isEmpty() ? Set.of(NullSink.MEDIUM_KEY) : Set.copyOf(selected));
             }
         }
         return Map.copyOf(result);
     }
 
     /**
-     * Whether the given category is currently showing the server default rather than an explicit
+     * Whether the given data type is currently showing the server default rather than an explicit
      * choice — true if it was never explicitly configured and has not been touched, or if it has been
      * staged for reset.
      */
-    public boolean isUsingServerDefault(@NotNull String category) {
-        if (this.dirtyCategories.contains(category)) {
-            return this.resetCategories.contains(category);
+    public boolean isUsingServerDefault(@NotNull String dataType) {
+        if (this.dirtyDataTypes.contains(dataType)) {
+            return this.resetDataTypes.contains(dataType);
         }
-        return !this.explicitAtLoad.contains(category);
+        return !this.explicitAtLoad.contains(dataType);
     }
 
     public boolean isExpired(@NotNull Instant now, @NotNull Duration idleTimeout) {
