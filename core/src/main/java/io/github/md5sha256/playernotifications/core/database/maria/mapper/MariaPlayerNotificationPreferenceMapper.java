@@ -1,6 +1,9 @@
 package io.github.md5sha256.playernotifications.core.database.maria.mapper;
 
+import io.github.md5sha256.playernotifications.core.database.entity.PlayerNotificationPreferenceEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.PlayerNotificationPreferenceMapper;
+import org.apache.ibatis.annotations.Arg;
+import org.apache.ibatis.annotations.ConstructorArgs;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
@@ -18,24 +21,46 @@ public interface MariaPlayerNotificationPreferenceMapper extends PlayerNotificat
 
     @Override
     @Select("""
-            SELECT medium
+            SELECT category, medium
             FROM PlayerNotificationPreference
             WHERE playerUuid = #{playerUuid}
             """)
-    @NotNull List<String> selectByPlayer(@Param("playerUuid") @NotNull UUID playerUuid);
+    @ConstructorArgs({
+            @Arg(column = "category", javaType = String.class),
+            @Arg(column = "medium", javaType = String.class)
+    })
+    @NotNull List<PlayerNotificationPreferenceEntity> selectByPlayer(@Param("playerUuid") @NotNull UUID playerUuid);
+
+    @Override
+    @Select("""
+            SELECT medium
+            FROM PlayerNotificationPreference
+            WHERE playerUuid = #{playerUuid} AND category = #{category}
+            """)
+    @NotNull List<String> selectByPlayerAndCategory(@Param("playerUuid") @NotNull UUID playerUuid,
+                                                     @Param("category") @NotNull String category);
 
     @Override
     @Insert("""
             <script>
-            INSERT INTO PlayerNotificationPreference (playerUuid, medium)
+            INSERT INTO PlayerNotificationPreference (playerUuid, category, medium)
             VALUES
             <foreach item="medium" collection="media" separator=",">
-                (#{playerUuid}, #{medium})
+                (#{playerUuid}, #{category}, #{medium})
             </foreach>
             </script>
             """)
     int insertPreferences(@Param("playerUuid") @NotNull UUID playerUuid,
+                          @Param("category") @NotNull String category,
                           @Param("media") @NotNull Collection<String> media);
+
+    @Override
+    @Delete("""
+            DELETE FROM PlayerNotificationPreference
+            WHERE playerUuid = #{playerUuid} AND category = #{category}
+            """)
+    int deleteByPlayerAndCategory(@Param("playerUuid") @NotNull UUID playerUuid,
+                                  @Param("category") @NotNull String category);
 
     @Override
     @Delete("""

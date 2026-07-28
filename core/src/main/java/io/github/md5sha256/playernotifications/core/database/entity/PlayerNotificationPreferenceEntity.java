@@ -2,18 +2,15 @@ package io.github.md5sha256.playernotifications.core.database.entity;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.UUID;
-
 /**
- * Internal entity record mapping to a single row of the {@code PlayerNotificationPreference} DDL
- * table. A player's full preference set is the collection of all rows sharing a {@link #playerUuid()},
- * mirroring how a {@code NotificationTarget} group is the set of rows sharing a target id.
+ * One row of the {@code PlayerNotificationPreference} table: a single medium a player has (explicitly
+ * or via the {@code *} fallback) configured for one category.
  *
- * @param playerUuid the player this preference row belongs to
- * @param medium     one medium key (e.g. {@code "chat"}) the player prefers
+ * @param category the category key, or {@code *} for the pre-migration fallback row
+ * @param medium   the medium key, or {@code none} for an explicit mute
  */
 public record PlayerNotificationPreferenceEntity(
-        @NotNull UUID playerUuid,
+        @NotNull String category,
         @NotNull String medium
 ) {
 }
