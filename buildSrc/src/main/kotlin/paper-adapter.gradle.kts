@@ -14,4 +14,10 @@ dependencies {
     // host at runtime. Depending on the host jar as compileOnly gives access to the host type
     // (e.g. PlayerNotificationsPlugin) without shipping a second, conflicting copy.
     compileOnly(project(":platform:paper-plugin"))
+
+    // compileOnly does not reach compileTestJava or the test runtime, so an adapter's own tests
+    // would not see api/core types at all. Tests never ship, so depending on the host outright is
+    // safe here. paper-api itself is compileOnlyApi on the host and still needs a per-module
+    // testRuntimeOnly (see "Testing gotchas" in CLAUDE.md).
+    testImplementation(project(":platform:paper-plugin"))
 }
