@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow skills
+
+Four project-local skills in `.claude/skills/` replace the `superpowers` plugin, which is disabled
+for this project in `.claude/settings.local.json`. Invoke the matching one **before** acting; they
+run inline and do not dispatch subagents.
+
+| Situation | Skill |
+|---|---|
+| New feature, API change, behaviour change — before any code | `design` |
+| Writing feature/bugfix code, or executing a plan | `implement` |
+| Any bug, test failure, build failure, unexpected behaviour | `debug` |
+| Before claiming done/fixed/passing, and before committing | `ship` |
+
+`design` → `implement` → `ship` is the normal path; `debug` feeds into `implement`. Skip `design`
+only for changes whose shape is not in question (a typo, a rename, a one-line config default).
+Subagents are opt-in: dispatch one only when the user asks.
+
+The skills state process rules (which hold regardless) and repo facts (which drift). Where a skill
+describes this codebase and the code disagrees, **the code wins** — fix the skill in the same commit,
+the same as for a stale line in this file. Test counts, module lists, and the open gaps in "Current
+state" below are the parts most likely to be out of date.
+
 ## Overview
 
 PlayerNotifications is a PaperMC (Spigot) plugin for Minecraft **1.21.8**, targeting **Java 21**. It stores per-player notifications in a MariaDB database and delivers them to players via pluggable, payload-typed processors — or, more commonly, via the **renderer/sink** path, which fans a notification out to whichever media a player prefers (chat, dialog, Essentials mail, planned Discord). Persistence is implemented with MyBatis in the `core` module; the Paper bootstrap and platform integrations live under `platform/`. Cross-cutting infrastructure (a runtime module system, schema migrator, Configurate helpers) comes from the external `plugin-infrastructure` library.
