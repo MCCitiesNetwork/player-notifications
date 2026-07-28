@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class NotificationDataTypeRegistry {
 
@@ -109,6 +110,14 @@ public class NotificationDataTypeRegistry {
     @NotNull
     public Optional<Class<?>> resolvePayloadClass(@NotNull String dataType) {
         return Optional.ofNullable(this.payloadMapping.get(dataType));
+    }
+
+    /**
+     * Every {@code dataType} with a registered payload mapping.
+     */
+    @NotNull
+    public Set<String> dataTypes() {
+        return Set.copyOf(this.payloadMapping.keySet());
     }
 
 }
