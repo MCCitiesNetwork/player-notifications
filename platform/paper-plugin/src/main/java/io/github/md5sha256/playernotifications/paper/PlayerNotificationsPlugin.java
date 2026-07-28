@@ -11,6 +11,8 @@ import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferen
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
+import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
+import io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
@@ -46,6 +48,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private NotificationSinkRegistry sinkRegistry;
     private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
+    private NotificationCategories categories;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
     @NotNull
@@ -80,18 +83,30 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         return this.preferences;
     }
 
+    /**
+     * Resolves a registered {@code dataType} to its player-facing category, as declared in
+     * {@code categories.yml}.
+     */
+    @NotNull
+    public NotificationCategories categories() {
+        return this.categories;
+    }
+
     @Override
     public void onEnable() {
         DatabaseSettings databaseSettings;
         PluginSettings pluginSettings;
+        NotificationCategories categories;
         try {
             databaseSettings = loadDatabaseSettings();
             pluginSettings = loadPluginSettings();
+            categories = loadCategories();
         } catch (IOException ex) {
             getLogger().log(Level.SEVERE, "Failed to load configuration; disabling plugin.", ex);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        this.categories = categories;
 
         MariaDatabase mariaDatabase = new MariaDatabase(databaseSettings, getLogger());
         this.database = mariaDatabase;
@@ -125,6 +140,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.notificationService.dataTypeRegistry(),
                 this.sinkRegistry,
                 this.preferences,
+                this.categories,
                 getLogger()
         );
 
@@ -133,7 +149,22 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         // Start modules last so they can look up the registered NotificationService.
         startModules();
+        warnAboutUnmappedCategoryTypes();
         getLogger().info("PlayerNotifications enabled");
+    }
+
+    /**
+     * Logs a warning naming every data type declared under some category in {@code categories.yml} that
+     * no registered payload mapping exists for, once feature modules have had a chance to register
+     * theirs. A standing misconfiguration an operator should fix, not a startup-order race — modules
+     * that register later than this check will simply be caught on the next server restart.
+     */
+    private void warnAboutUnmappedCategoryTypes() {
+        var unmapped = this.categories.typesWithNoPayloadMapping(this.notificationService.dataTypeRegistry());
+        if (!unmapped.isEmpty()) {
+            getLogger().warning(
+                    "categories.yml references data types with no registered payload mapping: " + unmapped);
+        }
     }
 
     /**
@@ -207,6 +238,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.sinkRegistry = null;
         this.preferences = null;
         this.notificationDelivery = null;
+        this.categories = null;
         if (this.database != null) {
             try {
                 this.database.close();
@@ -234,6 +266,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             throw new IOException("settings.yml could not be deserialized into PluginSettings");
         }
         return settings;
+    }
+
+    private NotificationCategories loadCategories() throws IOException {
+        ConfigurationNode root = copyDefaultsYaml("categories");
+        NotificationCategoriesConfig config = root.get(NotificationCategoriesConfig.class);
+        if (config == null) {
+            throw new IOException("categories.yml could not be deserialized into NotificationCategoriesConfig");
+        }
+        return new NotificationCategories(config, getLogger());
     }
 
     /**

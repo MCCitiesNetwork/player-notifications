@@ -1,0 +1,14 @@
+# PlayerNotifications categories
+#
+# Groups registered notification data types (see each module's documentation for its data type string)
+# into player-facing categories. A data type not listed under any category here falls back to the
+# "uncategorized-label" category below, so it is always configurable even before an operator edits this
+# file.
+uncategorized-label: "Other"
+
+categories:
+  mail:
+    label: "Mail"
+    description: "Essentials mail and other direct messages"
+    types:
+      - essentials-mail
