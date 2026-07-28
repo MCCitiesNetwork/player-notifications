@@ -19,8 +19,12 @@ import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.democracrycraft.pluginInfrastructure.modules.ModuleLifecycleManager;
 import net.democracrycraft.pluginInfrastructure.modules.ModuleLoader;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.yaml.NodeStyle;
@@ -51,6 +55,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
     private PreferenceDialogRouter preferenceDialogRouter;
+    private BukkitTask pruneTask;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
     @NotNull
@@ -182,10 +187,51 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(
-                        NotificationsCommand.create(this.preferenceDialogRouter),
+                        NotificationsCommand.create(this.preferenceDialogRouter, this::reload),
                         NotificationsCommand.DESCRIPTION,
                         List.of("notifs")
                 ));
+    }
+
+    /**
+     * Reloads {@code categories.yml} and {@code settings.yml} without a server restart:
+     * {@code database.yml} is intentionally left alone, since reloading it would mean rebuilding the
+     * MariaDB connection pool mid-request. Swaps the category resolver into
+     * {@link #notificationDelivery} and the {@link #preferenceDialogRouter} (open dialogs keep whatever
+     * category set they staged against — their category keys remain valid strings to write even if a
+     * reload renamed or removed one), refreshes the configured default media, and reschedules the prune
+     * task if its interval changed.
+     */
+    public void reload(@NotNull CommandSender sender) {
+        NotificationCategories newCategories;
+        PluginSettings newSettings;
+        try {
+            newCategories = loadCategories();
+            newSettings = loadPluginSettings();
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING, "Failed to reload configuration.", ex);
+            sender.sendMessage(Component.text(
+                    "Failed to reload configuration: " + ex.getMessage(), NamedTextColor.RED));
+            return;
+        }
+
+        this.categories = newCategories;
+        this.preferenceDialogRouter.reloadCategories(newCategories);
+        this.notificationDelivery = new NotificationDelivery(
+                this.database,
+                this.notificationService.dataTypeRegistry(),
+                this.sinkRegistry,
+                this.preferences,
+                this.categories,
+                getLogger()
+        );
+        this.preferences.reloadDefaultMedia(newSettings.defaultMedia());
+        reschedulePruneTask(newSettings.pruneIntervalSeconds());
+        warnAboutUnmappedCategoryTypes();
+
+        getLogger().info("Configuration reloaded by " + sender.getName());
+        sender.sendMessage(Component.text(
+                "PlayerNotifications configuration reloaded.", NamedTextColor.GREEN));
     }
 
     /**
@@ -217,13 +263,24 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      */
     private void schedulePruneTask(long intervalSeconds) {
         long periodTicks = Math.max(1L, intervalSeconds * 20L);
-        getServer().getScheduler().runTaskTimerAsynchronously(
+        this.pruneTask = getServer().getScheduler().runTaskTimerAsynchronously(
                 this,
                 () -> this.notificationService.clearExpiredNotifications(),
                 periodTicks,
                 periodTicks
         );
         getLogger().info("Pruning expired notifications every " + intervalSeconds + "s");
+    }
+
+    /**
+     * Cancels the current prune task, if any, and schedules a new one at the given interval. Used by
+     * {@link #reload(CommandSender)} when {@code prune-interval-seconds} changes.
+     */
+    private void reschedulePruneTask(long intervalSeconds) {
+        if (this.pruneTask != null) {
+            this.pruneTask.cancel();
+        }
+        schedulePruneTask(intervalSeconds);
     }
 
     @Override
@@ -235,6 +292,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         }
         // Cancel the prune task so it cannot run against a closing database.
         getServer().getScheduler().cancelTasks(this);
+        this.pruneTask = null;
         if (this.notificationService != null) {
             getServer().getServicesManager().unregisterAll(this);
             this.notificationService = null;

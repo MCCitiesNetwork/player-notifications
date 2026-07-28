@@ -24,7 +24,7 @@ public final class PreferenceDialogRouter {
 
     private final Plugin plugin;
     private final NotificationSinkRegistry sinkRegistry;
-    private final NotificationCategories categories;
+    private volatile NotificationCategories categories;
     private final DatabaseNotificationPreferences preferences;
     private final PreferenceSessionManager sessions;
 
@@ -63,6 +63,15 @@ public final class PreferenceDialogRouter {
     @NotNull
     NotificationCategories categories() {
         return this.categories;
+    }
+
+    /**
+     * Swaps in a freshly loaded {@link NotificationCategories}, e.g. after {@code categories.yml} is
+     * reloaded. Sessions already staged with the old category set are left as-is — their category keys
+     * remain valid strings to write, even if a reload renamed or removed the category they belonged to.
+     */
+    public void reloadCategories(@NotNull NotificationCategories categories) {
+        this.categories = categories;
     }
 
     @NotNull

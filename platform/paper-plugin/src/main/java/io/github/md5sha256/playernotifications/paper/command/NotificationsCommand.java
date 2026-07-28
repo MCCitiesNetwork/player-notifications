@@ -18,7 +18,8 @@ import java.util.function.Consumer;
  * The player-facing {@code /notifications} command. The bare root and {@code preferences} open the
  * staged root dialog; {@code media}/{@code types} jump straight to the corresponding picker on the same
  * session; {@code mute}/{@code reset} write immediately and discard any open session, unlike their
- * staged root-screen equivalents.
+ * staged root-screen equivalents. {@code reload} is admin-only (a separate permission) and works from
+ * any sender, console included, since it operates on plugin configuration rather than a specific player.
  *
  * <p>Registered through Paper's Brigadier API rather than a {@code commands:} block, because this plugin
  * ships a {@code paper-plugin.yml}, which has no such block.
@@ -26,6 +27,8 @@ import java.util.function.Consumer;
 public final class NotificationsCommand {
 
     public static final String PERMISSION = "playernotifications.command.preferences";
+
+    public static final String RELOAD_PERMISSION = "playernotifications.command.reload";
 
     public static final String DESCRIPTION = "Choose how you receive notifications";
 
@@ -36,7 +39,8 @@ public final class NotificationsCommand {
     }
 
     @NotNull
-    public static LiteralCommandNode<CommandSourceStack> create(@NotNull PreferenceDialogRouter router) {
+    public static LiteralCommandNode<CommandSourceStack> create(@NotNull PreferenceDialogRouter router,
+                                                                @NotNull Consumer<CommandSender> reloadAction) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .executes(context -> run(context, router::openRoot))
@@ -45,6 +49,12 @@ public final class NotificationsCommand {
                 .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
                 .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
                 .then(Commands.literal("reset").executes(context -> run(context, router::resetImmediately)))
+                .then(Commands.literal("reload")
+                        .requires(source -> source.getSender().hasPermission(RELOAD_PERMISSION))
+                        .executes(context -> {
+                            reloadAction.accept(context.getSource().getSender());
+                            return Command.SINGLE_SUCCESS;
+                        }))
                 .build();
     }
 

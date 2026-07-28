@@ -21,19 +21,19 @@ import java.util.UUID;
 /**
  * {@link NotificationPreferences} backed by the {@code PlayerNotificationPreference} table, resolved
  * per notification category. A player with no rows for a category falls back to the {@link
- * #ALL_CATEGORIES_KEY} rows (the pre-migration state, or a blanket choice), then to a configurable
- * default medium set, so a player is never silently cut off from all notifications.
+ * #ALL_CATEGORIES_KEY} rows (a blanket choice), then to a configurable default medium set, so a player
+ * is never silently cut off from all notifications.
  */
 public class DatabaseNotificationPreferences implements NotificationPreferences {
 
     /**
-     * Reserved category key meaning "applies to any category not otherwise configured". Only the V3
-     * migration writes it (fanning out pre-migration rows); the dialogs never write it directly.
+     * Reserved category key meaning "applies to any category not otherwise configured" — a blanket
+     * choice. Nothing in the dialogs writes it directly.
      */
     public static final String ALL_CATEGORIES_KEY = "*";
 
     private final Database database;
-    private final Set<String> defaultMedia;
+    private volatile Set<String> defaultMedia;
 
     public DatabaseNotificationPreferences(@NotNull Database database, @NotNull Collection<String> defaultMedia) {
         this.database = database;
@@ -155,5 +155,14 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
             wrapper.playerNotificationPreferenceMapper().deleteByPlayer(player);
             wrapper.session().commit();
         }
+    }
+
+    /**
+     * Replaces the configured default media, e.g. after {@code settings.yml} is reloaded. Takes effect
+     * for any {@link #preferredMedia} call made after this returns; in-flight calls may still observe
+     * the previous value.
+     */
+    public void reloadDefaultMedia(@NotNull Collection<String> defaultMedia) {
+        this.defaultMedia = Set.copyOf(defaultMedia);
     }
 }
