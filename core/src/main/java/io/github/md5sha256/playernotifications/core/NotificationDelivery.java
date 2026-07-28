@@ -8,6 +8,7 @@ import io.github.md5sha256.playernotifications.api.render.NotificationPreference
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import io.github.md5sha256.playernotifications.api.render.RenderingProcessor;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
+import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
@@ -48,6 +49,7 @@ public class NotificationDelivery {
     private final NotificationDataTypeRegistry registry;
     private final NotificationSinkRegistry sinkRegistry;
     private final NotificationPreferences preferences;
+    private final NotificationCategories categories;
     private final Logger logger;
 
     /**
@@ -58,23 +60,40 @@ public class NotificationDelivery {
     public NotificationDelivery(@NotNull Database database,
                                 @NotNull NotificationDataTypeRegistry registry,
                                 @NotNull Logger logger) {
-        this(database, registry, null, null, logger);
+        this(database, registry, null, null, null, logger);
     }
 
     /**
-     * Constructs a delivery loop with the rendering path enabled: a payload with a registered
-     * {@link NotificationRenderer} (and no explicit processor) is dispatched through a
-     * {@link RenderingProcessor} built from the given sink registry and preferences.
+     * Constructs a delivery loop with the rendering path enabled but no category resolution: a payload
+     * with a registered {@link NotificationRenderer} (and no explicit processor) is dispatched through a
+     * {@link RenderingProcessor} built from the given sink registry and preferences, using the
+     * category-agnostic {@link NotificationPreferences#preferredMedia(UUID)} lookup.
      */
     public NotificationDelivery(@NotNull Database database,
                                 @NotNull NotificationDataTypeRegistry registry,
                                 @Nullable NotificationSinkRegistry sinkRegistry,
                                 @Nullable NotificationPreferences preferences,
                                 @NotNull Logger logger) {
+        this(database, registry, sinkRegistry, preferences, null, logger);
+    }
+
+    /**
+     * Constructs a delivery loop with the rendering path and category resolution both enabled: each
+     * notification's {@code notifPayloadType} is resolved to a category via {@code categories}, and
+     * preferred media are looked up per category through
+     * {@link NotificationPreferences#preferredMedia(UUID, String)}.
+     */
+    public NotificationDelivery(@NotNull Database database,
+                                @NotNull NotificationDataTypeRegistry registry,
+                                @Nullable NotificationSinkRegistry sinkRegistry,
+                                @Nullable NotificationPreferences preferences,
+                                @Nullable NotificationCategories categories,
+                                @NotNull Logger logger) {
         this.database = database;
         this.registry = registry;
         this.sinkRegistry = sinkRegistry;
         this.preferences = preferences;
+        this.categories = categories;
         this.logger = logger;
     }
 
@@ -144,9 +163,12 @@ public class NotificationDelivery {
             if (payload == null) {
                 return NotificationDisposition.RETAIN;
             }
+            String category = this.categories != null
+                    ? this.categories.resolve(notification.notifPayloadType())
+                    : null;
             NotificationProcessor<?> renderingProcessor =
                     new RenderingProcessor<>(castRenderer(renderer.get()), this.sinkRegistry,
-                            this.preferences, this.logger);
+                            this.preferences, category, this.logger);
             return invoke(renderingProcessor, payload, target);
         }
 
