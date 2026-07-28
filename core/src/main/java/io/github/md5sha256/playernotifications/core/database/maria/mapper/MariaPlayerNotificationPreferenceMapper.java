@@ -21,12 +21,12 @@ public interface MariaPlayerNotificationPreferenceMapper extends PlayerNotificat
 
     @Override
     @Select("""
-            SELECT category, medium
+            SELECT dataType, medium
             FROM PlayerNotificationPreference
             WHERE playerUuid = #{playerUuid}
             """)
     @ConstructorArgs({
-            @Arg(column = "category", javaType = String.class),
+            @Arg(column = "dataType", javaType = String.class),
             @Arg(column = "medium", javaType = String.class)
     })
     @NotNull List<PlayerNotificationPreferenceEntity> selectByPlayer(@Param("playerUuid") @NotNull UUID playerUuid);
@@ -35,32 +35,32 @@ public interface MariaPlayerNotificationPreferenceMapper extends PlayerNotificat
     @Select("""
             SELECT medium
             FROM PlayerNotificationPreference
-            WHERE playerUuid = #{playerUuid} AND category = #{category}
+            WHERE playerUuid = #{playerUuid} AND dataType = #{dataType}
             """)
-    @NotNull List<String> selectByPlayerAndCategory(@Param("playerUuid") @NotNull UUID playerUuid,
-                                                     @Param("category") @NotNull String category);
+    @NotNull List<String> selectByPlayerAndDataType(@Param("playerUuid") @NotNull UUID playerUuid,
+                                                     @Param("dataType") @NotNull String dataType);
 
     @Override
     @Insert("""
             <script>
-            INSERT INTO PlayerNotificationPreference (playerUuid, category, medium)
+            INSERT INTO PlayerNotificationPreference (playerUuid, dataType, medium)
             VALUES
             <foreach item="medium" collection="media" separator=",">
-                (#{playerUuid}, #{category}, #{medium})
+                (#{playerUuid}, #{dataType}, #{medium})
             </foreach>
             </script>
             """)
     int insertPreferences(@Param("playerUuid") @NotNull UUID playerUuid,
-                          @Param("category") @NotNull String category,
+                          @Param("dataType") @NotNull String dataType,
                           @Param("media") @NotNull Collection<String> media);
 
     @Override
     @Delete("""
             DELETE FROM PlayerNotificationPreference
-            WHERE playerUuid = #{playerUuid} AND category = #{category}
+            WHERE playerUuid = #{playerUuid} AND dataType = #{dataType}
             """)
-    int deleteByPlayerAndCategory(@Param("playerUuid") @NotNull UUID playerUuid,
-                                  @Param("category") @NotNull String category);
+    int deleteByPlayerAndDataType(@Param("playerUuid") @NotNull UUID playerUuid,
+                                  @Param("dataType") @NotNull String dataType);
 
     @Override
     @Delete("""

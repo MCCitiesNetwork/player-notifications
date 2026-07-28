@@ -37,7 +37,7 @@ CREATE TRIGGER trg_delete_targetless_notification
 CREATE TABLE IF NOT EXISTS PlayerNotificationPreference
 (
     playerUuid BINARY(16)  NOT NULL,
-    category   VARCHAR(64) NOT NULL,
+    dataType   VARCHAR(64) NOT NULL,
     medium     VARCHAR(64) NOT NULL,
-    PRIMARY KEY (playerUuid, category, medium)
+    PRIMARY KEY (playerUuid, dataType, medium)
 );

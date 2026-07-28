@@ -50,12 +50,12 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
         try (SqlSessionWrapper wrapper = database.openSession()) {
             PlayerNotificationPreferenceMapper mapper = wrapper.playerNotificationPreferenceMapper();
             if (!ALL_CATEGORIES_KEY.equals(category)) {
-                List<String> exact = mapper.selectByPlayerAndCategory(player, category);
+                List<String> exact = mapper.selectByPlayerAndDataType(player, category);
                 if (!exact.isEmpty()) {
                     return Set.copyOf(exact);
                 }
             }
-            List<String> fallback = mapper.selectByPlayerAndCategory(player, ALL_CATEGORIES_KEY);
+            List<String> fallback = mapper.selectByPlayerAndDataType(player, ALL_CATEGORIES_KEY);
             if (!fallback.isEmpty()) {
                 return Set.copyOf(fallback);
             }
@@ -107,7 +107,7 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
                 wrapper.playerNotificationPreferenceMapper().selectByPlayer(player);
         Map<String, Set<String>> byCategory = new HashMap<>();
         for (PlayerNotificationPreferenceEntity row : rows) {
-            byCategory.computeIfAbsent(row.category(), key -> new TreeSet<>()).add(row.medium());
+            byCategory.computeIfAbsent(row.dataType(), key -> new TreeSet<>()).add(row.medium());
         }
         return byCategory;
     }
@@ -124,10 +124,10 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
         try (SqlSessionWrapper wrapper = database.openSession()) {
             PlayerNotificationPreferenceMapper mapper = wrapper.playerNotificationPreferenceMapper();
             for (String category : categoriesToReset) {
-                mapper.deleteByPlayerAndCategory(player, category);
+                mapper.deleteByPlayerAndDataType(player, category);
             }
             for (Map.Entry<String, Set<String>> entry : explicitMedia.entrySet()) {
-                mapper.deleteByPlayerAndCategory(player, entry.getKey());
+                mapper.deleteByPlayerAndDataType(player, entry.getKey());
                 mapper.insertPreferences(player, entry.getKey(), entry.getValue());
             }
             wrapper.session().commit();

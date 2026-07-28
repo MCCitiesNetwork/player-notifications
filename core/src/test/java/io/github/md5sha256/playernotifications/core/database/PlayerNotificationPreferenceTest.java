@@ -24,8 +24,8 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
     class MapperTests {
 
         @Test
-        @DisplayName("insertPreferences then selectByPlayerAndCategory round-trips every medium")
-        void insertAndSelectByCategory() {
+        @DisplayName("insertPreferences then selectByPlayerAndDataType round-trips every medium")
+        void insertAndSelectByDataType() {
             try (SqlSessionWrapper wrapper = database.openSession();
                  SqlSession session = wrapper.session()) {
                 PlayerNotificationPreferenceMapper mapper = wrapper.playerNotificationPreferenceMapper();
@@ -33,24 +33,24 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
                 session.commit();
                 Assertions.assertEquals(2, inserted);
 
-                List<String> media = mapper.selectByPlayerAndCategory(PLAYER_A, "economy");
+                List<String> media = mapper.selectByPlayerAndDataType(PLAYER_A, "economy");
                 Assertions.assertEquals(2, media.size());
                 Assertions.assertTrue(media.containsAll(List.of("chat", "discord")));
             }
         }
 
         @Test
-        @DisplayName("selectByPlayerAndCategory returns an empty list for an unconfigured category")
-        void selectByPlayerAndCategoryEmpty() {
+        @DisplayName("selectByPlayerAndDataType returns an empty list for an unconfigured data type")
+        void selectByPlayerAndDataTypeEmpty() {
             try (SqlSessionWrapper wrapper = database.openSession()) {
                 Assertions.assertTrue(wrapper.playerNotificationPreferenceMapper()
-                        .selectByPlayerAndCategory(PLAYER_A, "economy").isEmpty());
+                        .selectByPlayerAndDataType(PLAYER_A, "economy").isEmpty());
             }
         }
 
         @Test
-        @DisplayName("selectByPlayer returns every row for the player across all categories")
-        void selectByPlayerReturnsAllCategories() {
+        @DisplayName("selectByPlayer returns every row for the player across all data types")
+        void selectByPlayerReturnsAllDataTypes() {
             try (SqlSessionWrapper wrapper = database.openSession();
                  SqlSession session = wrapper.session()) {
                 PlayerNotificationPreferenceMapper mapper = wrapper.playerNotificationPreferenceMapper();
@@ -66,8 +66,8 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
         }
 
         @Test
-        @DisplayName("deleteByPlayerAndCategory removes only that category's rows")
-        void deleteByPlayerAndCategory() {
+        @DisplayName("deleteByPlayerAndDataType removes only that data type's rows")
+        void deleteByPlayerAndDataType() {
             try (SqlSessionWrapper wrapper = database.openSession();
                  SqlSession session = wrapper.session()) {
                 PlayerNotificationPreferenceMapper mapper = wrapper.playerNotificationPreferenceMapper();
@@ -75,17 +75,17 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
                 mapper.insertPreferences(PLAYER_A, "moderation", List.of("dialog"));
                 session.commit();
 
-                int deleted = mapper.deleteByPlayerAndCategory(PLAYER_A, "economy");
+                int deleted = mapper.deleteByPlayerAndDataType(PLAYER_A, "economy");
                 session.commit();
 
                 Assertions.assertEquals(1, deleted);
-                Assertions.assertTrue(mapper.selectByPlayerAndCategory(PLAYER_A, "economy").isEmpty());
-                Assertions.assertEquals(List.of("dialog"), mapper.selectByPlayerAndCategory(PLAYER_A, "moderation"));
+                Assertions.assertTrue(mapper.selectByPlayerAndDataType(PLAYER_A, "economy").isEmpty());
+                Assertions.assertEquals(List.of("dialog"), mapper.selectByPlayerAndDataType(PLAYER_A, "moderation"));
             }
         }
 
         @Test
-        @DisplayName("deleteByPlayer removes only that player's rows across every category")
+        @DisplayName("deleteByPlayer removes only that player's rows across every data type")
         void deleteByPlayer() {
             try (SqlSessionWrapper wrapper = database.openSession();
                  SqlSession session = wrapper.session()) {
@@ -99,7 +99,7 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
 
                 Assertions.assertEquals(1, deleted);
                 Assertions.assertTrue(mapper.selectByPlayer(PLAYER_A).isEmpty());
-                Assertions.assertEquals(List.of("dialog"), mapper.selectByPlayerAndCategory(PLAYER_B, "economy"));
+                Assertions.assertEquals(List.of("dialog"), mapper.selectByPlayerAndDataType(PLAYER_B, "economy"));
             }
         }
     }

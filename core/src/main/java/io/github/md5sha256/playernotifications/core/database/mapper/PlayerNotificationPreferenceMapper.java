@@ -9,41 +9,41 @@ import java.util.UUID;
 
 /**
  * Base mapper interface for CRUD operations on the {@code PlayerNotificationPreference} table, which
- * stores a player's preferred media per category as rows sharing a {@code playerUuid}. SQL annotations
- * are supplied by database-specific sub-interfaces.
+ * stores a player's preferred media per {@code dataType} as rows sharing a {@code playerUuid}. SQL
+ * annotations are supplied by database-specific sub-interfaces.
  */
 public interface PlayerNotificationPreferenceMapper {
 
     /**
-     * Every stored row for the player, across every category (including the {@code *} fallback).
+     * Every stored row for the player, across every data type (including the {@code *} fallback).
      */
     @NotNull List<PlayerNotificationPreferenceEntity> selectByPlayer(@NotNull UUID playerUuid);
 
     /**
-     * The media stored for exactly the given category. Empty if the player has no rows for that exact
-     * category — callers apply {@code *}/default fallback themselves.
+     * The media stored for exactly the given data type. Empty if the player has no rows for that exact
+     * data type — callers apply {@code *}/default fallback themselves.
      */
-    @NotNull List<String> selectByPlayerAndCategory(@NotNull UUID playerUuid, @NotNull String category);
+    @NotNull List<String> selectByPlayerAndDataType(@NotNull UUID playerUuid, @NotNull String dataType);
 
     /**
-     * Inserts every given medium as a preference row for the player and category in a single multi-row
+     * Inserts every given medium as a preference row for the player and data type in a single multi-row
      * statement. The caller must ensure {@code media} is non-empty; an empty collection would produce
      * invalid SQL.
      *
      * @return the number of rows inserted
      */
-    int insertPreferences(@NotNull UUID playerUuid, @NotNull String category, @NotNull Collection<String> media);
+    int insertPreferences(@NotNull UUID playerUuid, @NotNull String dataType, @NotNull Collection<String> media);
 
     /**
-     * Deletes every preference row for the given player and category, e.g. before replacing them
-     * wholesale or resetting the category to the server default.
+     * Deletes every preference row for the given player and data type, e.g. before replacing them
+     * wholesale or resetting the data type to the server default.
      *
      * @return the number of rows removed
      */
-    int deleteByPlayerAndCategory(@NotNull UUID playerUuid, @NotNull String category);
+    int deleteByPlayerAndDataType(@NotNull UUID playerUuid, @NotNull String dataType);
 
     /**
-     * Deletes every preference row for the given player across all categories.
+     * Deletes every preference row for the given player across all data types.
      *
      * @return the number of rows removed
      */
