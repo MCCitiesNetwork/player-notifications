@@ -23,10 +23,11 @@ import java.util.Set;
 
 /**
  * Editor for one notification category: a checkbox per registered medium, plus "use server default" to
- * stage clearing every data type this category claims. Checking or unchecking a medium fans out to a
- * per-data-type write on Save; if the category's members currently disagree on a medium, that
- * checkbox's label shows "(mixed)" until this editor overwrites them uniformly. Save writes into the
- * session only; nothing is persisted until the root screen's Apply.
+ * stage clearing every data type this category claims. Checking or unchecking a medium away from what
+ * was rendered fans out to a per-data-type write on Save; a checkbox left exactly as rendered is a
+ * no-op, except a "(mixed)" medium always resolves on Save (it has no single "current" value to compare
+ * against, so it always fans out uniformly). Save writes into the session only; nothing is persisted
+ * until the root screen's Apply.
  */
 final class CategoryEditorDialog {
 
@@ -46,12 +47,14 @@ final class CategoryEditorDialog {
                 .dataTypesForCategory(categoryKey, this.router.dataTypeRegistry().dataTypes());
         List<String> media = PreferenceDialogs.selectableMedia(this.router.sinkRegistry());
         Map<String, String> inputKeyToMedium = new LinkedHashMap<>();
+        Map<String, MixedState> inputKeyToState = new LinkedHashMap<>();
         List<DialogInput> inputs = new ArrayList<>(media.size());
         for (int i = 0; i < media.size(); i++) {
             String medium = media.get(i);
             String inputKey = PreferenceDialogs.inputKey("medium", i);
             inputKeyToMedium.put(inputKey, medium);
             MixedState state = mixedStateFor(session, memberDataTypes, medium);
+            inputKeyToState.put(inputKey, state);
             Component label = PreferenceDialogs.mediumLabel(this.router.sinkRegistry(), medium);
             if (state == MixedState.MIXED) {
                 label = label.append(MIXED_SUFFIX);
@@ -64,6 +67,10 @@ final class CategoryEditorDialog {
                     Instant now = Instant.now();
                     for (Map.Entry<String, String> entry : inputKeyToMedium.entrySet()) {
                         boolean checked = Boolean.TRUE.equals(response.getBoolean(entry.getKey()));
+                        MixedState state = inputKeyToState.get(entry.getKey());
+                        if (state != MixedState.MIXED && checked == (state == MixedState.ALL_CHECKED)) {
+                            continue;
+                        }
                         for (String dataType : memberDataTypes) {
                             session.toggleDataTypeMedium(dataType, entry.getValue(), checked, now);
                         }
