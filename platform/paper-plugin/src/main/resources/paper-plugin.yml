@@ -5,6 +5,17 @@ api-version: "1.21.8"
 authors: [ md5sha256 ]
 description: Player notifications plugin.
 
+# Paper plugins are classloader-isolated by default. The Discord adapter module's class loader is
+# parent-first onto this plugin's, so DiscordSRV's classes must be visible from here or
+# DiscordSrvAccountProvider silently reports itself unavailable. Soft: DiscordSRV is optional, and
+# only the discord-adapter module ever touches it.
+dependencies:
+  server:
+    DiscordSRV:
+      load: BEFORE
+      required: false
+      join-classpath: true
+
 permissions:
   playernotifications.command.preferences:
     description: Open the notification preferences dialog with /notifications.

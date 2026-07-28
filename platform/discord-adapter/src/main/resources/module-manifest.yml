@@ -1,0 +1,6 @@
+# Manifest for the PlayerNotifications Discord adapter module.
+moduleName: discord-adapter
+entryClass: io.github.md5sha256.playernotifications.discord.DiscordModule
+author: md5sha256
+expectedPluginClass: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
+reloadable: false

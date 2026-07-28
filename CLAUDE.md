@@ -26,7 +26,7 @@ state" below are the parts most likely to be out of date.
 
 ## Overview
 
-PlayerNotifications is a PaperMC (Spigot) plugin for Minecraft **1.21.8**, targeting **Java 21**. It stores per-player notifications in a MariaDB database and delivers them to players via pluggable, payload-typed processors — or, more commonly, via the **renderer/sink** path, which fans a notification out to whichever media a player prefers (chat, dialog, Essentials mail, planned Discord). Persistence is implemented with MyBatis in the `core` module; the Paper bootstrap and platform integrations live under `platform/`. Cross-cutting infrastructure (a runtime module system, schema migrator, Configurate helpers) comes from the external `plugin-infrastructure` library.
+PlayerNotifications is a PaperMC (Spigot) plugin for Minecraft **1.21.8**, targeting **Java 21**. It stores per-player notifications in a MariaDB database and delivers them to players via pluggable, payload-typed processors — or, more commonly, via the **renderer/sink** path, which fans a notification out to whichever media a player prefers (chat, dialog, Essentials mail, Discord DM). Persistence is implemented with MyBatis in the `core` module; the Paper bootstrap and platform integrations live under `platform/`. Cross-cutting infrastructure (a runtime module system, schema migrator, Configurate helpers) comes from the external `plugin-infrastructure` library.
 
 ## Build & run
 
@@ -35,6 +35,7 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 - `./gradlew build` — build all modules. The `platform:paper-plugin` module's `build` depends on `shadowJar`, producing the shaded plugin jar under `platform/paper-plugin/build/libs/`.
 - `./gradlew :platform:paper-plugin:shadowJar` — build only the distributable plugin jar.
 - `./gradlew :platform:essentials-adapter:jar` — build the Essentials mail adapter module jar.
+- `./gradlew :platform:discord-adapter:shadowJar` — build the Discord adapter module jar. It must be the **shaded** (`-all`) jar: the module bundles its own relocated JDA, so the plain `jar` output has no Discord library in it at all.
 - `./gradlew test` — run all tests (JUnit 5 / Jupiter).
 - `./gradlew :core:test` — run the `core` persistence tests. **These require a running Docker daemon** — they spin up a real `mariadb:11.7` container via Testcontainers.
 - `./gradlew :core:test --tests "io.github.md5sha256.playernotifications.*SomeTest"` — run a single test class/method.
@@ -42,12 +43,12 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 
 ## Module architecture
 
-Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts` includes `api`, `core`, `platform:paper-plugin`, `platform:essentials-adapter`). Type-safe project accessors are enabled (`enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")`), so build scripts reference `projects.api`, `projects.core`, etc. Dependency direction flows **platform → core → api**; `api` depends on nothing but Paper.
+Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kts` includes `api`, `core`, `platform:paper-plugin`, `platform:essentials-adapter`, `platform:discord-adapter`). Type-safe project accessors are enabled (`enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")`), so build scripts reference `projects.api`, `projects.core`, etc. Dependency direction flows **platform → core → api**; `api` depends on nothing but Paper.
 
 - **`api`** (`io.github.md5sha256.playernotifications.api`) — Public, dependency-light API. Uses `compileOnlyApi` for `paper-api`. Key types:
   - `NotificationService` — entry point: `enqueueNotification`, `resolveNotifications(UUID)` (a pure read — does **not** delete), `clearNotification`/`clearNotifications`, `deleteNotificationTarget(key, UUID)` / `deleteNotificationTargets(key, Collection<UUID>)`, `clearExpiredNotifications`, and `dataTypeRegistry()`.
   - `NotificationDataTypeRegistry` — maps a string `dataType` → payload `Class<?>`, and payload class → `NotificationProcessor`, `PayloadSerializer`, and `NotificationRenderer`. The extension point: callers register their own payload types, processors/renderers, and serializers.
-  - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"essentials-mail"`, `"discord"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`.
+  - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"essentials-mail"`, `"discord-dm"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`. `"discord-channel-ping"` is **reserved but unimplemented** (see "Discord adapter").
   - `Notification` / `ResolvedNotification` — records for the persisted vs. target-resolved forms. `ResolvedNotification` holds a `NotificationTarget` (list of player UUIDs) and carries `notifPayloadType` (the registry data-type string) plus the `String` payload.
   - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or flagged for `DELETE`. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with DELETE-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
   - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink`, `DialogSink`, and `NullSink` (the `"none"` medium backing an explicit mute — see "Player commands").
@@ -56,12 +57,13 @@ Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts`
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands and a `PreferenceQuitListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
 - **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
+- **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
 
 ### Build conventions
 
 `buildSrc/src/main/kotlin/` holds precompiled convention plugins:
 - `player-notifications-conventions` — Java 21 toolchain, UTF-8, JUnit 5, and the Paper / mavenLocal / mavenCentral repos. Applied by every module.
-- `paper-adapter` — for feature-module projects. Applies the base conventions, adds `compileOnly(project(":platform:paper-plugin"))` (so adapters compile against the host but never bundle it — the module class loader resolves host classes at runtime), and adds the `maven.democracycraft.net/snapshots` repo. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this single dependency transitively provides `api`, `core`, `plugin-infrastructure`, and `paper-api` to adapters.
+- `paper-adapter` — for feature-module projects. Applies the base conventions, adds `compileOnly(project(":platform:paper-plugin"))` (so adapters compile against the host but never bundle it — the module class loader resolves host classes at runtime) **plus `testImplementation` on the same project** (`compileOnly` reaches neither `compileTestJava` nor the test runtime, so an adapter's own tests would not see `api`/`core` or Adventure types at all), and adds the `maven.democracycraft.net/snapshots` repo. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this single dependency transitively provides `api`, `core`, `plugin-infrastructure`, and `paper-api` to adapters.
 
 Note: precompiled conventions apply sibling conventions with `id("player-notifications-conventions")`, not the backtick accessor. Project version comes from the root `gradle.properties`.
 
@@ -90,8 +92,8 @@ reloadable: false
 Design doc: `docs/superpowers/specs/2026-07-27-notification-renderers-design.md`.
 
 Payload *rendering* and medium *delivery* are separate axes, so a payload is converted **once** and can
-fan out to any number of media. Registrations are **N + M**, not N × M: adding a medium (e.g. the
-planned Discord sink) requires no change to any existing payload.
+fan out to any number of media. Registrations are **N + M**, not N × M: adding a medium requires no
+change to any existing payload — the Discord DM sink landed without touching a single one.
 
 - A payload author registers a `NotificationRenderer<T>` (payload → `RenderableNotification`) and never
   writes per-medium or preference-lookup logic.
@@ -111,7 +113,7 @@ rendering path) and a 5-arg one (rendering) — categories play no role in deliv
 
 **Fan-out is DELETE-wins:** if any sink returns `DELIVERED`, the notification is consumed. Consequences,
 deliberate and documented in the design doc's "Known limitations":
-- **Partial delivery is silent and unrecoverable.** If a player prefers `chat + discord`, chat succeeds
+- **Partial delivery is silent and unrecoverable.** If a player prefers `chat + discord-dm`, chat succeeds
   and Discord transiently fails, the notification is consumed and Discord never receives it. Fixing this
   needs per-medium delivery tracking, which was deliberately deferred. Retaining instead is *not* a
   workaround — chat is not idempotent, so the player would be messaged twice.
@@ -126,6 +128,56 @@ absent players. `Component` is the lingua franca; non-Minecraft sinks serialize 
 not rely on in-game-only affordances such as click events. Actions/buttons are intentionally **out of
 scope** (a dialog button and a Discord button share no execution model), so dialogs render as
 read-and-dismiss.
+
+### Discord adapter
+
+Design doc: `docs/superpowers/specs/2026-07-29-discord-adapter-design.md`.
+
+`platform:discord-adapter` is a feature module registering `DiscordDmSink` under medium key
+**`discord-dm`**. Once the jar is in `<dataFolder>/modules/` and configured, "Discord DM" appears
+automatically in the `/notifications` dialogs — they enumerate `sinkRegistry().registeredMedia()`, so
+no host change was needed. `DiscordMedia.CHANNEL_PING` (`"discord-channel-ping"`) is **reserved but
+unimplemented**: nothing registers it, so it can never be selected; the key exists so the DM sink is
+not squatting on a generic `"discord"` name and a channel sink can be added later without migrating a
+single preference row.
+
+- **It runs its own JDA bot with its own token.** Legacy DiscordSRV relocates its bundled JDA to
+  `github.scarsz.discordsrv.dependencies.jda.*`, so its instance is *not* type-compatible with upstream
+  `net.dv8tion`. DiscordSRV is therefore a **link source only** — nothing is ever sent through it.
+- **The shading is load-bearing.** `shadowJar` relocates every bundled package under
+  `io.github.md5sha256.playernotifications.discord.libraries`. Modules load through
+  `new URLClassLoader(jarUrl, hostClassLoader)` — parent-first — and the host already shades Jackson,
+  so an unrelocated copy would collide. **Verify the relocation set against the built jar** after any
+  dependency bump (`unzip -l ...-all.jar` and look for classes outside `io/github/md5sha256/`); JDA 6's
+  transitive set is not JDA 5's.
+- **`paper-plugin.yml` carries a soft `dependencies: server: DiscordSRV` with `join-classpath: true`.**
+  Paper plugins are classloader-isolated by default, and the module's loader is parent-first onto the
+  *host's*, so without that entry `DiscordSrvAccountProvider` silently reports itself unavailable.
+- **The provider swap point.** `DiscordAccountProvider` (`providerKey`, `discordIdFor`, `isAvailable`)
+  resolves UUID → Discord id. `discord.yml`'s `link-providers` is an ordered key list resolved against
+  `DiscordAccountProviderRegistry` and wrapped in `ChainedDiscordAccountProvider` (first link wins;
+  unknown key warned and skipped; unavailable skipped un-queried; a throwing provider logged and
+  skipped so it cannot mask a working one). Only `DiscordSrvAccountProvider` ships. Adding a provider
+  is one class, one registration and one config line — `DiscordDmSink` never changes.
+- **Rendering.** `DiscordMarkdownSerializer` drives Adventure's `ComponentFlattener` to Discord
+  markdown (bold `**`, italic `*`, underlined `__`, strikethrough `~~`, obfuscated → spoiler `||`),
+  escaping `` \ * _ ~ | ` > `` and dropping colours — Discord message text cannot be coloured.
+  `DiscordMessageFactory` builds the `MessageCreateData` in one of three `message-format`s
+  (`embed` | `markdown` | `plain`) and truncates to Discord's limits (title 256, description 4096,
+  content 2000) *before* JDA's builders, which throw on overlong input rather than trimming.
+- **Result mapping.** No linked account → `UNSUPPORTED` (the exact case that result's javadoc names);
+  `CANNOT_SEND_TO_USER`/`UNKNOWN_USER` → `UNSUPPORTED`; not connected, rate-limited, timed out, or any
+  other exception → `UNREACHABLE`. `DiscordDmSink` also refuses to run on the main thread (warn +
+  `UNREACHABLE`), since it blocks on a Discord round trip; the delivery loop is already async.
+- **`discord.yml`** (bundled in the *module* jar, written to `<dataFolder>/modules/discord.yml`):
+  `bot-token` (blank refuses module startup), `message-format`, `embed-color` (`#RRGGBB`),
+  `delivery-timeout-seconds` (`long`, not a `Duration`), `link-providers`. Loaded by `ModuleConfigs`,
+  which reproduces the host's copy-defaults-then-merge idiom because
+  `PlayerNotificationsPlugin.copyDefaultsYaml` is private and reads the *host* jar's resources.
+- **Untested by automated tests:** `DiscordBot`, `JdaDiscordMessenger`, `DiscordSrvAccountProvider`
+  and `DiscordModule` — they need a live server, a real bot token and a DiscordSRV-linked account. The
+  manual checklist is Task 8 of `docs/superpowers/plans/2026-07-29-discord-adapter.md`, and it has
+  **not been run**. Everything else in the module is unit tested.
 
 ## Notification categories
 
@@ -283,7 +335,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
-- `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
+- `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord-dm` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
 
 `player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns) — it predates the `dataType` column (originally `category`) and has not been updated.
 
@@ -294,7 +346,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **68 tests in `:core:test`, 23 in `:api:test`, 17 in `:platform:paper-plugin:test`**, all passing.
+Current baseline: **68 tests in `:core:test`, 23 in `:api:test`, 17 in `:platform:paper-plugin:test`, 52 in `:platform:discord-adapter:test`** — 160 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -315,8 +367,18 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   never end-to-end by a real module through the real module class loader.
 - **Nothing calls `deliver(UUID)`.** `PlayerNotificationsPlugin` now constructs `NotificationDelivery` and exposes it via `notificationDelivery()`, but there is **no join listener** — no `Listener` is registered for it anywhere in `platform/` (the one `Listener` that does exist, `PreferenceQuitListener`, only drops staged preference-edit sessions). Wiring delivery to an actual trigger (player join, a command, a scheduled task) is the remaining bootstrap step.
 - **`ChatSink`, `DialogSink`, and the five preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
+- **The Discord adapter's end-to-end path has never been run.** `DiscordBot`, `JdaDiscordMessenger`,
+  `DiscordSrvAccountProvider` and `DiscordModule` compile and are wired, but JDA login, the DiscordSRV
+  lookup, module class loading through the shaded jar, and an actual DM landing have not been verified —
+  they need a real bot token and a DiscordSRV-linked account. Checklist: Task 8 of
+  `docs/superpowers/plans/2026-07-29-discord-adapter.md`.
+- **Discord account linking is DiscordSRV-only, and there is no in-game link flow.** A player with no
+  DiscordSRV link gets `UNSUPPORTED` from `discord-dm` forever. `DiscordAccountProvider` is the seam a
+  future own-link-table or `/notifications link` flow would slot into; the table would have to live in
+  `core` as a V2 migration, since `MariaSchemaMigrator` tracks one `schema_version` chain and
+  `MariaDatabase` registers mappers from a hardcoded list, so a module cannot own a migration today.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON; a plain message string must be JSON-encoded. String-payload processors therefore receive the JSON-encoded form — consider a `TEXT` column or decoding on the way out.
 - **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
 - **Rows for a category removed from `categories.yml` are kept, not pruned** — they resurface if the category is re-added, and are invisible in the dialogs meanwhile. No admin command prunes them.
-- Deferred to their own designs: the **Discord sink and account linking**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (`/notifications` covers preferences only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences).
+- Deferred to their own designs: **Discord account linking** (the sink itself now exists), a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (`/notifications` covers preferences only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences).

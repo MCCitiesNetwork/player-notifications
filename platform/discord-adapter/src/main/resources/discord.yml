@@ -1,0 +1,38 @@
+# PlayerNotifications — Discord adapter
+#
+# This module delivers notifications as Discord direct messages, under the medium key
+# "discord-dm". Once it is running, "Discord DM" appears automatically in /notifications.
+
+# The bot token for THIS module's own Discord bot.
+#
+# It cannot share DiscordSRV's bot: DiscordSRV relocates its bundled JDA, so its connection is not
+# usable from here. Create a bot at https://discord.com/developers/applications, invite it to a
+# guild the players are in (Discord refuses a DM between a bot and a user with no shared guild),
+# and paste its token below.
+#
+# The module refuses to start while this is empty, rather than registering a medium that can never
+# deliver.
+bot-token: ""
+
+# How a notification is rendered:
+#   embed    — an embed with a plain-text title and a markdown body (default)
+#   markdown — a single message: a bold title line, then the body
+#   plain    — a single message with no markdown at all
+# An unrecognised value falls back to "embed".
+message-format: embed
+
+# The embed's accent colour, used when a notification's title carries no colour of its own.
+# Accepts "#RRGGBB" or "RRGGBB"; anything unparseable falls back to Discord's blurple.
+embed-color: "#5865F2"
+
+# How long a single DM send may block before it counts as a transient failure. The notification is
+# retained and retried on the next delivery pass.
+delivery-timeout-seconds: 15
+
+# The account-link sources consulted, in order, to turn a player's UUID into a Discord user id.
+# The first source with a link wins; an unknown key is warned about and skipped.
+#
+# Shipped keys:
+#   discordsrv — legacy DiscordSRV 2.x's account link manager
+link-providers:
+  - discordsrv

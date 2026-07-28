@@ -5,6 +5,7 @@
 prune-interval-seconds: 3600
 
 # The media a player is assumed to prefer when they have not set any preference of their own.
-# Valid keys are whatever sinks are registered, e.g. "chat", "dialog", "essentials-mail", "discord".
+# Valid keys are whatever sinks are registered, e.g. "chat", "dialog", "essentials-mail",
+# "discord-dm" (the last only when the discord-adapter module is installed).
 default-media:
   - chat
