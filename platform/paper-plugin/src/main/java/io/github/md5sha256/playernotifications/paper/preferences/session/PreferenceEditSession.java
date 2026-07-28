@@ -1,0 +1,154 @@
+package io.github.md5sha256.playernotifications.paper.preferences.session;
+
+import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
+import org.jetbrains.annotations.NotNull;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+
+/**
+ * A player's in-progress edits to their category x medium preference matrix. Both preference dialogs
+ * (by delivery method, by notification type) mutate the same session, so the two pivots can never
+ * disagree, and nothing is written to the database until {@code Apply}.
+ *
+ * <p>Not thread-safe; callers (the dialog classes) only ever touch a session from the server main
+ * thread.
+ */
+public final class PreferenceEditSession {
+
+    private final UUID player;
+    private final Map<String, Set<String>> media;
+    private final Set<String> explicitAtLoad;
+    private final Set<String> fallbackMedia;
+    private final Set<String> dirtyCategories = new HashSet<>();
+    private final Set<String> resetCategories = new HashSet<>();
+    private Instant lastTouched;
+
+    /**
+     * @param initialEffectiveMedia the matrix as it would currently apply, per category (exact rows,
+     *                              else the {@code *} fallback, else the configured default)
+     * @param explicitAtLoad        the categories that had exact stored rows when this session was
+     *                              loaded, used by {@link #isUsingServerDefault(String)}
+     * @param fallbackMedia         the plain {@code *}/configured-default media, used to populate a
+     *                              category when it is reset
+     */
+    public PreferenceEditSession(@NotNull UUID player,
+                                 @NotNull Map<String, Set<String>> initialEffectiveMedia,
+                                 @NotNull Set<String> explicitAtLoad,
+                                 @NotNull Set<String> fallbackMedia,
+                                 @NotNull Instant now) {
+        this.player = player;
+        this.media = new HashMap<>();
+        for (Map.Entry<String, Set<String>> entry : initialEffectiveMedia.entrySet()) {
+            this.media.put(entry.getKey(), new TreeSet<>(entry.getValue()));
+        }
+        this.explicitAtLoad = Set.copyOf(explicitAtLoad);
+        this.fallbackMedia = Set.copyOf(fallbackMedia);
+        this.lastTouched = now;
+    }
+
+    @NotNull
+    public UUID player() {
+        return this.player;
+    }
+
+    @NotNull
+    public Set<String> mediaFor(@NotNull String category) {
+        return Set.copyOf(this.media.getOrDefault(category, Set.of()));
+    }
+
+    /**
+     * Overwrites one category's staged media, marking it dirty. An empty set stages a mute, not a
+     * fall-through to the server default — only {@link #resetCategory(String, Instant)} does that.
+     */
+    public void setCategoryMedia(@NotNull String category, @NotNull Set<String> newMedia, @NotNull Instant now) {
+        this.media.put(category, new TreeSet<>(newMedia));
+        this.dirtyCategories.add(category);
+        this.resetCategories.remove(category);
+        this.lastTouched = now;
+    }
+
+    /**
+     * Stages "use the server default" for one category: its staged media becomes the fallback media
+     * captured at load time, and it is written by clearing its rows on {@code Apply} rather than by
+     * writing the fallback media explicitly.
+     */
+    public void resetCategory(@NotNull String category, @NotNull Instant now) {
+        this.media.put(category, new TreeSet<>(this.fallbackMedia));
+        this.dirtyCategories.add(category);
+        this.resetCategories.add(category);
+        this.lastTouched = now;
+    }
+
+    /**
+     * Toggles a single medium within a single category — the operation the "by delivery method" editor
+     * performs on Save.
+     */
+    public void toggleCategoryMedium(@NotNull String category, @NotNull String medium, boolean enabled,
+                                     @NotNull Instant now) {
+        Set<String> current = new TreeSet<>(this.media.getOrDefault(category, Set.of()));
+        if (enabled) {
+            current.add(medium);
+        } else {
+            current.remove(medium);
+        }
+        setCategoryMedia(category, current, now);
+    }
+
+    public boolean isDirty() {
+        return !this.dirtyCategories.isEmpty();
+    }
+
+    public int dirtyCount() {
+        return this.dirtyCategories.size();
+    }
+
+    @NotNull
+    public Set<String> dirtyCategories() {
+        return Set.copyOf(this.dirtyCategories);
+    }
+
+    @NotNull
+    public Set<String> categoriesToReset() {
+        return Set.copyOf(this.resetCategories);
+    }
+
+    /**
+     * Dirty categories that are explicit selections rather than resets, keyed to the media that should
+     * be written wholesale. An empty selection is encoded as {@link NullSink#MEDIUM_KEY}.
+     */
+    @NotNull
+    public Map<String, Set<String>> explicitChanges() {
+        Map<String, Set<String>> result = new LinkedHashMap<>();
+        for (String category : this.dirtyCategories) {
+            if (!this.resetCategories.contains(category)) {
+                Set<String> selected = this.media.getOrDefault(category, Set.of());
+                result.put(category, selected.isEmpty() ? Set.of(NullSink.MEDIUM_KEY) : Set.copyOf(selected));
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    /**
+     * Whether the given category is currently showing the server default rather than an explicit
+     * choice — true if it was never explicitly configured and has not been touched, or if it has been
+     * staged for reset.
+     */
+    public boolean isUsingServerDefault(@NotNull String category) {
+        if (this.dirtyCategories.contains(category)) {
+            return this.resetCategories.contains(category);
+        }
+        return !this.explicitAtLoad.contains(category);
+    }
+
+    public boolean isExpired(@NotNull Instant now, @NotNull Duration idleTimeout) {
+        return Duration.between(this.lastTouched, now).compareTo(idleTimeout) > 0;
+    }
+}
