@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
+import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
@@ -25,6 +26,7 @@ public final class PreferenceDialogRouter {
     private final Plugin plugin;
     private final NotificationSinkRegistry sinkRegistry;
     private volatile NotificationCategories categories;
+    private final NotificationDataTypeRegistry dataTypeRegistry;
     private final DatabaseNotificationPreferences preferences;
     private final PreferenceSessionManager sessions;
 
@@ -37,10 +39,12 @@ public final class PreferenceDialogRouter {
     public PreferenceDialogRouter(@NotNull Plugin plugin,
                                   @NotNull NotificationSinkRegistry sinkRegistry,
                                   @NotNull NotificationCategories categories,
+                                  @NotNull NotificationDataTypeRegistry dataTypeRegistry,
                                   @NotNull DatabaseNotificationPreferences preferences) {
         this.plugin = plugin;
         this.sinkRegistry = sinkRegistry;
         this.categories = categories;
+        this.dataTypeRegistry = dataTypeRegistry;
         this.preferences = preferences;
         this.sessions = new PreferenceSessionManager();
         this.rootDialog = new PreferenceRootDialog(this);
@@ -65,6 +69,11 @@ public final class PreferenceDialogRouter {
         return this.categories;
     }
 
+    @NotNull
+    NotificationDataTypeRegistry dataTypeRegistry() {
+        return this.dataTypeRegistry;
+    }
+
     /**
      * Swaps in a freshly loaded {@link NotificationCategories}, e.g. after {@code categories.yml} is
      * reloaded. Sessions already staged with the old category set are left as-is — their category keys
@@ -80,17 +89,17 @@ public final class PreferenceDialogRouter {
     }
 
     public void openRoot(@NotNull Player player) {
-        PreferenceDialogs.withSession(this.plugin, this.sessions, this.categories, this.preferences,
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.dataTypeRegistry, this.preferences,
                 player, session -> this.rootDialog.show(player, new PreferenceEditSessionHandle(session)));
     }
 
     public void openMediaPicker(@NotNull Player player) {
-        PreferenceDialogs.withSession(this.plugin, this.sessions, this.categories, this.preferences,
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.dataTypeRegistry, this.preferences,
                 player, session -> this.mediumPickerDialog.show(player, session));
     }
 
     public void openCategoryPicker(@NotNull Player player) {
-        PreferenceDialogs.withSession(this.plugin, this.sessions, this.categories, this.preferences,
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.dataTypeRegistry, this.preferences,
                 player, session -> this.categoryPickerDialog.show(player, session));
     }
 
@@ -116,7 +125,7 @@ public final class PreferenceDialogRouter {
 
     void apply(@NotNull Player player, @NotNull PreferenceEditSession session) {
         Map<String, Set<String>> explicit = session.explicitChanges();
-        Set<String> resets = session.categoriesToReset();
+        Set<String> resets = session.dataTypesToReset();
         UUID uuid = player.getUniqueId();
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             try {
@@ -136,16 +145,16 @@ public final class PreferenceDialogRouter {
     }
 
     /**
-     * Immediately mutes every category for the player and discards any staged, unapplied session — the
-     * one deliberate asymmetry with the root screen's staged "Mute everything" button.
+     * Immediately mutes every known data type for the player and discards any staged, unapplied session
+     * — the one deliberate asymmetry with the root screen's staged "Mute everything" button.
      */
     public void muteImmediately(@NotNull Player player) {
         UUID uuid = player.getUniqueId();
         boolean hadSession = this.sessions.get(uuid).isPresent();
-        Set<String> categoryKeys = this.categories.categoryKeys();
+        Set<String> dataTypes = this.dataTypeRegistry.dataTypes();
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             try {
-                this.preferences.muteAll(uuid, categoryKeys);
+                this.preferences.muteAll(uuid, dataTypes);
             } catch (RuntimeException ex) {
                 this.plugin.getLogger().warning("Failed to mute notifications for " + uuid + ": " + ex.getMessage());
                 PreferenceDialogs.message(this.plugin, player, Component.text(

@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
+import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
@@ -16,6 +17,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,6 +77,31 @@ final class PreferenceDialogs {
         return List.copyOf(new TreeSet<>(categories.categoryKeys()));
     }
 
+    /**
+     * Every known data type, sorted by its primary category's label (see {@link #primaryCategoryFor})
+     * then by the data type itself, so the "by delivery method" editor's flat checkbox list reads as
+     * grouped by category even though the dialog API has no true section headers.
+     */
+    @NotNull
+    static List<String> sortedDataTypes(@NotNull NotificationCategories categories,
+                                        @NotNull NotificationDataTypeRegistry dataTypeRegistry) {
+        List<String> dataTypes = new ArrayList<>(dataTypeRegistry.dataTypes());
+        dataTypes.sort(Comparator
+                .comparing((String dataType) -> categories.label(primaryCategoryFor(categories, dataType)))
+                .thenComparing(Comparator.naturalOrder()));
+        return List.copyOf(dataTypes);
+    }
+
+    /**
+     * The category a data type is grouped under for display purposes when it's claimed by more than
+     * one — the alphabetically-first category key it resolves to. Deterministic, not meaningful beyond
+     * sorting/labeling.
+     */
+    @NotNull
+    static String primaryCategoryFor(@NotNull NotificationCategories categories, @NotNull String dataType) {
+        return new TreeSet<>(categories.resolve(dataType)).first();
+    }
+
     @NotNull
     static Component mediumLabel(@NotNull NotificationSinkRegistry sinkRegistry, @NotNull String medium) {
         return sinkRegistry.getSink(medium)
@@ -84,6 +112,16 @@ final class PreferenceDialogs {
     @NotNull
     static Component categoryLabel(@NotNull NotificationCategories categories, @NotNull String category) {
         return Component.text(categories.label(category));
+    }
+
+    /**
+     * A data type's row label in the "by delivery method" editor: its primary category's label,
+     * prefixed for readability, followed by the raw data type key.
+     */
+    @NotNull
+    static Component dataTypeLabel(@NotNull NotificationCategories categories, @NotNull String dataType) {
+        String category = primaryCategoryFor(categories, dataType);
+        return Component.text(categories.label(category) + ": " + dataType);
     }
 
     /**
@@ -104,7 +142,7 @@ final class PreferenceDialogs {
      */
     static void withSession(@NotNull Plugin plugin,
                             @NotNull PreferenceSessionManager sessions,
-                            @NotNull NotificationCategories categories,
+                            @NotNull NotificationDataTypeRegistry dataTypeRegistry,
                             @NotNull DatabaseNotificationPreferences preferences,
                             @NotNull Player player,
                             @NotNull Consumer<PreferenceEditSession> onLoaded) {
@@ -115,10 +153,10 @@ final class PreferenceDialogs {
             return;
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            Set<String> categoryKeys = categories.categoryKeys();
-            Map<String, Set<String>> effective = preferences.effectiveMediaByCategory(uuid, categoryKeys);
-            Set<String> explicitAtLoad = preferences.explicitlyConfiguredCategories(uuid, categoryKeys);
-            Set<String> fallback = preferences.preferredMedia(uuid, DatabaseNotificationPreferences.ALL_CATEGORIES_KEY);
+            Set<String> dataTypes = dataTypeRegistry.dataTypes();
+            Map<String, Set<String>> effective = preferences.effectiveMediaByDataType(uuid, dataTypes);
+            Set<String> explicitAtLoad = preferences.explicitlyConfiguredDataTypes(uuid, dataTypes);
+            Set<String> fallback = preferences.preferredMedia(uuid, DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY);
             PreferenceEditSession session = sessions.getOrCreate(uuid, () ->
                     new PreferenceEditSession(uuid, effective, explicitAtLoad, fallback, Instant.now()));
             Bukkit.getScheduler().runTask(plugin, () -> {
