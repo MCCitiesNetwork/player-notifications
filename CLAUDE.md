@@ -28,9 +28,10 @@ Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts`
   - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"essentials-mail"`, `"discord"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`.
   - `Notification` / `ResolvedNotification` — records for the persisted vs. target-resolved forms. `ResolvedNotification` holds a `NotificationTarget` (list of player UUIDs) and carries `notifPayloadType` (the registry data-type string) plus the `String` payload.
   - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or flagged for `DELETE`. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with DELETE-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
-  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String category)` overload — see "Notification categories"), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them. `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink`, `DialogSink`, and `NullSink` (the `"none"` medium backing an explicit mute — see "Player commands").
+  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink`, `DialogSink`, and `NullSink` (the `"none"` medium backing an explicit mute — see "Player commands").
+  - **`api.category`** package — `NotificationCategoryRegistry` (`DefaultNotificationCategoryRegistry` the in-memory impl) lets module authors declare categories and claim `dataType`s under them in code, exactly like payload types/processors/renderers/sinks are registered. Exposed via `NotificationService#categoryRegistry()`. Merged at read time with `categories.yml` by `core.category.NotificationCategories` — see "Notification categories".
   - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
-- **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop), `DatabaseNotificationPreferences` (the persisted, category-aware `NotificationPreferences` impl), `category.NotificationCategories` (see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
+- **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands and a `PreferenceQuitListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
 - **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
 
@@ -73,19 +74,18 @@ planned Discord sink) requires no change to any existing payload.
 - A payload author registers a `NotificationRenderer<T>` (payload → `RenderableNotification`) and never
   writes per-medium or preference-lookup logic.
 - A medium owner registers one `NotificationSink` in the `NotificationSinkRegistry`.
-- `RenderingProcessor<T>` — the **single** framework-supplied processor — resolves preferred media
-  (via `NotificationPreferences#preferredMedia(target, category)` when a category is known, otherwise
-  the category-agnostic `preferredMedia(target)`), renders once, and delivers to each preferred medium's
-  sink. A medium with no registered sink is logged at `fine` and skipped.
+- `RenderingProcessor<T>` — the **single** framework-supplied processor — resolves preferred media via
+  `NotificationPreferences#preferredMedia(target, dataType)`, passing the notification's `dataType`
+  directly (no category resolution in the dispatch path at all — see "Notification categories"), renders
+  once, and delivers to each preferred medium's sink. A medium with no registered sink is logged at
+  `fine` and skipped.
 
 **Dispatch precedence in `NotificationDelivery`:** an explicitly registered `NotificationProcessor`
 always wins (so `EssentialsMailProcessor` and other bespoke processors keep working unchanged —
-including bypassing categories); otherwise a registered `NotificationRenderer` dispatches through
-`RenderingProcessor`, with the notification's `notifPayloadType` resolved to a category via
-`NotificationCategories` when the delivery loop was built with one; otherwise the notification is logged
-and retained. `NotificationDelivery` has a 3-arg constructor (no rendering path), a 5-arg one (rendering,
-no category resolution), and a 6-arg one (rendering with category resolution) — all three delegate down
-to the same fields, so existing callers of the 3-/5-arg forms are unaffected by categories.
+including bypassing preferences entirely); otherwise a registered `NotificationRenderer` dispatches
+through `RenderingProcessor`, built with the notification's `notifPayloadType` as its `dataType`;
+otherwise the notification is logged and retained. `NotificationDelivery` has a 3-arg constructor (no
+rendering path) and a 5-arg one (rendering) — categories play no role in delivery.
 
 **Fan-out is DELETE-wins:** if any sink returns `DELIVERED`, the notification is consumed. Consequences,
 deliberate and documented in the design doc's "Known limitations":
@@ -109,25 +109,33 @@ read-and-dismiss.
 
 Design doc: `docs/superpowers/specs/2026-07-28-categorised-notification-preferences-design.md`.
 
-Preferences are resolved per **category**, a coarser grouping than a payload `dataType`, so a player can
-prefer `chat` for moderation notices but `discord` + `chat` for economy ones. Categories are
-**config-driven**, not registered in code: `categories.yml` maps `dataType → category` and gives each
-category a label/description, deserialized via Configurate into `core.category.NotificationCategoriesConfig`
-/ `NotificationCategoryDefinition`. `core.category.NotificationCategories` builds the resolved
-`dataType → category` map at construction (first category to claim a `dataType` wins; a collision is
-logged as a warning) and exposes `resolve(dataType)`, `categoryKeys()`, `label(key)`, `description(key)`,
-and `typesWithNoPayloadMapping(registry)` (checked once at startup, after modules load, to warn about a
-category referencing a `dataType` nothing registered).
+**Categories are a display/grouping concept only — preferences are stored and resolved per `dataType`,
+not per category.** A category is a coarser, player-facing grouping over one or more `dataType`s (e.g.
+"Economy" might group `mail` and `receipt`), used purely by the preference dialogs' "by notification
+type" pivot and its bulk fan-out; nothing in the delivery/dispatch path (`NotificationDelivery`,
+`RenderingProcessor`, `DatabaseNotificationPreferences`) touches categories at all.
 
-A `dataType` no category claims resolves to the reserved key `NotificationCategories.UNCATEGORIZED`
+Categories are **many-to-many** and come from two sources merged at read time: `categories.yml`
+(deserialized via Configurate into `core.category.NotificationCategoriesConfig` /
+`NotificationCategoryDefinition`) and the code-driven `api.category.NotificationCategoryRegistry` (module
+authors call `registerCategory`/`claimDataType` on the instance exposed via
+`NotificationService#categoryRegistry()`). `core.category.NotificationCategories` builds this merge at
+construction and exposes `resolve(dataType): Set<String>` (every category — config- and code-claimed —
+that claims the type; a `dataType` claimed by two categories resolves to both, no collision to resolve),
+`categoryKeys()`, `label(key)`, `description(key)`, `dataTypesForCategory(categoryKey, allKnownDataTypes)`
+(the complement for `UNCATEGORIZED`), and `typesWithNoPayloadMapping(registry)` (checked once at startup,
+after modules load, to warn about a category referencing a `dataType` nothing registered). A category-key
+collision (code and config both defining the same key) logs at `fine`; config's label/description wins.
+
+A `dataType` no category claims resolves to `Set.of(NotificationCategories.UNCATEGORIZED)`
 (`"uncategorized"`), which is always a real, selectable category — a newly installed module's
 notifications are configurable immediately, without an operator editing `categories.yml` first.
 
-`DatabaseNotificationPreferences` stores rows as `(playerUuid, category, medium)` and resolves
-`preferredMedia(player, category)` with this precedence: exact rows for `category`, else rows for the
-reserved key `DatabaseNotificationPreferences.ALL_CATEGORIES_KEY` (`"*"`, a blanket "applies to any
-category" fallback — nothing in the dialogs writes it directly), else `default-media` from
-`settings.yml`. The single-argument `preferredMedia(player)` is the same lookup against `"*"`.
+`DatabaseNotificationPreferences` stores rows as `(playerUuid, dataType, medium)` and resolves
+`preferredMedia(player, dataType)` with this precedence: exact rows for `dataType`, else rows for the
+reserved key `DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY` (`"*"`, a blanket "applies to any data
+type" fallback — nothing in the dialogs writes it directly), else `default-media` from `settings.yml`.
+The single-argument `preferredMedia(player)` is the same lookup against `"*"`.
 
 ## Player commands
 
@@ -138,7 +146,7 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   dialog.
 - `/notifications media` — jumps straight to the "by delivery method" picker.
 - `/notifications types` — jumps straight to the "by notification type" picker.
-- `/notifications mute` — mutes every category **immediately** (no staging).
+- `/notifications mute` — mutes every known `dataType` **immediately** (no staging).
 - `/notifications reset` — clears every stored preference **immediately** (no staging).
 - `/notifications reload` — reloads `categories.yml` and `settings.yml` without a restart. Admin-only
   (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
@@ -156,31 +164,43 @@ shared `PreferenceSessionManager` (`paper.preferences.session`):
 - `PreferenceRootDialog` — pick a pivot ("By delivery method" / "By notification type"), or stage
   "Mute everything" / "Reset all to server default"; shows Apply / Discard only while the session is
   dirty.
-- `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **category**
-  ("which notifications reach me on Discord").
+- `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
+  (grouped/labeled by its primary category for readability — see `PreferenceDialogs.sortedDataTypes`/
+  `dataTypeLabel`), e.g. "which notifications reach me on Discord".
 - `CategoryPickerDialog` → `CategoryEditorDialog` — pick a category, then one checkbox per **medium**
-  plus "use server default" ("where does Economy reach me").
+  plus "use server default"; each medium's checkbox fans out to every `dataType` the category claims
+  (`NotificationCategories#dataTypesForCategory`), and shows "(mixed)" when the category's member
+  `dataType`s currently disagree on that medium.
 
-Both editors mutate the same `paper.preferences.session.PreferenceEditSession`, so the two pivots can
-never disagree. Editor "Save" writes only into the session; nothing is persisted until the root
-screen's **Apply**, which writes every dirty category in one transaction
-(`DatabaseNotificationPreferences.applyChanges`). A category emptied to nothing — from either editor —
+Both editors mutate the same `paper.preferences.session.PreferenceEditSession`, keyed by `dataType` (not
+category), so the two pivots can never disagree. Editor "Save" writes only into the session; nothing is
+persisted until the root screen's **Apply**, which writes every dirty `dataType` in one transaction
+(`DatabaseNotificationPreferences.applyChanges`). A `dataType` emptied to nothing — from either editor —
 stages a mute (`{"none"}`), never a silent fall-through to the server default; only the explicit "use
-server default" action stages a reset (`DatabaseNotificationPreferences.resetCategory` equivalent,
-clearing that category's rows on Apply).
+server default" action stages a reset (`DatabaseNotificationPreferences.resetDataType` equivalent,
+clearing that `dataType`'s rows on Apply). In `CategoryEditorDialog`, pressing Save always writes every
+member `dataType`'s state for every medium shown, even ones the player didn't touch — opening a category
+editor and pressing Save with no changes still marks every member `dataType` dirty and, on Apply,
+converts them from "server default" to an explicit row matching whatever was already displayed.
 
-**Three preference states per category**, expressible per-category via the category editor:
+**Three preference states per `dataType`**, expressible per-`dataType` via the medium editor or (fanned
+out) via the category editor:
 
-| State | Storage | `preferredMedia(player, category)` returns |
+| State | Storage | `preferredMedia(player, dataType)` returns |
 |---|---|---|
-| Unconfigured | no exact rows for that category | `*` rows, else `default-media` from `settings.yml` |
-| Explicit selection | one row per medium for that category | that set |
-| Explicit mute | a single `medium = 'none'` row for that category | `{none}` |
+| Unconfigured | no exact rows for that `dataType` | `*` rows, else `default-media` from `settings.yml` |
+| Explicit selection | one row per medium for that `dataType` | that set |
+| Explicit mute | a single `medium = 'none'` row for that `dataType` | `{none}` |
 
-`NullSink` is registered for `"none"` and returns `DELIVERED`, so a muted category's notifications are
+`NullSink` is registered for `"none"` and returns `DELIVERED`, so a muted `dataType`'s notifications are
 **consumed** rather than accumulating until expiry — a mute means "do not tell me", not "queue this for
 later". `NullSink` is excluded from every checkbox list, since checking nothing already says the same
-thing.
+thing. **Known gap:** `/notifications mute` and the root dialog's "Mute everything" iterate
+`NotificationDataTypeRegistry#dataTypes()` and write one `{none}` row per currently-known `dataType` —
+they do **not** write a blanket `ALL_DATA_TYPES_KEY` (`"*"`) row, so (a) on a server with zero registered
+payload mappings, mute silently writes nothing while still reporting success, and (b) a `dataType`
+registered by a module installed *after* a player last muted is not covered and falls through to
+`default-media`.
 
 Implementation notes:
 - `PreferenceSessionManager` expires a session after 15 minutes idle (`IDLE_TIMEOUT`) and
@@ -197,18 +217,24 @@ Implementation notes:
 - Button callbacks use `ClickCallback.Options` with `uses(1)` and a one-hour lifetime; a dialog left
   open past that has inert buttons and must be reopened.
 - **Known quirk:** an explicitly registered `NotificationProcessor` wins the dispatch-precedence rule and
-  bypasses preferences (and therefore categories) entirely, so a muted player still receives
-  `EssentialsMailProcessor` mail. Pre-existing; fixing it means converting those processors into sinks.
+  bypasses preferences entirely (categories were never part of the dispatch path, even before this quirk
+  existed), so a muted player still receives `EssentialsMailProcessor` mail. Pre-existing; fixing it
+  means converting those processors into sinks.
 - The five dialog classes and the router are **unverified by automated tests** — they need a live
   server. Check them by hand with `:platform:paper-plugin:runServer`.
-- `PlayerNotificationsPlugin.reload()` swaps the reloaded `NotificationCategories` into a freshly
-  constructed `NotificationDelivery` and into `PreferenceDialogRouter` (via
+- `PlayerNotificationsPlugin.onEnable()` builds `NotificationCategories` twice: once from config only
+  (to unblock `registerCommands()`, which constructs `PreferenceDialogRouter` before feature modules have
+  registered any code-side category claims), then rebuilds it after `startModules()` and swaps it into
+  `PreferenceDialogRouter` via `reloadCategories` — the same mechanism `/notifications reload` uses.
+  `PlayerNotificationsPlugin.reload()` swaps the reloaded `NotificationCategories` into a freshly
+  constructed `NotificationDelivery` (`NotificationDelivery` no longer takes a `NotificationCategories`
+  argument at all — it dispatches directly on `dataType`) and into `PreferenceDialogRouter` (via
   `PreferenceDialogRouter.reloadCategories`, a mutable field rather than a final one), and swaps the
   reloaded `default-media` into `DatabaseNotificationPreferences` (via `reloadDefaultMedia`, a `volatile`
   field) — both without reconstructing objects other code already holds references to. A player with an
-  already-open, staged `PreferenceEditSession` keeps editing against whatever category set was in effect
-  when the session was loaded; its category keys are still valid strings to write on Apply even if the
-  reload renamed or removed one, matching how a category removed from config is already handled
+  already-open, staged `PreferenceEditSession` keeps editing against whatever `dataType` set was known
+  when the session was loaded; its `dataType` keys are still valid strings to write on Apply even if the
+  reload renamed or removed a category, matching how a category removed from config is already handled
   elsewhere (see "Current state"). The prune task is cancelled and rescheduled if
   `prune-interval-seconds` changed.
 
@@ -237,9 +263,9 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
-- `PlayerNotificationPreference(playerUuid BINARY(16), category VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, category, medium))` — one row per preferred medium **per category**, so a player's preference is set-valued within each category (`chat` + `discord` for `economy` is two rows). See "Notification categories" for how `category` and the reserved keys `*`/`uncategorized` resolve.
+- `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
 
-`player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns) — it predates the `category` column and has not been updated.
+`player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns) — it predates the `dataType` column (originally `category`) and has not been updated.
 
 ## Testing gotchas
 
@@ -248,18 +274,27 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **63 tests in `:core:test`, 13 in `:api:test`, 17 in `:platform:paper-plugin:test`**, all passing.
+Current baseline: **67 tests in `:core:test`, 23 in `:api:test`, 17 in `:platform:paper-plugin:test`**, all passing.
 
 ## Current state
 
 The project builds end-to-end; `:core:test`, `:api:test`, and `:platform:paper-plugin:test` pass. The
 enqueue → deliver path is complete: `enqueueNotification` persists the notification's `notifPayloadType`;
 `NotificationDelivery.deliver(UUID[, Instant])` resolves a player's due notifications, decodes each
-payload through its registered `PayloadSerializer`, resolves a category via `NotificationCategories` when
-one was supplied, dispatches by the precedence rule above, and prunes targets whose processor returns
+payload through its registered `PayloadSerializer`, dispatches by the precedence rule above (directly on
+`dataType`, no category resolution), and prunes targets whose processor returns
 `NotificationDisposition.DELETE` (the trigger then removes notifications with no remaining targets).
-Preferences are now categorised end-to-end: storage, dispatch, and the player-facing dialogs (root,
-by-medium, by-category) all agree on the same category axis. Known gaps / notes:
+Preferences are stored and resolved per `dataType` end-to-end: storage, dispatch, and the player-facing
+dialogs (root, by-medium, by-category) all agree on the same `dataType` axis, with categories layered on
+top purely as a player-facing display/grouping concept (a `NotificationCategoryRegistry` for code-driven
+claims, merged with `categories.yml` by `NotificationCategories`, many-to-many). Known gaps / notes:
+- **`NotificationCategoryRegistry` has no in-tree consumer yet.** `platform:essentials-adapter` does not
+  call `claimDataType`/`registerCategory` for `essentials-mail`, so the code-registry half of the
+  category system (and the two-pass rebuild-after-`startModules()` ordering in
+  `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
+  never end-to-end by a real module through the real module class loader.
+- **Bulk mute doesn't cover `dataType`s registered later, and can silently no-op.** See the "Known gap"
+  note under "Player commands".
 - **Nothing calls `deliver(UUID)`.** `PlayerNotificationsPlugin` now constructs `NotificationDelivery` and exposes it via `notificationDelivery()`, but there is **no join listener** — no `Listener` is registered for it anywhere in `platform/` (the one `Listener` that does exist, `PreferenceQuitListener`, only drops staged preference-edit sessions). Wiring delivery to an actual trigger (player join, a command, a scheduled task) is the remaining bootstrap step.
 - **`ChatSink`, `DialogSink`, and the five preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON; a plain message string must be JSON-encoded. String-payload processors therefore receive the JSON-encoded form — consider a `TEXT` column or decoding on the way out.
