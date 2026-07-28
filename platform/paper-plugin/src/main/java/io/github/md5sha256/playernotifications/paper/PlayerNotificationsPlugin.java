@@ -91,8 +91,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     }
 
     /**
-     * Resolves a registered {@code dataType} to its player-facing category, as declared in
-     * {@code categories.yml}.
+     * Resolves a registered {@code dataType} to every player-facing category (config- and
+     * code-claimed) that claims it.
      */
     @NotNull
     public NotificationCategories categories() {
@@ -103,17 +103,14 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     public void onEnable() {
         DatabaseSettings databaseSettings;
         PluginSettings pluginSettings;
-        NotificationCategories categories;
         try {
             databaseSettings = loadDatabaseSettings();
             pluginSettings = loadPluginSettings();
-            categories = loadCategories();
         } catch (IOException ex) {
             getLogger().log(Level.SEVERE, "Failed to load configuration; disabling plugin.", ex);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        this.categories = categories;
 
         MariaDatabase mariaDatabase = new MariaDatabase(databaseSettings, getLogger());
         this.database = mariaDatabase;
@@ -135,6 +132,14 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 ServicePriority.Normal
         );
 
+        try {
+            this.categories = loadCategories();
+        } catch (IOException ex) {
+            getLogger().log(Level.SEVERE, "Failed to load categories.yml; disabling plugin.", ex);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         this.sinkRegistry = new NotificationSinkRegistry();
         this.sinkRegistry.registerSink(new ChatSink(this));
         this.sinkRegistry.registerSink(new DialogSink(this));
@@ -147,15 +152,24 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.notificationService.dataTypeRegistry(),
                 this.sinkRegistry,
                 this.preferences,
-                this.categories,
                 getLogger()
         );
 
         registerCommands();
         schedulePruneTask(pluginSettings.pruneIntervalSeconds());
 
-        // Start modules last so they can look up the registered NotificationService.
+        // Start modules last so they can look up the registered NotificationService and register their
+        // own category claims against it.
         startModules();
+
+        // Rebuild the merged categories now that modules have had a chance to register, and swap the
+        // rebuilt view into the dialog router — the same mechanism /notifications reload uses.
+        try {
+            this.categories = loadCategories();
+            this.preferenceDialogRouter.reloadCategories(this.categories);
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING, "Failed to rebuild categories after module startup.", ex);
+        }
         warnAboutUnmappedCategoryTypes();
         getLogger().info("PlayerNotifications enabled");
     }
@@ -182,7 +196,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     @SuppressWarnings("UnstableApiUsage")
     private void registerCommands() {
         this.preferenceDialogRouter = new PreferenceDialogRouter(
-                this, this.sinkRegistry, this.categories, this.preferences);
+                this, this.sinkRegistry, this.categories, this.notificationService.dataTypeRegistry(),
+                this.preferences);
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
@@ -222,7 +237,6 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.notificationService.dataTypeRegistry(),
                 this.sinkRegistry,
                 this.preferences,
-                this.categories,
                 getLogger()
         );
         this.preferences.reloadDefaultMedia(newSettings.defaultMedia());
@@ -337,7 +351,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         if (config == null) {
             throw new IOException("categories.yml could not be deserialized into NotificationCategoriesConfig");
         }
-        return new NotificationCategories(config, getLogger());
+        return new NotificationCategories(config, this.notificationService.categoryRegistry(), getLogger());
     }
 
     /**
