@@ -136,13 +136,18 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
 
     /**
      * Immediately mutes every given data type for the player in one transaction, storing an explicit
-     * {@code none} row for each. Used by {@code /notifications mute}.
+     * {@code none} row for each, plus an unconditional {@link #ALL_DATA_TYPES_KEY} blanket row so the
+     * mute also covers any data type not in {@code dataTypes} — including one registered by a module
+     * installed after this call, and the degenerate case of an empty {@code dataTypes} (no registered
+     * payload mappings), which would otherwise write nothing and silently no-op. Used by
+     * {@code /notifications mute}.
      */
     public void muteAll(@NotNull UUID player, @NotNull Set<String> dataTypes) {
         Map<String, Set<String>> mutes = new LinkedHashMap<>();
         for (String dataType : dataTypes) {
             mutes.put(dataType, Set.of(NullSink.MEDIUM_KEY));
         }
+        mutes.put(ALL_DATA_TYPES_KEY, Set.of(NullSink.MEDIUM_KEY));
         applyChanges(player, mutes, Set.of());
     }
 

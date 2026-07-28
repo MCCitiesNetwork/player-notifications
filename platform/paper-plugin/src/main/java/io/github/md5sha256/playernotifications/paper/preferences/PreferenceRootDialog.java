@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
+import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.DialogBase;
@@ -57,6 +58,7 @@ final class PreferenceRootDialog {
                     for (String dataType : this.router.dataTypeRegistry().dataTypes()) {
                         session.setDataTypeMedia(dataType, Set.of(), now);
                     }
+                    session.setDataTypeMedia(DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, Set.of(), now);
                     show(player, handle);
                 }, PreferenceDialogs.callbackOptions()))
                 .build());
