@@ -3,7 +3,7 @@ package io.github.md5sha256.playernotifications.paper.command;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
-import io.github.md5sha256.playernotifications.paper.preferences.NotificationPreferencesDialog;
+import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.Component;
@@ -12,10 +12,13 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.function.Consumer;
+
 /**
- * The player-facing {@code /notifications} command. Opens the notification preferences dialog; the bare
- * root and the explicit {@code preferences} literal do the same thing, the literal existing so future
- * subcommands can be added without changing what players already type.
+ * The player-facing {@code /notifications} command. The bare root and {@code preferences} open the
+ * staged root dialog; {@code media}/{@code types} jump straight to the corresponding picker on the same
+ * session; {@code mute}/{@code reset} write immediately and discard any open session, unlike their
+ * staged root-screen equivalents.
  *
  * <p>Registered through Paper's Brigadier API rather than a {@code commands:} block, because this plugin
  * ships a {@code paper-plugin.yml}, which has no such block.
@@ -33,24 +36,25 @@ public final class NotificationsCommand {
     }
 
     @NotNull
-    public static LiteralCommandNode<CommandSourceStack> create(
-            @NotNull NotificationPreferencesDialog dialog) {
+    public static LiteralCommandNode<CommandSourceStack> create(@NotNull PreferenceDialogRouter router) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
-                .executes(context -> openPreferences(context, dialog))
-                .then(Commands.literal("preferences")
-                        .executes(context -> openPreferences(context, dialog)))
+                .executes(context -> run(context, router::openRoot))
+                .then(Commands.literal("preferences").executes(context -> run(context, router::openRoot)))
+                .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))
+                .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
+                .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
+                .then(Commands.literal("reset").executes(context -> run(context, router::resetImmediately)))
                 .build();
     }
 
-    private static int openPreferences(@NotNull CommandContext<CommandSourceStack> context,
-                                       @NotNull NotificationPreferencesDialog dialog) {
+    private static int run(@NotNull CommandContext<CommandSourceStack> context, @NotNull Consumer<Player> action) {
         CommandSender sender = context.getSource().getSender();
         if (!(sender instanceof Player player)) {
             sender.sendMessage(PLAYERS_ONLY);
             return 0;
         }
-        dialog.open(player);
+        action.accept(player);
         return Command.SINGLE_SUCCESS;
     }
 }

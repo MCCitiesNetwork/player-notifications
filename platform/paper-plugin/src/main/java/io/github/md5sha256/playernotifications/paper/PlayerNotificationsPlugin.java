@@ -6,7 +6,8 @@ import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
 import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
-import io.github.md5sha256.playernotifications.paper.preferences.NotificationPreferencesDialog;
+import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
+import io.github.md5sha256.playernotifications.paper.preferences.PreferenceQuitListener;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
@@ -49,6 +50,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
+    private PreferenceDialogRouter preferenceDialogRouter;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
     @NotNull
@@ -174,11 +176,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      */
     @SuppressWarnings("UnstableApiUsage")
     private void registerCommands() {
-        NotificationPreferencesDialog dialog =
-                new NotificationPreferencesDialog(this, this.sinkRegistry, this.preferences);
+        this.preferenceDialogRouter = new PreferenceDialogRouter(
+                this, this.sinkRegistry, this.categories, this.preferences);
+        getServer().getPluginManager().registerEvents(
+                new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(
-                        NotificationsCommand.create(dialog),
+                        NotificationsCommand.create(this.preferenceDialogRouter),
                         NotificationsCommand.DESCRIPTION,
                         List.of("notifs")
                 ));
@@ -239,6 +243,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.preferences = null;
         this.notificationDelivery = null;
         this.categories = null;
+        this.preferenceDialogRouter = null;
         if (this.database != null) {
             try {
                 this.database.close();
