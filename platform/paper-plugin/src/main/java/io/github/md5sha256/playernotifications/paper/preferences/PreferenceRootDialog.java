@@ -54,8 +54,8 @@ final class PreferenceRootDialog {
         buttons.add(ActionButton.builder(MUTE_ALL_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
                     Instant now = Instant.now();
-                    for (String category : this.router.categories().categoryKeys()) {
-                        session.setCategoryMedia(category, Set.of(), now);
+                    for (String dataType : this.router.dataTypeRegistry().dataTypes()) {
+                        session.setDataTypeMedia(dataType, Set.of(), now);
                     }
                     show(player, handle);
                 }, PreferenceDialogs.callbackOptions()))
@@ -63,8 +63,8 @@ final class PreferenceRootDialog {
         buttons.add(ActionButton.builder(RESET_ALL_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
                     Instant now = Instant.now();
-                    for (String category : this.router.categories().categoryKeys()) {
-                        session.resetCategory(category, now);
+                    for (String dataType : this.router.dataTypeRegistry().dataTypes()) {
+                        session.resetDataType(dataType, now);
                     }
                     show(player, handle);
                 }, PreferenceDialogs.callbackOptions()))

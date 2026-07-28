@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
+import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -46,10 +48,42 @@ class PreferenceDialogsTest {
 
     @Test
     void sortedCategoryKeysIncludesUncategorizedAndSorts() {
+        NotificationCategoryRegistry registry = new NotificationCategoryRegistry() {
+            @Override
+            public void registerCategory(String categoryKey, String label, String description) {}
+
+            @Override
+            public void claimDataType(String categoryKey, String dataType) {}
+
+            @Override
+            public void unclaimDataType(String categoryKey, String dataType) {}
+
+            @Override
+            public Set<String> categoryKeys() {
+                return Set.of();
+            }
+
+            @Override
+            public Set<String> dataTypesFor(String categoryKey) {
+                return Set.of();
+            }
+
+            @Override
+            public String label(String categoryKey) {
+                return "";
+            }
+
+            @Override
+            public String description(String categoryKey) {
+                return "";
+            }
+        };
+
         NotificationCategories categories = new NotificationCategories(
                 new NotificationCategoriesConfig("Other", Map.of(
                         "moderation", new NotificationCategoryDefinition("Moderation", "desc", List.of("warning")),
                         "economy", new NotificationCategoryDefinition("Economy", "desc", List.of("mail")))),
+                registry,
                 Logger.getLogger("test"));
 
         List<String> sorted = PreferenceDialogs.sortedCategoryKeys(categories);
