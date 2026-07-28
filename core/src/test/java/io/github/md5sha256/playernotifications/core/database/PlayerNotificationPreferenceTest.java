@@ -109,7 +109,7 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
     class DatabaseNotificationPreferencesTests {
 
         @Test
-        @DisplayName("a player with no rows falls back to the configured default media, for any category")
+        @DisplayName("a player with no rows falls back to the configured default media, for any data type")
         void fallsBackToDefault() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
@@ -119,12 +119,12 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
         }
 
         @Test
-        @DisplayName("an exact category row wins over the '*' fallback and the configured default")
-        void exactCategoryWinsOverFallbackAndDefault() {
+        @DisplayName("an exact data type row wins over the '*' fallback and the configured default")
+        void exactDataTypeWinsOverFallbackAndDefault() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
             preferences.applyChanges(PLAYER_A, Map.of(
-                    DatabaseNotificationPreferences.ALL_CATEGORIES_KEY, Set.of("dialog"),
+                    DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, Set.of("dialog"),
                     "economy", Set.of("discord")), Set.of());
 
             Assertions.assertEquals(Set.of("discord"), preferences.preferredMedia(PLAYER_A, "economy"));
@@ -133,13 +133,13 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
         }
 
         @Test
-        @DisplayName("effectiveMediaByCategory resolves every requested category in one call")
-        void effectiveMediaByCategoryResolvesEachCategory() {
+        @DisplayName("effectiveMediaByDataType resolves every requested data type in one call")
+        void effectiveMediaByDataTypeResolvesEachDataType() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
             preferences.applyChanges(PLAYER_A, Map.of("economy", Set.of("discord")), Set.of());
 
-            Map<String, Set<String>> effective = preferences.effectiveMediaByCategory(
+            Map<String, Set<String>> effective = preferences.effectiveMediaByDataType(
                     PLAYER_A, Set.of("economy", "moderation"));
 
             Assertions.assertEquals(Set.of("discord"), effective.get("economy"));
@@ -147,20 +147,20 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
         }
 
         @Test
-        @DisplayName("explicitlyConfiguredCategories reports only categories with exact stored rows")
-        void explicitlyConfiguredCategoriesReportsExactRowsOnly() {
+        @DisplayName("explicitlyConfiguredDataTypes reports only data types with exact stored rows")
+        void explicitlyConfiguredDataTypesReportsExactRowsOnly() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
             preferences.applyChanges(PLAYER_A, Map.of("economy", Set.of("discord")), Set.of());
 
-            Set<String> configured = preferences.explicitlyConfiguredCategories(
+            Set<String> configured = preferences.explicitlyConfiguredDataTypes(
                     PLAYER_A, Set.of("economy", "moderation"));
 
             Assertions.assertEquals(Set.of("economy"), configured);
         }
 
         @Test
-        @DisplayName("applyChanges resets given categories and writes explicit media in one transaction")
+        @DisplayName("applyChanges resets given data types and writes explicit media in one transaction")
         void applyChangesResetsAndWritesTogether() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
@@ -171,13 +171,13 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
 
             Assertions.assertEquals(Set.of("chat"), preferences.preferredMedia(PLAYER_A, "economy"));
             Assertions.assertEquals(Set.of("chat"), preferences.preferredMedia(PLAYER_A, "moderation"));
-            Assertions.assertEquals(Set.of(), preferences.explicitlyConfiguredCategories(
+            Assertions.assertEquals(Set.of(), preferences.explicitlyConfiguredDataTypes(
                     PLAYER_A, Set.of("moderation")));
         }
 
         @Test
-        @DisplayName("muteAll stores an explicit 'none' row for every given category")
-        void muteAllMutesEveryCategory() {
+        @DisplayName("muteAll stores an explicit 'none' row for every given data type")
+        void muteAllMutesEveryDataType() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
 
@@ -188,8 +188,8 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
         }
 
         @Test
-        @DisplayName("resetAll clears every row for the player across all categories")
-        void resetAllClearsEveryCategory() {
+        @DisplayName("resetAll clears every row for the player across all data types")
+        void resetAllClearsEveryDataType() {
             DatabaseNotificationPreferences preferences =
                     new DatabaseNotificationPreferences(database, Set.of("chat"));
             preferences.applyChanges(PLAYER_A, Map.of("economy", Set.of("discord")), Set.of());
