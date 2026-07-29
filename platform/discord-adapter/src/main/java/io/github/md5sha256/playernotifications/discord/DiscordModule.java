@@ -24,7 +24,7 @@ import java.util.logging.Logger;
 public final class DiscordModule implements PluginModule<PlayerNotificationsPlugin> {
 
     /** Where this module's config lives, relative to the host's data folder. */
-    private static final String CONFIG_PATH = "modules/discord.yml";
+    private static final String CONFIG_PATH = "modules/discord/discord.yml";
     private static final String CONFIG_RESOURCE = "discord.yml";
 
     private DiscordBot bot;

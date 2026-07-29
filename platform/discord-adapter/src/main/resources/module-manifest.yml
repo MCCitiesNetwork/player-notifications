@@ -1,6 +1,8 @@
 # Manifest for the PlayerNotifications Discord adapter module.
-moduleName: discord-adapter
-entryClass: io.github.md5sha256.playernotifications.discord.DiscordModule
+# Keys are kebab-case: Configurate's ObjectMapper maps record components with
+# NamingSchemes.LOWER_CASE_DASHED, so `moduleName` reads the key `module-name`.
+module-name: discord-adapter
+entry-class: io.github.md5sha256.playernotifications.discord.DiscordModule
 author: md5sha256
-expectedPluginClass: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
+expected-plugin-class: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
 reloadable: false

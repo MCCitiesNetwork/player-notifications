@@ -21,3 +21,26 @@ dependencies {
     // testRuntimeOnly (see "Testing gotchas" in CLAUDE.md).
     testImplementation(project(":platform:paper-plugin"))
 }
+
+// Feature modules are not classpath entries: the host loads them from <dataFolder>/modules/ through
+// `new URLClassLoader(jarUrl, hostClassLoader)`, and the Discord adapter's relocation strategy depends
+// on that isolation. So every adapter publishes its jar as a plain file artifact, which the host's
+// `installFeatureModules` task syncs into the runServer data folder.
+val moduleJar: Configuration by configurations.creating {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+}
+
+artifacts {
+    add(moduleJar.name, tasks.named<Jar>("jar"))
+}
+
+// An adapter that shades (discord-adapter bundles its own relocated JDA) must ship the `-all` jar —
+// its plain jar contains no JDA at all. Applied lazily because the adapter's build script applies
+// shadow *after* this convention.
+plugins.withId("com.gradleup.shadow") {
+    moduleJar.outgoing.artifacts.clear()
+    artifacts {
+        add(moduleJar.name, tasks.named<Jar>("shadowJar"))
+    }
+}
