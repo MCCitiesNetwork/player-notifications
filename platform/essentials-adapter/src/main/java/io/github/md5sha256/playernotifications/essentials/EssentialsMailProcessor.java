@@ -17,7 +17,7 @@ import java.util.UUID;
  * <p>The Essentials mail API is not thread-safe, so delivery is marshalled onto the server main
  * thread when this processor is invoked from elsewhere.
  */
-final class EssentialsMailProcessor implements NotificationProcessor<String> {
+final class EssentialsMailProcessor implements NotificationProcessor<EssentialsMailPayload> {
 
     private final Plugin plugin;
     private final IEssentials essentials;
@@ -28,11 +28,13 @@ final class EssentialsMailProcessor implements NotificationProcessor<String> {
     }
 
     @Override
-    public @NotNull NotificationDisposition receiveNotification(@NotNull String payload, @NotNull UUID target) {
+    public @NotNull NotificationDisposition receiveNotification(@NotNull EssentialsMailPayload payload,
+                                                                @NotNull UUID target) {
+        String message = payload.message();
         if (Bukkit.isPrimaryThread()) {
-            deliver(payload, target);
+            deliver(message, target);
         } else {
-            Bukkit.getScheduler().runTask(this.plugin, () -> deliver(payload, target));
+            Bukkit.getScheduler().runTask(this.plugin, () -> deliver(message, target));
         }
         // The mail has been dispatched, so the notification has been consumed and can be removed.
         return NotificationDisposition.DELETE;

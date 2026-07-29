@@ -1,6 +1,5 @@
 package io.github.md5sha256.playernotifications.essentials;
 
-import com.earth2me.essentials.Essentials;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
 import net.democracrycraft.pluginInfrastructure.modules.ModuleInitializationException;
@@ -27,16 +26,10 @@ public final class EssentialsMailModule implements PluginModule<PlayerNotificati
             throw new ModuleInitializationException(
                     "EssentialsX is not installed; cannot enable notifications module");
         }
-        Essentials essentials = (Essentials) plugin.getServer()
-                .getPluginManager()
-                .getPlugin("Essentials");
-
-        assert essentials != null;
-
-        NotificationService service = plugin.notificationService();
-        EssentialsMailProcessor processor = new EssentialsMailProcessor(plugin, essentials);
-        service.dataTypeRegistry().registerPayloadMapping(MAIL_DATA_TYPE, String.class);
-        service.dataTypeRegistry().registerProcessor(String.class, processor);
+        // Every EssentialsX-typed reference lives in EssentialsMailBinding, so this method verifies
+        // without loading a single EssentialsX class and the guard above is actually reachable. See
+        // that class for why touching them here would take the whole host plugin down.
+        EssentialsMailBinding.register(plugin);
         plugin.getLogger()
                 .info("Essentials mail adapter registered for data type '" + MAIL_DATA_TYPE + "'");
     }
