@@ -39,7 +39,8 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 - `./gradlew test` — run all tests (JUnit 5 / Jupiter).
 - `./gradlew :core:test` — run the `core` persistence tests. **These require a running Docker daemon** — they spin up a real `mariadb:11.7` container via Testcontainers.
 - `./gradlew :core:test --tests "io.github.md5sha256.playernotifications.*SomeTest"` — run a single test class/method.
-- `./gradlew :platform:paper-plugin:runServer` — launch a real Paper 1.21.8 test server with the plugin loaded (via the `xyz.jpenilla.run-paper` plugin). Server files go under `platform/paper-plugin/run/`. Needs a reachable MariaDB (see `database.yml`).
+- `./gradlew :platform:paper-plugin:runServer` — launch a real Paper 1.21.8 test server with the plugin loaded (via the `xyz.jpenilla.run-paper` plugin). Server files go under `platform/paper-plugin/run/`. Needs a reachable MariaDB (see `database.yml`). It `dependsOn` `installFeatureModules`, so every feature module is built and installed first, and its `downloadPlugins` block fetches DiscordSRV `v1.30.5` from GitHub (the discord adapter's link source — without it `DiscordSrvAccountProvider` reports itself unavailable and the adapter cannot be exercised end to end).
+- `./gradlew :platform:paper-plugin:installFeatureModules` — `Sync` the feature-module jars into the runServer data folder's `run/plugins/PlayerNotifications/modules/`. Modules are **not** classpath entries (the host loads them through their own `URLClassLoader`), so they are installed as files, not added to the server classpath. Adding a new adapter means adding one `featureModules(project(path = ":platform:<name>", configuration = "moduleJar"))` line to `platform/paper-plugin/build.gradle.kts`. The `Sync` owns only the top-level `*.jar` files — everything else in that directory is preserved at any depth (`preserve { include("**"); exclude("*.jar") }`), so module configs written at runtime survive, whether they are loose files (`discord.yml`, holding the bot token) or a module's own config subdirectory.
 
 ## Module architecture
 
@@ -56,14 +57,14 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
   - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands and a `PreferenceQuitListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
-- **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
+- **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type, via `registerJsonPayload` against its own `EssentialsMailPayload` record. It deliberately does **not** map to `String.class`: the registry keys handlers by payload class, so a shared class means a shared processor/serializer/renderer, and `unregisterPayloadMapping`'s cascade would tear out the host's shared `String` serializer on module unload. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
 - **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
 
 ### Build conventions
 
 `buildSrc/src/main/kotlin/` holds precompiled convention plugins:
 - `player-notifications-conventions` — Java 21 toolchain, UTF-8, JUnit 5, and the Paper / mavenLocal / mavenCentral repos. Applied by every module.
-- `paper-adapter` — for feature-module projects. Applies the base conventions, adds `compileOnly(project(":platform:paper-plugin"))` (so adapters compile against the host but never bundle it — the module class loader resolves host classes at runtime) **plus `testImplementation` on the same project** (`compileOnly` reaches neither `compileTestJava` nor the test runtime, so an adapter's own tests would not see `api`/`core` or Adventure types at all), and adds the `maven.democracycraft.net/snapshots` repo. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this single dependency transitively provides `api`, `core`, `plugin-infrastructure`, and `paper-api` to adapters.
+- `paper-adapter` — for feature-module projects. Applies the base conventions, adds `compileOnly(project(":platform:paper-plugin"))` (so adapters compile against the host but never bundle it — the module class loader resolves host classes at runtime) **plus `testImplementation` on the same project** (`compileOnly` reaches neither `compileTestJava` nor the test runtime, so an adapter's own tests would not see `api`/`core` or Adventure types at all), and adds the `maven.democracycraft.net/snapshots` repo. It also declares a **consumable `moduleJar` configuration** whose artifact is the module's deliverable jar — `jar` by default, swapped to `shadowJar` under `plugins.withId("com.gradleup.shadow")` (lazily, since an adapter applies shadow *after* the convention), so a shading adapter such as `discord-adapter` publishes its `-all` jar. `platform:paper-plugin`'s `installFeatureModules` resolves that configuration; the host therefore never needs to know which adapters shade. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this single dependency transitively provides `api`, `core`, `plugin-infrastructure`, and `paper-api` to adapters.
 
 Note: precompiled conventions apply sibling conventions with `id("player-notifications-conventions")`, not the backtick accessor. Project version comes from the root `gradle.properties`.
 
@@ -75,15 +76,24 @@ Note: precompiled conventions apply sibling conventions with `id("player-notific
 
 Feature modules are jars dropped into `<dataFolder>/modules/`, each containing a `module-manifest.yml` and an entry class implementing `PluginModule<T extends Plugin>` (or extending `SimplePluginModule`). `PlayerNotificationsPlugin` drives them with a `ModuleLifecycleManager` (`start()` on enable after the service is registered, `stop()` first on disable). A module's `initialize` receives the host plugin and typically resolves `NotificationService` from the `ServicesManager` to register processors.
 
-The manifest keys are the `ModuleManifest` record's camelCase field names (Configurate uses field names verbatim):
+The manifest keys are the `ModuleManifest` record's component names in **kebab-case**. Configurate's
+`ObjectMapper` uses `NamingSchemes.LOWER_CASE_DASHED` by default, so `moduleName` reads the key
+`module-name`, **not** `moduleName`:
 
 ```yaml
-moduleName: essentials-mail-adapter
-entryClass: io.github.md5sha256.playernotifications.essentials.EssentialsMailModule
+module-name: essentials-mail-adapter
+entry-class: io.github.md5sha256.playernotifications.essentials.EssentialsMailModule
 author: md5sha256
-expectedPluginClass: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
+expected-plugin-class: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
 reloadable: false
 ```
+
+A camelCase key does not fail — it simply does not match, and the record component deserializes to
+`null`. That is silent for every key except a single-word one like `author`, which happens to be
+identical under both schemes. `ModuleLoader.loadModulesFromDisk` then NPEs on
+`manifest.expectedPluginClass().equals(...)`, aborting `onEnable`. The same rule applies to every
+`@ConfigSerializable` record in this repo — hence `prune-interval-seconds`, `default-media`,
+`bot-token`, `uncategorized-label`.
 
 `expectedPluginClass` must equal the host plugin's runtime FQCN, or the module is skipped.
 
@@ -96,7 +106,11 @@ fan out to any number of media. Registrations are **N + M**, not N × M: adding 
 change to any existing payload — the Discord DM sink landed without touching a single one.
 
 - A payload author registers a `NotificationRenderer<T>` (payload → `RenderableNotification`) and never
-  writes per-medium or preference-lookup logic.
+  writes per-medium or preference-lookup logic. `NotificationService#registerJsonRenderable(dataType,
+  type, renderer)` is the one-call form (mapping + reflective JSON serializer + renderer), mirroring
+  `registerJsonPayload` for the processor path. It registers **no** processor by design — an explicit
+  processor wins dispatch precedence and would bypass preferences and sinks entirely.
+  `paper.diagnostic.TestNotificationRenderer` is the in-tree example.
 - A medium owner registers one `NotificationSink` in the `NotificationSinkRegistry`.
 - `RenderingProcessor<T>` — the **single** framework-supplied processor — resolves preferred media via
   `NotificationPreferences#preferredMedia(target, dataType)`, passing the notification's `dataType`
@@ -222,6 +236,12 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications types` — jumps straight to the "by notification type" picker.
 - `/notifications mute` — mutes every known `dataType` **immediately** (no staging).
 - `/notifications reset` — clears every stored preference **immediately** (no staging).
+- `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
+  immediately, off the main thread. Admin-only (`playernotifications.command.test`, `default: op`) and
+  player-only. The **only** caller of `NotificationDelivery.deliver(UUID)` in the tree. Its reply names
+  the media *attempted*, not delivered — `RenderingProcessor` reports no per-sink outcome. Backed by
+  `paper.diagnostic.TestNotificationSender`, which takes a `Supplier<NotificationDelivery>` rather than
+  the instance because `reload()` replaces that object.
 - `/notifications reload` — reloads `categories.yml` and `settings.yml` without a restart. Admin-only
   (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
   subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
@@ -346,7 +366,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **68 tests in `:core:test`, 23 in `:api:test`, 17 in `:platform:paper-plugin:test`, 52 in `:platform:discord-adapter:test`** — 160 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **74 tests in `:core:test`, 23 in `:api:test`, 21 in `:platform:paper-plugin:test`, 52 in `:platform:discord-adapter:test`** — 170 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -365,19 +385,25 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   category system (and the two-pass rebuild-after-`startModules()` ordering in
   `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
   never end-to-end by a real module through the real module class loader.
-- **Nothing calls `deliver(UUID)`.** `PlayerNotificationsPlugin` now constructs `NotificationDelivery` and exposes it via `notificationDelivery()`, but there is **no join listener** — no `Listener` is registered for it anywhere in `platform/` (the one `Listener` that does exist, `PreferenceQuitListener`, only drops staged preference-edit sessions). Wiring delivery to an actual trigger (player join, a command, a scheduled task) is the remaining bootstrap step.
+- **Only `/notifications test` calls `deliver(UUID)`.** `TestNotificationSender` is the sole caller; there is still **no join listener** — no `Listener` is registered for delivery anywhere in `platform/` (the one `Listener` that does exist, `PreferenceQuitListener`, only drops staged preference-edit sessions). So a player's notifications are delivered only when an admin manually triggers a test, never on join. Wiring delivery to a real trigger remains the open bootstrap step.
 - **`ChatSink`, `DialogSink`, and the five preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
 - **The Discord adapter's end-to-end path has never been run.** `DiscordBot`, `JdaDiscordMessenger`,
   `DiscordSrvAccountProvider` and `DiscordModule` compile and are wired, but JDA login, the DiscordSRV
   lookup, module class loading through the shaded jar, and an actual DM landing have not been verified —
   they need a real bot token and a DiscordSRV-linked account. Checklist: Task 8 of
-  `docs/superpowers/plans/2026-07-29-discord-adapter.md`.
+  `docs/superpowers/plans/2026-07-29-discord-adapter.md`. `/notifications test` now exists to drive
+  exactly this check — it is the intended way to run that checklist.
+- **`/notifications test`'s own wiring is unverified by automated tests.** `TestNotificationSender`,
+  the Brigadier `test` subcommand, the permission gate, and the `test` type appearing in the preference
+  dialogs all need a live server. The path underneath them (`registerJsonRenderable` → enqueue →
+  `deliver` → render → sink fan-out → prune) **is** covered, by `core`'s `RenderedDeliveryTest`.
 - **Discord account linking is DiscordSRV-only, and there is no in-game link flow.** A player with no
   DiscordSRV link gets `UNSUPPORTED` from `discord-dm` forever. `DiscordAccountProvider` is the seam a
   future own-link-table or `/notifications link` flow would slot into; the table would have to live in
   `core` as a V2 migration, since `MariaSchemaMigrator` tracks one `schema_version` chain and
   `MariaDatabase` registers mappers from a hardcoded list, so a module cannot own a migration today.
-- **`notifPayload` is a `JSON` column**, so payloads must be valid JSON; a plain message string must be JSON-encoded. String-payload processors therefore receive the JSON-encoded form — consider a `TEXT` column or decoding on the way out.
+- **`notifPayload` is a `JSON` column**, so payloads must be valid JSON. A payload mapped to `String.class` is therefore JSON-encoded on write and arrives at its processor still quoted — the reason every in-tree payload now owns a record instead. `DefaultNotificationService` still pre-registers a `String` serializer and nothing forbids `String.class`, so the trap is still reachable; no registration guard was added (considered and deferred — see the test-notification design doc).
+- **Persisted `essentials-mail` rows predating the `EssentialsMailPayload` change will not deserialize** (they hold `"text"`, the type now expects `{"message":"text"}`). `decodePayload` logs a warning and retains them until expiry prunes them. Acceptable only because the project has no deployed data to preserve; a deployed server would have needed a payload-rewriting migration.
 - **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
 - **Rows for a category removed from `categories.yml` are kept, not pruned** — they resurface if the category is re-added, and are invisible in the dialogs meanwhile. No admin command prunes them.
