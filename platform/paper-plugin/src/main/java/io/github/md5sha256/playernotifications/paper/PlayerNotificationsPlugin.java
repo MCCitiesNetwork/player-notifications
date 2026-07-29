@@ -6,6 +6,9 @@ import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
 import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
+import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
+import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
+import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceQuitListener;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
@@ -155,6 +158,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 getLogger()
         );
 
+        // Register the built-in test payload before registerCommands(): the preference dialogs enumerate
+        // dataTypeRegistry().dataTypes(), so "test" must already be mapped to appear as configurable.
+        this.notificationService.registerJsonRenderable(
+                TestNotificationPayload.TEST_DATA_TYPE,
+                TestNotificationPayload.class,
+                new TestNotificationRenderer());
+
         registerCommands();
         schedulePruneTask(pluginSettings.pruneIntervalSeconds());
 
@@ -200,9 +210,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.preferences);
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
+        // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
+        TestNotificationSender testSender = new TestNotificationSender(
+                this, this.notificationService, this.preferences, () -> this.notificationDelivery);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(
-                        NotificationsCommand.create(this.preferenceDialogRouter, this::reload),
+                        NotificationsCommand.create(this.preferenceDialogRouter, this::reload, testSender),
                         NotificationsCommand.DESCRIPTION,
                         List.of("notifs")
                 ));

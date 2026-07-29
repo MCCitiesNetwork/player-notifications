@@ -30,3 +30,6 @@ permissions:
   playernotifications.command.reload:
     description: Reload categories.yml and settings.yml with /notifications reload.
     default: op
+  playernotifications.command.test:
+    description: Send yourself a test notification with /notifications test.
+    default: op

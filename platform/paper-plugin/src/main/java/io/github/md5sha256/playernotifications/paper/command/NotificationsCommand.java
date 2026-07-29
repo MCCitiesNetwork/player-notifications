@@ -1,8 +1,10 @@
 package io.github.md5sha256.playernotifications.paper.command;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
+import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
@@ -30,6 +32,10 @@ public final class NotificationsCommand {
 
     public static final String RELOAD_PERMISSION = "playernotifications.command.reload";
 
+    public static final String TEST_PERMISSION = "playernotifications.command.test";
+
+    private static final String DEFAULT_TEST_MESSAGE = "This is a test notification.";
+
     public static final String DESCRIPTION = "Choose how you receive notifications";
 
     private static final Component PLAYERS_ONLY =
@@ -40,7 +46,8 @@ public final class NotificationsCommand {
 
     @NotNull
     public static LiteralCommandNode<CommandSourceStack> create(@NotNull PreferenceDialogRouter router,
-                                                                @NotNull Consumer<CommandSender> reloadAction) {
+                                                                @NotNull Consumer<CommandSender> reloadAction,
+                                                                @NotNull TestNotificationSender testSender) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .executes(context -> run(context, router::openRoot))
@@ -49,6 +56,13 @@ public final class NotificationsCommand {
                 .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
                 .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
                 .then(Commands.literal("reset").executes(context -> run(context, router::resetImmediately)))
+                .then(Commands.literal("test")
+                        .requires(source -> source.getSender().hasPermission(TEST_PERMISSION))
+                        .executes(context -> run(context,
+                                player -> testSender.send(player, DEFAULT_TEST_MESSAGE)))
+                        .then(Commands.argument("message", StringArgumentType.greedyString())
+                                .executes(context -> run(context, player -> testSender.send(
+                                        player, StringArgumentType.getString(context, "message"))))))
                 .then(Commands.literal("reload")
                         .requires(source -> source.getSender().hasPermission(RELOAD_PERMISSION))
                         .executes(context -> {

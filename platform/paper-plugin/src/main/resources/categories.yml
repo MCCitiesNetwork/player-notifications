@@ -12,3 +12,8 @@ categories:
     description: "Essentials mail and other direct messages"
     types:
       - essentials-mail
+  diagnostics:
+    label: "Diagnostics"
+    description: "Test notifications sent with /notifications test"
+    types:
+      - test
