@@ -9,6 +9,7 @@ import io.github.md5sha256.playernotifications.api.TypedNotification;
 import io.github.md5sha256.playernotifications.api.category.DefaultNotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializationException;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
@@ -114,6 +115,14 @@ public class DefaultNotificationService implements NotificationService {
         this.dataTypeRegistry.registerPayloadMapping(dataType, type);
         this.dataTypeRegistry.registerSerializer(type, jsonSerializer(type));
         this.dataTypeRegistry.registerProcessor(type, processor);
+    }
+
+    @Override
+    public <T> void registerJsonRenderable(@NotNull String dataType, @NotNull Class<T> type,
+                                           @NotNull NotificationRenderer<T> renderer) {
+        this.dataTypeRegistry.registerPayloadMapping(dataType, type);
+        this.dataTypeRegistry.registerSerializer(type, jsonSerializer(type));
+        this.dataTypeRegistry.registerRenderer(type, renderer);
     }
 
     private <T> PayloadSerializer<T> jsonSerializer(@NotNull Class<T> type) {

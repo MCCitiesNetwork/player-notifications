@@ -2,6 +2,8 @@ package io.github.md5sha256.playernotifications.core.database;
 
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.ResolvedNotification;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import net.kyori.adventure.text.Component;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,26 @@ class DefaultNotificationServiceTest extends AbstractDatabaseTest {
 
     private static ResolvedNotification notification(String key, int priority, List<UUID> targets) {
         return new ResolvedNotification(key, NOW, null, new NotificationTarget(targets), "test", "{}", priority);
+    }
+
+    private record Announcement(String headline) {
+    }
+
+    @Test
+    @DisplayName("registerJsonRenderable binds mapping, serializer and renderer but no processor")
+    void registerJsonRenderableBindsRendererPath() {
+        service.registerJsonRenderable("announcement", Announcement.class,
+                (payload, target) -> new RenderableNotification(
+                        Component.text("Announcement"), Component.text(payload.headline())));
+
+        var registry = service.dataTypeRegistry();
+        Assertions.assertEquals(Announcement.class,
+                registry.resolvePayloadClass("announcement").orElseThrow());
+        Assertions.assertTrue(registry.getSerializer("announcement").isPresent(),
+                "a reflective JSON serializer must be registered alongside the mapping");
+        Assertions.assertTrue(registry.getRenderer("announcement").isPresent());
+        Assertions.assertTrue(registry.getProcessor("announcement").isEmpty(),
+                "the renderer path must not register a processor, which would win dispatch precedence");
     }
 
     @Test

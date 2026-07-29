@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.api;
 
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
+import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -33,6 +34,20 @@ public interface NotificationService {
      */
     <T> void registerJsonPayload(@NotNull String dataType, @NotNull Class<T> type,
                                  @NotNull NotificationProcessor<T> processor);
+
+    /**
+     * The renderer-path counterpart of {@link #registerJsonPayload}: binds the data-type mapping, a
+     * reflective JSON serializer for {@code type}, and a {@link NotificationRenderer} in one call.
+     *
+     * <p>Deliberately registers no {@link NotificationProcessor}. An explicit processor wins dispatch
+     * precedence and bypasses preferences and sinks entirely, so registering one here would defeat the
+     * point — payloads registered this way fan out to whichever media the recipient prefers.
+     *
+     * <p>{@code type} must be a class this payload owns. The registry keys serializers and renderers by
+     * payload class, so two data types sharing one class silently share its handlers.
+     */
+    <T> void registerJsonRenderable(@NotNull String dataType, @NotNull Class<T> type,
+                                    @NotNull NotificationRenderer<T> renderer);
 
     /**
      * Resolves (without deleting) every notification currently targeting the given player. Use
