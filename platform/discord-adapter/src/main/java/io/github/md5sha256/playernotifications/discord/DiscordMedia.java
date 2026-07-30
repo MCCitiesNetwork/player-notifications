@@ -18,6 +18,14 @@ public final class DiscordMedia {
      */
     public static final String CHANNEL_PING = "discord-channel-ping";
 
+    /**
+     * The key this adapter registers its
+     * {@link io.github.md5sha256.playernotifications.api.link.AccountLinkProvider} under, addressed as
+     * {@code /notifications link discord}. Deliberately the bare service name, not a medium key: linking
+     * is per-service, and one link serves every Discord medium.
+     */
+    public static final String LINK_PROVIDER_KEY = "discord";
+
     private DiscordMedia() {
     }
 }

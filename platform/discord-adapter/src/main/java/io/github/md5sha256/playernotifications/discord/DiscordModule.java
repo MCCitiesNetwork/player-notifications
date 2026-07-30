@@ -4,11 +4,7 @@ import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializat
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.PluginModule;
 import io.github.md5sha256.playernotifications.discord.schema.DiscordSchemaMigrator;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
-import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.Bukkit;
-import org.bukkit.permissions.Permission;
-import org.bukkit.permissions.PermissionDefault;
-import org.bukkit.plugin.PluginManager;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.serialize.SerializationException;
@@ -38,8 +34,7 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
     private DiscordBot bot;
 
     /** Guards teardown, so shutdown is idempotent and does not undo what was never registered. */
-    private boolean linkCommandRegistered;
-    private boolean permissionRegistered;
+    private boolean linkProviderRegistered;
 
     @Override
     public void initialize(@NotNull PlayerNotificationsPlugin plugin, @NotNull Path dataPath)
@@ -76,7 +71,8 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
         accounts.reportAvailability();
 
         // The link flow only exists when the operator has asked for the embedded provider; otherwise there
-        // is nothing for a code to be redeemed into, so neither command is registered.
+        // is nothing for a code to be redeemed into, so neither the Discord /link command nor the host's
+        // /notifications link discord is offered.
         Executor asyncExecutor = runnable -> Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable);
         DiscordLinkFlow linkFlow = null;
         Object[] eventListeners = new Object[0];
@@ -96,7 +92,10 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
         }
 
         if (linkFlow != null) {
-            registerLinkCommand(plugin, linkFlow, asyncExecutor, logger);
+            plugin.accountLinkRegistry().registerProvider(new DiscordAccountLinkProvider(linkFlow));
+            this.linkProviderRegistered = true;
+            logger.info("/notifications link " + DiscordMedia.LINK_PROVIDER_KEY
+                    + " is available for Discord account linking");
         }
 
         DiscordMessageFactory factory = new DiscordMessageFactory(
@@ -109,47 +108,17 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
                 + "' (format: " + settings.resolvedMessageFormat() + ")");
     }
 
-    /**
-     * Registers {@code /discordlink} and its permission.
-     *
-     * <p>Both are done programmatically because the module jar carries no plugin descriptor: the permission
-     * cannot go in the host's {@code paper-plugin.yml}, and the command is registered through the host's
-     * lifecycle manager during the host's own enable.
-     */
-    private void registerLinkCommand(@NotNull PlayerNotificationsPlugin plugin,
-                                     @NotNull DiscordLinkFlow flow,
-                                     @NotNull Executor asyncExecutor,
-                                     @NotNull Logger logger) {
-        PluginManager pluginManager = plugin.getServer().getPluginManager();
-        if (pluginManager.getPermission(DiscordLinkCommand.PERMISSION) == null) {
-            pluginManager.addPermission(new Permission(DiscordLinkCommand.PERMISSION,
-                    "Link your Minecraft account to Discord with /discordlink",
-                    PermissionDefault.TRUE));
-            this.permissionRegistered = true;
-        }
-        plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
-                event.registrar().register(
-                        DiscordLinkCommand.create(flow, asyncExecutor),
-                        DiscordLinkCommand.DESCRIPTION,
-                        DiscordLinkCommand.aliases()
-                ));
-        this.linkCommandRegistered = true;
-        logger.info("/" + DiscordLinkCommand.LITERAL + " is available for Discord account linking");
-    }
-
     @Override
     public void shutdown(@NotNull PlayerNotificationsPlugin plugin) {
         plugin.sinkRegistry().unregisterSink(DiscordMedia.DM);
 
-        // Remove the command and permission before the bot goes down, so there is no window in which
-        // /discordlink dispatches into a shut-down bot on a module stop/start cycle.
-        if (this.linkCommandRegistered) {
-            DiscordLinkCommand.unregister(plugin.getLogger());
-            this.linkCommandRegistered = false;
-        }
-        if (this.permissionRegistered) {
-            plugin.getServer().getPluginManager().removePermission(DiscordLinkCommand.PERMISSION);
-            this.permissionRegistered = false;
+        // Deregister before the bot goes down, so there is no window in which /notifications link discord
+        // dispatches into a shut-down bot on a module stop/start cycle. The command node itself stays —
+        // the host answers for an absent provider with "Discord linking is not available on this server",
+        // which is also what a server that never installed this module shows.
+        if (this.linkProviderRegistered) {
+            plugin.accountLinkRegistry().unregisterProvider(DiscordMedia.LINK_PROVIDER_KEY);
+            this.linkProviderRegistered = false;
         }
 
         if (this.bot != null) {
