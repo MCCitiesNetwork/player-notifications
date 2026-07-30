@@ -3,9 +3,13 @@ package io.github.md5sha256.playernotifications.discord;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 class ChainedDiscordAccountProviderTest {
@@ -154,6 +158,95 @@ class ChainedDiscordAccountProviderTest {
                 List.of(), registryOf(), LOGGER);
 
         Assertions.assertEquals("chain", chain.providerKey());
+    }
+
+    /** Captures records published to a throwaway logger, so log-only behaviour can be asserted. */
+    private static List<LogRecord> captureInto(Logger logger) {
+        List<LogRecord> records = new ArrayList<>();
+        logger.setUseParentHandlers(false);
+        logger.setLevel(Level.ALL);
+        logger.addHandler(new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                records.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        });
+        return records;
+    }
+
+    private static Logger throwawayLogger() {
+        return Logger.getLogger("chain-test-" + UUID.randomUUID());
+    }
+
+    @Test
+    void reportAvailabilityWarnsWhenNoProviderIsAvailable() {
+        Logger logger = throwawayLogger();
+        List<LogRecord> records = captureInto(logger);
+
+        ChainedDiscordAccountProvider chain = ChainedDiscordAccountProvider.of(
+                List.of("discordsrv"), registryOf(FakeProvider.unavailable("discordsrv")), logger);
+        chain.reportAvailability();
+
+        // Otherwise "every DM is UNSUPPORTED" produces no log at all until a notification is dropped.
+        Assertions.assertTrue(records.stream().anyMatch(record -> record.getLevel() == Level.WARNING
+                        && record.getMessage().contains(DiscordMedia.DM)),
+                "expected a warning naming the discord-dm medium, got: " + records);
+    }
+
+    @Test
+    void reportAvailabilityDoesNotWarnWhenOneIsAvailable() {
+        Logger logger = throwawayLogger();
+        List<LogRecord> records = captureInto(logger);
+
+        ChainedDiscordAccountProvider chain = ChainedDiscordAccountProvider.of(
+                List.of("a", "b"),
+                registryOf(FakeProvider.unavailable("a"), FakeProvider.unlinked("b")),
+                logger);
+        chain.reportAvailability();
+
+        Assertions.assertTrue(records.stream().noneMatch(record -> record.getLevel() == Level.WARNING),
+                "expected no warning, got: " + records);
+    }
+
+    @Test
+    void reportAvailabilityWarnsWhenTheChainIsEmpty() {
+        Logger logger = throwawayLogger();
+        List<LogRecord> records = captureInto(logger);
+
+        // An operator who lists only unknown keys ends up here, and it is just as undeliverable.
+        ChainedDiscordAccountProvider.of(List.of(), registryOf(), logger).reportAvailability();
+
+        Assertions.assertTrue(records.stream().anyMatch(record -> record.getLevel() == Level.WARNING),
+                "expected a warning for an empty chain, got: " + records);
+    }
+
+    @Test
+    void reportAvailabilityDoesNotQueryAnyProvider() {
+        FakeProvider provider = FakeProvider.linking("a", 1L);
+
+        ChainedDiscordAccountProvider.of(List.of("a"), registryOf(provider), throwawayLogger())
+                .reportAvailability();
+
+        Assertions.assertFalse(provider.queried, "reporting must not perform a lookup");
+    }
+
+    @Test
+    void delegateKeysReportsTheResolvedChainInOrder() {
+        ChainedDiscordAccountProvider chain = ChainedDiscordAccountProvider.of(
+                List.of("embedded", "nonexistent", "discordsrv"),
+                registryOf(FakeProvider.unlinked("embedded"), FakeProvider.unlinked("discordsrv")),
+                throwawayLogger());
+
+        // The unknown key is dropped, so this reports what will actually be consulted.
+        Assertions.assertEquals(List.of("embedded", "discordsrv"), chain.delegateKeys());
     }
 
     @Test

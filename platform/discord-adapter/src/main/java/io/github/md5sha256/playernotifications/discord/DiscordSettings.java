@@ -5,6 +5,7 @@ import org.spongepowered.configurate.objectmapping.ConfigSerializable;
 import org.spongepowered.configurate.objectmapping.meta.Required;
 import org.spongepowered.configurate.objectmapping.meta.Setting;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -22,6 +23,7 @@ import java.util.List;
  *                                colour of its own, as {@code #RRGGBB}
  * @param deliveryTimeoutSeconds  how long a single DM send may block before it counts as unreachable
  * @param linkProviders           ordered {@link DiscordAccountProvider} keys forming the lookup chain
+ * @param linkCodeExpirySeconds   how long a {@code /discordlink} code stays redeemable
  */
 @ConfigSerializable
 public record DiscordSettings(
@@ -42,7 +44,10 @@ public record DiscordSettings(
 
         @Setting("link-providers")
         @Required
-        List<String> linkProviders
+        List<String> linkProviders,
+
+        @Setting("link-code-expiry-seconds")
+        long linkCodeExpirySeconds
 ) {
 
     /** Discord's own "blurple", used when {@code embed-color} cannot be parsed. */
@@ -51,10 +56,34 @@ public record DiscordSettings(
     /** Used when {@code delivery-timeout-seconds} is absent or non-positive. */
     public static final long DEFAULT_DELIVERY_TIMEOUT_SECONDS = 15L;
 
+    /** Used when {@code link-code-expiry-seconds} is absent or non-positive. Ten minutes. */
+    public static final long DEFAULT_LINK_CODE_EXPIRY_SECONDS = 600L;
+
     public DiscordSettings {
         if (deliveryTimeoutSeconds <= 0) {
             deliveryTimeoutSeconds = DEFAULT_DELIVERY_TIMEOUT_SECONDS;
         }
+        if (linkCodeExpirySeconds <= 0) {
+            linkCodeExpirySeconds = DEFAULT_LINK_CODE_EXPIRY_SECONDS;
+        }
+    }
+
+    /** How long an issued {@code /discordlink} code stays redeemable. */
+    public @NotNull Duration resolvedLinkCodeExpiry() {
+        return Duration.ofSeconds(this.linkCodeExpirySeconds);
+    }
+
+    /**
+     * Whether {@code link-providers} lists the plugin's own link table.
+     *
+     * <p>This is what decides whether {@code /discordlink} and the Discord {@code /link} slash command are
+     * registered at all: an operator who deliberately runs DiscordSRV-only gets no dead command, and no
+     * separate config key is needed to say so.
+     */
+    public boolean usesEmbeddedProvider() {
+        return this.linkProviders.stream()
+                .anyMatch(key -> key != null
+                        && key.trim().equalsIgnoreCase(EmbeddedDiscordAccountProvider.PROVIDER_KEY));
     }
 
     /** Whether the token is missing — the module refuses to start rather than register a dead sink. */

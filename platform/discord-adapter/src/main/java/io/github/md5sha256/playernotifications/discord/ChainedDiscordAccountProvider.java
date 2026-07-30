@@ -58,6 +58,46 @@ public final class ChainedDiscordAccountProvider implements DiscordAccountProvid
         return PROVIDER_KEY;
     }
 
+    /** The resolved delegate keys, in consultation order. Unknown config keys have already been dropped. */
+    public @NotNull List<String> delegateKeys() {
+        return this.delegates.stream().map(DiscordAccountProvider::providerKey).toList();
+    }
+
+    /**
+     * Logs which link sources are usable right now, once, at startup.
+     *
+     * <p>A chain whose providers are all unavailable resolves nothing, silently, forever — every DM comes
+     * back {@code UNSUPPORTED} and nothing is logged until a notification is actually dropped. This is the
+     * only diagnostic for that misconfiguration, so an all-unavailable (or empty) chain warns.
+     *
+     * <p>Deliberately does not query any provider: availability is a cheap "is the backing plugin there"
+     * check, whereas a lookup would need a player and could block.
+     */
+    public void reportAvailability() {
+        boolean anyAvailable = false;
+        for (DiscordAccountProvider delegate : this.delegates) {
+            boolean available = isAvailableQuietly(delegate);
+            anyAvailable |= available;
+            this.logger.info("Discord link provider '" + delegate.providerKey() + "': "
+                    + (available ? "available" : "not available"));
+        }
+        if (!anyAvailable) {
+            this.logger.warning("No Discord link provider is available, so no player can be resolved to a"
+                    + " Discord account and the '" + DiscordMedia.DM + "' medium cannot deliver."
+                    + " Check link-providers in discord.yml.");
+        }
+    }
+
+    private boolean isAvailableQuietly(@NotNull DiscordAccountProvider delegate) {
+        try {
+            return delegate.isAvailable();
+        } catch (RuntimeException exception) {
+            this.logger.log(Level.WARNING, "Discord link provider '" + delegate.providerKey()
+                    + "' failed its availability check", exception);
+            return false;
+        }
+    }
+
     @Override
     public @NotNull Optional<Long> discordIdFor(@NotNull UUID playerUuid) {
         for (DiscordAccountProvider delegate : this.delegates) {

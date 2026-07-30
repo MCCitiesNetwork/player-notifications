@@ -30,9 +30,27 @@ embed-color: "#5865F2"
 delivery-timeout-seconds: 15
 
 # The account-link sources consulted, in order, to turn a player's UUID into a Discord user id.
-# The first source with a link wins; an unknown key is warned about and skipped.
+# The first source with a link wins; an unknown key is warned about and skipped. If none of the listed
+# sources is available, a warning is logged at startup — otherwise every Discord DM would silently come
+# back as undeliverable.
 #
 # Shipped keys:
-#   discordsrv — legacy DiscordSRV 2.x's account link manager
+#   embedded   — this plugin's own link table, populated in game with /discordlink. Needs no other
+#                plugin, and is what lets you run the Discord adapter with DiscordSRV absent.
+#   discordsrv — legacy DiscordSRV 2.x's account link manager. Optional: if DiscordSRV is not
+#                installed, this source reports itself unavailable and is skipped.
+#
+# Listing both, as below, is the right setting for a server moving off DiscordSRV: new links land in the
+# embedded table and win, while players who only have an old DiscordSRV link keep working.
+#
+# /discordlink and the bot's /link slash command are only registered when "embedded" is listed, so a
+# DiscordSRV-only server gets no command it cannot use.
 link-providers:
+  - embedded
   - discordsrv
+
+# How long a code issued by /discordlink stays redeemable, in seconds.
+#
+# Codes are held in memory and do not survive a restart — a code's whole purpose is to be transient, and
+# a player who loses one simply runs /discordlink again.
+link-code-expiry-seconds: 600
