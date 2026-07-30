@@ -25,7 +25,7 @@ dependencies:
 
 permissions:
   playernotifications.command.preferences:
-    description: Open the notification preferences dialog with /notifications.
+    description: Open the notification preferences dialog with /notifications preferences.
     default: true
   playernotifications.command.reload:
     description: Reload categories.yml and settings.yml with /notifications reload.

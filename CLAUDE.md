@@ -216,7 +216,7 @@ Design doc: `docs/superpowers/specs/2026-07-29-discord-adapter-design.md`.
 
 `platform:discord-adapter` is a feature module registering `DiscordDmSink` under medium key
 **`discord-dm`**. Once the jar is in `<dataFolder>/modules/` and configured, "Discord DM" appears
-automatically in the `/notifications` dialogs — they enumerate `sinkRegistry().registeredMedia()`, so
+automatically in the `/notifications preferences` dialogs — they enumerate `sinkRegistry().registeredMedia()`, so
 no host change was needed. `DiscordMedia.CHANNEL_PING` (`"discord-channel-ping"`) is **reserved but
 unimplemented**: nothing registers it, so it can never be selected; the key exists so the DM sink is
 not squatting on a generic `"discord"` name and a channel sink can be added later without migrating a
@@ -387,12 +387,21 @@ The single-argument `preferredMedia(player)` is the same lookup against `"*"`.
 Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Brigadier API
 (`LifecycleEvents.COMMANDS`) — **not** a `commands:` block, which `paper-plugin.yml` does not support.
 
-- `/notifications` (alias `/notifs`, also `/notifications preferences`) — opens the root preferences
-  dialog.
-- `/notifications media` — jumps straight to the "by delivery method" picker.
-- `/notifications types` — jumps straight to the "by notification type" picker.
-- `/notifications mute` — mutes every known `dataType` **immediately** (no staging).
-- `/notifications reset` — clears every stored preference **immediately** (no staging).
+- `/notifications` (alias `/notifs`) — **reserved for a notification management UI that does not exist
+  yet**; prints a notice saying so and pointing at `/notifications preferences`. It deliberately does
+  **not** open the preferences dialog. The preference subcommands were nested under `preferences` at the
+  same time, to keep the top level clear for that UI's own verbs — which would otherwise collide with
+  names like `mute` and `reset`. A player-facing inbox is still a deferred item (see "Current state");
+  reserving the name is not implementing it.
+- `/notifications preferences` — opens the root preferences dialog.
+- `/notifications preferences media` — jumps straight to the "by delivery method" picker.
+- `/notifications preferences types` — jumps straight to the "by notification type" picker.
+- `/notifications preferences mute` — mutes every known `dataType` **immediately** (no staging).
+- `/notifications preferences reset` — clears every stored preference **immediately** (no staging).
+- `/notifications mute` — the one preference subcommand kept **also** at the top level, as a proxy onto
+  the same `PreferenceDialogRouter.muteImmediately` action the nested form calls (not a second
+  implementation), since muting everything is the operation most often wanted in a hurry. There is
+  deliberately no top-level `reset` counterpart.
 - `/notifications link [provider] [status]` / `/notifications unlink [provider]` — account linking, backed
   by the `AccountLinkRegistry`. See below.
 - `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
@@ -477,7 +486,7 @@ Implementation notes:
 - `PreferenceSessionManager` expires a session after 15 minutes idle (`IDLE_TIMEOUT`) and
   `PreferenceQuitListener` drops it on `PlayerQuitEvent`; reopening after either starts fresh from the
   database.
-- `/notifications mute` and `/notifications reset` write **immediately** and discard any open staged
+- `/notifications preferences mute` and `… reset` write **immediately** and discard any open staged
   session with a chat notice — the one deliberate asymmetry with the root screen's staged equivalents,
   which only take effect on Apply.
 - `DatabaseNotificationPreferences` does blocking JDBC while `Player#showDialog` must run on the main
@@ -602,4 +611,4 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
 - **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
 - **Rows for a category removed from `categories.yml` are kept, not pruned** — they resurface if the category is re-added, and are invisible in the dialogs meanwhile. No admin command prunes them.
-- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (`/notifications` covers preferences only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences).
+- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (the command tree covers preferences and linking only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences). The bare `/notifications` is now **reserved** for that inbox, but nothing implements it; note that the current model makes it non-trivial, because delivery is destructive under DELETE-wins fan-out, so `resolveNotifications` returns only what failed to deliver plus what is not yet due — not a mailbox. The design sketched (and not built) was an `inbox` medium: a `NotificationSink` that persists the rendered notification into its own table and returns `DELIVERED`, keeping the change additive on the sink registry instead of inverting delivery semantics.

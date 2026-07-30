@@ -21,12 +21,22 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * The player-facing {@code /notifications} command. The bare root and {@code preferences} open the
- * staged root dialog; {@code media}/{@code types} jump straight to the corresponding picker on the same
- * session; {@code mute}/{@code reset} write immediately and discard any open session, unlike their
- * staged root-screen equivalents. {@code link}/{@code unlink} address account-link providers registered
- * by feature modules. {@code reload} is admin-only (a separate permission) and works from
- * any sender, console included, since it operates on plugin configuration rather than a specific player.
+ * The player-facing {@code /notifications} command.
+ *
+ * <p>The <strong>bare root is reserved</strong> for a notification management UI and only prints a notice
+ * saying so. Everything preference-related hangs off {@code preferences}: that literal opens the
+ * staged root dialog, its {@code media}/{@code types} children jump straight to the corresponding picker
+ * on the same session, and its {@code mute}/{@code reset} children write immediately and discard any open
+ * session, unlike their staged root-screen equivalents. Nesting them keeps the top level clear for the
+ * management UI's own verbs, which would otherwise collide with names like {@code mute} and {@code reset}.
+ *
+ * <p>{@code /notifications mute} survives at the top level as a proxy onto
+ * {@link PreferenceDialogRouter#muteImmediately} — the same action the nested form invokes, not a second
+ * implementation — because muting everything is the one preference operation frequently wanted in a hurry.
+ *
+ * <p>{@code link}/{@code unlink} address account-link providers registered by feature modules.
+ * {@code reload} is admin-only (a separate permission) and works from any sender, console included, since
+ * it operates on plugin configuration rather than a specific player.
  *
  * <p>Registered through Paper's Brigadier API rather than a {@code commands:} block, because this plugin
  * ships a {@code paper-plugin.yml}, which has no such block.
@@ -43,10 +53,28 @@ public final class NotificationsCommand {
 
     private static final String PROVIDER_ARGUMENT = "provider";
 
-    public static final String DESCRIPTION = "Choose how you receive notifications";
+    /**
+     * Help text registered for the command tree as a whole, so it no longer names preferences specifically —
+     * those moved under the {@code preferences} subcommand.
+     */
+    public static final String DESCRIPTION = "Manage your notifications";
 
     private static final Component PLAYERS_ONLY =
             Component.text("Only players have notification preferences.", NamedTextColor.RED);
+
+    /**
+     * The bare root's reply. {@code /notifications} is held for a notification management UI that does not
+     * exist yet, so the root does not open the preferences dialog — it says what the name is for and points
+     * at the subcommand that does.
+     */
+    private static final Component RESERVED = Component.text()
+            .append(Component.text("/notifications is reserved for a notification management UI, "
+                    + "which is not available yet.", NamedTextColor.YELLOW))
+            .append(Component.newline())
+            .append(Component.text("Use ", NamedTextColor.GRAY))
+            .append(Component.text("/notifications preferences", NamedTextColor.WHITE))
+            .append(Component.text(" to choose how you receive notifications.", NamedTextColor.GRAY))
+            .build();
 
     private NotificationsCommand() {
     }
@@ -59,12 +87,17 @@ public final class NotificationsCommand {
                                                                 @NotNull Executor asyncExecutor) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
-                .executes(context -> run(context, router::openRoot))
-                .then(Commands.literal("preferences").executes(context -> run(context, router::openRoot)))
-                .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))
-                .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
+                .executes(context -> {
+                    context.getSource().getSender().sendMessage(RESERVED);
+                    return Command.SINGLE_SUCCESS;
+                })
+                .then(Commands.literal("preferences")
+                        .executes(context -> run(context, router::openRoot))
+                        .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))
+                        .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
+                        .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
+                        .then(Commands.literal("reset").executes(context -> run(context, router::resetImmediately))))
                 .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
-                .then(Commands.literal("reset").executes(context -> run(context, router::resetImmediately)))
                 .then(linkNode(linkDispatcher, asyncExecutor))
                 .then(unlinkNode(linkDispatcher, asyncExecutor))
                 .then(Commands.literal("test")

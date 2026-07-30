@@ -153,7 +153,7 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
 
     /**
      * Immediately clears every stored row for the player, across every data type. Used by
-     * {@code /notifications reset}.
+     * {@code /notifications preferences reset}.
      */
     public void resetAll(@NotNull UUID player) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
