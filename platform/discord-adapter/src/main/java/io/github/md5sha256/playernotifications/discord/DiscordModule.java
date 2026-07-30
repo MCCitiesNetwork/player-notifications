@@ -1,8 +1,13 @@
 package io.github.md5sha256.playernotifications.discord;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.PluginModule;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
-import net.democracrycraft.pluginInfrastructure.modules.ModuleInitializationException;
-import net.democracrycraft.pluginInfrastructure.modules.PluginModule;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import org.bukkit.Bukkit;
+import org.bukkit.permissions.Permission;
+import org.bukkit.permissions.PermissionDefault;
+import org.bukkit.plugin.PluginManager;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.serialize.SerializationException;
@@ -10,6 +15,8 @@ import org.spongepowered.configurate.serialize.SerializationException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.util.concurrent.Executor;
 import java.util.logging.Logger;
 
 /**
@@ -24,36 +31,60 @@ import java.util.logging.Logger;
 public final class DiscordModule implements PluginModule<PlayerNotificationsPlugin> {
 
     /** Where this module's config lives, relative to the host's data folder. */
-    private static final String CONFIG_PATH = "modules/discord/discord.yml";
     private static final String CONFIG_RESOURCE = "discord.yml";
 
     private DiscordBot bot;
 
+    /** Guards teardown, so shutdown is idempotent and does not undo what was never registered. */
+    private boolean linkCommandRegistered;
+    private boolean permissionRegistered;
+
     @Override
-    public void initialize(@NotNull PlayerNotificationsPlugin plugin)
+    public void initialize(@NotNull PlayerNotificationsPlugin plugin, @NotNull Path dataPath)
             throws ModuleInitializationException {
         Logger logger = plugin.getLogger();
-        DiscordSettings settings = loadSettings(plugin);
+        DiscordSettings settings = loadSettings(dataPath);
 
         if (settings.isTokenBlank()) {
             throw new ModuleInitializationException(
-                    "No Discord bot token configured in " + CONFIG_PATH
+                    "No Discord bot token configured in " + CONFIG_RESOURCE
                             + "; cannot enable the Discord adapter");
         }
 
+        DiscordAccountLinkStore linkStore =
+                new DatabaseDiscordAccountLinkStore(plugin.database(), Clock.systemUTC());
+
         DiscordAccountProviderRegistry providers = new DiscordAccountProviderRegistry();
+        providers.register(new EmbeddedDiscordAccountProvider(linkStore));
         providers.register(new DiscordSrvAccountProvider(logger));
         ChainedDiscordAccountProvider accounts =
                 ChainedDiscordAccountProvider.of(settings.linkProviders(), providers, logger);
+        accounts.reportAvailability();
+
+        // The link flow only exists when the operator has asked for the embedded provider; otherwise there
+        // is nothing for a code to be redeemed into, so neither command is registered.
+        Executor asyncExecutor = runnable -> Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable);
+        DiscordLinkFlow linkFlow = null;
+        Object[] eventListeners = new Object[0];
+        if (settings.usesEmbeddedProvider()) {
+            LinkCodeService codes = new LinkCodeService(settings.resolvedLinkCodeExpiry(), Clock.systemUTC());
+            linkFlow = new DiscordLinkFlow(linkStore, codes, logger);
+            eventListeners = new Object[]{new LinkSlashCommandListener(linkFlow, asyncExecutor, logger)};
+        }
 
         try {
-            this.bot = DiscordBot.start(settings.botToken());
+            this.bot = DiscordBot.start(settings.botToken(), eventListeners);
         } catch (RuntimeException exception) {
             // A rejected token surfaces from build(); report it as a module failure rather than an
             // unhandled exception out of the lifecycle manager.
             throw new ModuleInitializationException(
                     "Failed to start the Discord bot: " + exception.getMessage());
         }
+
+        if (linkFlow != null) {
+            registerLinkCommand(plugin, linkFlow, asyncExecutor, logger);
+        }
+
         DiscordMessageFactory factory = new DiscordMessageFactory(
                 settings.resolvedMessageFormat(), settings.resolvedEmbedColor());
         DiscordMessenger messenger =
@@ -64,32 +95,72 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
                 + "' (format: " + settings.resolvedMessageFormat() + ")");
     }
 
+    /**
+     * Registers {@code /discordlink} and its permission.
+     *
+     * <p>Both are done programmatically because the module jar carries no plugin descriptor: the permission
+     * cannot go in the host's {@code paper-plugin.yml}, and the command is registered through the host's
+     * lifecycle manager during the host's own enable.
+     */
+    private void registerLinkCommand(@NotNull PlayerNotificationsPlugin plugin,
+                                     @NotNull DiscordLinkFlow flow,
+                                     @NotNull Executor asyncExecutor,
+                                     @NotNull Logger logger) {
+        PluginManager pluginManager = plugin.getServer().getPluginManager();
+        if (pluginManager.getPermission(DiscordLinkCommand.PERMISSION) == null) {
+            pluginManager.addPermission(new Permission(DiscordLinkCommand.PERMISSION,
+                    "Link your Minecraft account to Discord with /discordlink",
+                    PermissionDefault.TRUE));
+            this.permissionRegistered = true;
+        }
+        plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
+                event.registrar().register(
+                        DiscordLinkCommand.create(flow, asyncExecutor),
+                        DiscordLinkCommand.DESCRIPTION,
+                        DiscordLinkCommand.aliases()
+                ));
+        this.linkCommandRegistered = true;
+        logger.info("/" + DiscordLinkCommand.LITERAL + " is available for Discord account linking");
+    }
+
     @Override
     public void shutdown(@NotNull PlayerNotificationsPlugin plugin) {
         plugin.sinkRegistry().unregisterSink(DiscordMedia.DM);
+
+        // Remove the command and permission before the bot goes down, so there is no window in which
+        // /discordlink dispatches into a shut-down bot on a module stop/start cycle.
+        if (this.linkCommandRegistered) {
+            DiscordLinkCommand.unregister(plugin.getLogger());
+            this.linkCommandRegistered = false;
+        }
+        if (this.permissionRegistered) {
+            plugin.getServer().getPluginManager().removePermission(DiscordLinkCommand.PERMISSION);
+            this.permissionRegistered = false;
+        }
+
         if (this.bot != null) {
             this.bot.shutdown();
             this.bot = null;
         }
     }
 
-    private @NotNull DiscordSettings loadSettings(@NotNull PlayerNotificationsPlugin plugin)
+    private @NotNull DiscordSettings loadSettings(@NotNull Path dataPath)
             throws ModuleInitializationException {
-        Path file = plugin.getDataFolder().toPath().resolve(CONFIG_PATH);
+        Path file = dataPath.resolve(CONFIG_RESOURCE);
         try {
             ConfigurationNode root = ModuleConfigs.load(file, DiscordModule::bundledDefault);
             DiscordSettings settings = root.get(DiscordSettings.class);
             if (settings == null) {
                 throw new ModuleInitializationException(
-                        CONFIG_PATH + " could not be deserialized into DiscordSettings");
+                        CONFIG_RESOURCE + " could not be deserialized into DiscordSettings");
             }
             return settings;
         } catch (SerializationException exception) {
             throw new ModuleInitializationException(
-                    "Failed to read " + CONFIG_PATH + ": " + exception.getMessage());
+                    "Failed to read " + CONFIG_RESOURCE + ": " + exception.getMessage());
         } catch (IOException exception) {
             throw new ModuleInitializationException(
-                    "Failed to load " + CONFIG_PATH + ": " + exception.getMessage());
+                    "Failed to load " + CONFIG_RESOURCE + ": " + exception.getMessage());
         }
     }
 
