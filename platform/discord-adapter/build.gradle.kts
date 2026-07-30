@@ -65,6 +65,14 @@ tasks {
         relocate("org.apache.commons.collections4", "${base}.org.apache.commons.collections4")
         relocate("javax.annotation", "${base}.javax.annotation")
         relocate("org.checkerframework", "${base}.org.checkerframework")
+
+        // Not bundled — rewritten. These libraries live in the host jar under its own relocation
+        // prefix, and the module resolves them parent-first from the host class loader, so this
+        // module's *references* to MyBatis (its mapper annotations, SqlSessionWrapper#session) and
+        // Configurate must name the host's relocated packages or they do not exist at runtime.
+        // See HostShading in buildSrc; this must stay in lockstep with the host's shadowJar.
+        HostShading.ADAPTER_PACKAGES.forEach { relocate(it, "${HostShading.BASE}.$it") }
+
         mergeServiceFiles()
     }
 }

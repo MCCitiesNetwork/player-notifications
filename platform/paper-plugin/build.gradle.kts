@@ -50,13 +50,8 @@ tasks {
     }
 
     shadowJar {
-        val base = "io.github.md5sha256.playernotifications.libraries"
-        relocate("org.mariadb", "${base}.org.mariadb")
-        relocate("org.mybatis", "${base}.org.mybatis")
-        relocate("org.apache.ibatis", "${base}.org.apache.ibatis")
-        relocate("org.spongepowered", "${base}.org.spongepowered")
-        relocate("io.leangen.geantyref", "${base}.io.leangen.geantyref")
-        relocate("com.fasterxml.jackson", "${base}.com.fasterxml.jackson")
+        // Defined in buildSrc because feature modules must relocate identically — see HostShading.
+        HostShading.PACKAGES.forEach { relocate(it, "${HostShading.BASE}.$it") }
         mergeServiceFiles()
     }
 
