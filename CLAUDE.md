@@ -64,6 +64,10 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
 ### Build conventions
 
 `buildSrc/src/main/kotlin/` holds precompiled convention plugins:
+`buildSrc` also holds `HostShading.kt` — the host's relocation prefix and package list, shared so that
+the host's `shadowJar` and every shading adapter cannot drift apart. See "Discord adapter" for why an
+adapter must relocate packages it does not bundle.
+
 - `player-notifications-conventions` — Java 21 toolchain, UTF-8, JUnit 5, and the Paper / mavenLocal / mavenCentral repos. Applied by every module.
 - `paper-adapter` — for feature-module projects. Applies the base conventions, adds `compileOnly(project(":platform:paper-plugin"))` (so adapters compile against the host but never bundle it — the module class loader resolves host classes at runtime) **plus `testImplementation` on the same project** (`compileOnly` reaches neither `compileTestJava` nor the test runtime, so an adapter's own tests would not see `api`/`core` or Adventure types at all), and adds the `maven.democracycraft.net/snapshots` repo. It also declares a **consumable `moduleJar` configuration** whose artifact is the module's deliverable jar — `jar` by default, swapped to `shadowJar` under `plugins.withId("com.gradleup.shadow")` (lazily, since an adapter applies shadow *after* the convention), so a shading adapter such as `discord-adapter` publishes its `-all` jar. `platform:paper-plugin`'s `installFeatureModules` resolves that configuration; the host therefore never needs to know which adapters shade. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this single dependency transitively provides `api`, `core`, `plugin-infrastructure`, and `paper-api` to adapters.
 
@@ -111,9 +115,12 @@ because `SqlSessionWrapper#session()` exposes everything needed:
 
 `platform:discord-adapter` does exactly this: its own `V*.sql`, its own migrator, its own
 `discord_schema_version` chain, all over the **host's** pool and session factory, so there is no second
-pool and no second copy of the credentials. Two rules if you follow it: load scripts through **the module's
-own** class loader (core's cannot see inside a module jar), and remember that registering a mapper mutates
-the host's shared `Configuration`, which is the narrowest scope MyBatis offers.
+pool and no second copy of the credentials. Three rules if you follow it: load scripts through **the module's
+own** class loader (core's cannot see inside a module jar); remember that registering a mapper mutates
+the host's shared `Configuration`, which is the narrowest scope MyBatis offers; and **relocate MyBatis to
+the host's shaded prefix in the module's own `shadowJar`** (`HostShading.ADAPTER_PACKAGES`), or every one
+of those calls and every mapper annotation names a class that does not exist at runtime — see
+"Discord adapter".
 
 ## Rendering & delivery media
 
@@ -215,12 +222,21 @@ single preference row.
 - **It runs its own JDA bot with its own token.** Legacy DiscordSRV relocates its bundled JDA to
   `github.scarsz.discordsrv.dependencies.jda.*`, so its instance is *not* type-compatible with upstream
   `net.dv8tion`. DiscordSRV is therefore a **link source only** — nothing is ever sent through it.
-- **The shading is load-bearing.** `shadowJar` relocates every bundled package under
-  `io.github.md5sha256.playernotifications.discord.libraries`. Modules load through
+- **The shading is load-bearing, in both directions.** `shadowJar` relocates every *bundled* package
+  under `io.github.md5sha256.playernotifications.discord.libraries`. Modules load through
   `new URLClassLoader(jarUrl, hostClassLoader)` — parent-first — and the host already shades Jackson,
   so an unrelocated copy would collide. **Verify the relocation set against the built jar** after any
   dependency bump (`unzip -l ...-all.jar` and look for classes outside `io/github/md5sha256/`); JDA 6's
   transitive set is not JDA 5's.
+  It also relocates packages it does **not** bundle — MyBatis and Configurate — to the *host's* prefix,
+  because it compiles against the unrelocated coordinates (transitively, compile-only, through the host
+  project) but resolves them at runtime from the host jar, where only the relocated names exist. Without
+  that rewrite the module fails on startup: a descriptor mentioning a relocated type is a different
+  method (`NoSuchMethodError: SqlSessionWrapper.session()`), and `MariaDiscordAccountLinkMapper`'s
+  `@Select` would not be the annotation the host's MyBatis looks for. The relocation set is therefore
+  **not** duplicated in the two build scripts — `HostShading` in `buildSrc` owns it, the host applies
+  `PACKAGES`, an adapter applies `ADAPTER_PACKAGES` (the same list minus Jackson, which the module
+  bundles its own copy of). Adding a shaded library to the host means adding one entry there.
 - **`paper-plugin.yml` carries a soft `dependencies: server: DiscordSRV` with `join-classpath: true`.**
   Paper plugins are classloader-isolated by default, and the module's loader is parent-first onto the
   *host's*, so without that entry `DiscordSrvAccountProvider` silently reports itself unavailable.
