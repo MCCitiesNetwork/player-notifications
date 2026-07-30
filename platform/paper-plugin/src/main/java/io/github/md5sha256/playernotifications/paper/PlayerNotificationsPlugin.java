@@ -63,6 +63,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private NotificationCategories categories;
     private PreferenceDialogRouter preferenceDialogRouter;
     private BukkitTask pruneTask;
+    private JoinDeliveryListener joinDeliveryListener;
     private ModuleLifecycleManager<PlayerNotificationsPlugin> moduleLifecycleManager;
 
     @NotNull
@@ -181,6 +182,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 new TestNotificationRenderer());
 
         registerCommands();
+
+        // Always registered, gated internally: /notifications reload can then flip deliver-on-join
+        // without re-registering the listener. A supplier, not the instance — reload() replaces
+        // notificationDelivery with a new object.
+        this.joinDeliveryListener = new JoinDeliveryListener(
+                this, () -> this.notificationDelivery,
+                pluginSettings.deliverOnJoin(), pluginSettings.joinDeliveryDelaySeconds());
+        getServer().getPluginManager().registerEvents(this.joinDeliveryListener, this);
+
         schedulePruneTask(pluginSettings.pruneIntervalSeconds());
 
         // Start modules last so they can look up the registered NotificationService and register their
@@ -248,8 +258,9 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * MariaDB connection pool mid-request. Swaps the category resolver into
      * {@link #notificationDelivery} and the {@link #preferenceDialogRouter} (open dialogs keep whatever
      * category set they staged against — their category keys remain valid strings to write even if a
-     * reload renamed or removed one), refreshes the configured default media, and reschedules the prune
-     * task if its interval changed.
+     * reload renamed or removed one), refreshes the configured default media and the
+     * {@link JoinDeliveryListener}'s toggle and delay, and reschedules the prune task if its interval
+     * changed.
      */
     public void reload(@NotNull CommandSender sender) {
         NotificationCategories newCategories;
@@ -274,6 +285,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 getLogger()
         );
         this.preferences.reloadDefaultMedia(newSettings.defaultMedia());
+        this.joinDeliveryListener.reloadSettings(
+                newSettings.deliverOnJoin(), newSettings.joinDeliveryDelaySeconds());
         reschedulePruneTask(newSettings.pruneIntervalSeconds());
         warnAboutUnmappedCategoryTypes();
 
