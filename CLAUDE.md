@@ -306,6 +306,32 @@ single preference row.
   websocket reading thread then lazily loads more classes (`WebSocketClient.onShutdown`), and if the
   module's `URLClassLoader`/host jar is already closed that fails with `IllegalStateException: zip file
   closed` on disable. Do not make this fire-and-forget again.
+- **An unloaded DiscordSRV poisons this module's class loading — known, unfixed, operational.** The
+  *other* `IllegalStateException: zip file closed`, and the one you will actually be shown. Symptom: a
+  stack trace on a healthy, running server, blaming our relocated JDA
+  (`…discord.libraries.net.dv8tion.jda…WebSocketClient.handleDisconnect`) with
+  `PluginClassLoader.findClass` for **DiscordSRV** underneath it. Read it as delegation, not use — the
+  failing class is ours, and DiscordSRV's own JDA relocates to `github.scarsz.…`, so the two can never
+  collide. The chain: `join-classpath: true` puts DiscordSRV's `PluginClassLoader` in our classloader
+  group → the module's loader is parent-first, so *every* class it loads is offered to that group first
+  → if DiscordSRV was **unloaded** (not merely disabled — a plain disable leaves the loader open; a
+  plugin manager or `/reload` closes it) its loader answers a routine "not found" with a thrown
+  `IllegalStateException`, which aborts the load instead of falling through to the module's own jar.
+  Notes, each of which cost a session to establish:
+  - **Independent of `discord.yml`.** The group is built from the declared dependency and the jar's
+    presence, before any config is read. It fires with `link-providers: [embedded]` and
+    `DiscordSrvAccountProvider` never constructed.
+  - **The class being loaded is irrelevant** — JDA only appears because a gateway reconnect (which
+    Discord initiates on its own, hence "I wasn't doing anything") was the next thing needing a class
+    not yet loaded. It breaks host-class loads the same way, and keeps firing on every reconnect.
+  - **Fix: remove the DiscordSRV jar from `plugins/`.** Nothing else in-tree does. `Essentials` carries
+    the identical `join-classpath: true` exposure in `paper-plugin.yml`.
+  - Two code fixes were designed and **deliberately not taken**: dropping `join-classpath` and driving
+    `DiscordSrvAccountProvider` reflectively through DiscordSRV's own plugin loader (the only fix that
+    covers host-class loads too — the surface is three calls returning `String`/`UUID`, so it is cheap),
+    and a fallback in `plugin-infrastructure`'s `ModuleLoader.loadModule` where the module's
+    `URLClassLoader` retries its own jar when the parent chain *throws*. Reopen either only with the
+    user; do not treat this entry as a TODO.
 - **Result mapping.** No linked account → `UNSUPPORTED` (the exact case that result's javadoc names);
   `CANNOT_SEND_TO_USER`/`UNKNOWN_USER` → `UNSUPPORTED`; not connected, rate-limited, timed out, or any
   other exception → `UNREACHABLE`. `DiscordDmSink` also refuses to run on the main thread (warn +

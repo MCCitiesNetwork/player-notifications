@@ -36,6 +36,7 @@ Re-read the named class to confirm the current rule before relying on it.
 | Payload decodes wrong | the column type backing the payload and whether the serializer round-trips it |
 | Migration didn't run | the script exists but was never registered in the migrator's step list; or the script tripped its statement splitter |
 | Module never loads | manifest keys must be the `ModuleManifest` field names verbatim, and its expected host class must match the plugin's runtime FQCN |
+| A loaded module suddenly can't load *any* class on a running server (`IllegalStateException: zip file closed`) | not the module. A plugin declared `join-classpath` in `paper-plugin.yml` is in our classloader group and was **unloaded**; its closed loader throws instead of reporting "not found", and module loading is parent-first. The trace blames whatever class was being loaded — ignore that. See CLAUDE.md, "Discord adapter" |
 | Registry lookup misses | registration ran after the consumer read the registry — check the ordering in the plugin's enable sequence |
 | Suite fails wholesale, no individual red test | a discovery failure: missing test-runtime dependency, or an unavailable external service the suite needs |
 
