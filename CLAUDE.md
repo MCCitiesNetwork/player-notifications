@@ -55,6 +55,13 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
   - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or flagged for `DELETE`. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with DELETE-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
   - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink`, `DialogSink`, and `NullSink` (the `"none"` medium backing an explicit mute — see "Player commands").
   - **`api.category`** package — `NotificationCategoryRegistry` (`DefaultNotificationCategoryRegistry` the in-memory impl) lets module authors declare categories and claim `dataType`s under them in code, exactly like payload types/processors/renderers/sinks are registered. Exposed via `NotificationService#categoryRegistry()`. Merged at read time with `categories.yml` by `core.category.NotificationCategories` — see "Notification categories".
+  - **`api.link`** package — `AccountLinkProvider` (`providerKey`, a `default` title-casing `displayName()`
+    plus the static `defaultDisplayName(key)` the host uses to name an *unregistered* key, and
+    `begin`/`status`/`unlink` returning the player-facing `Component` rather than sending it) and
+    `AccountLinkRegistry` (synchronized map, keys normalised to lower case on both registration and
+    lookup). Exposed via `PlayerNotificationsPlugin.accountLinkRegistry()` — deliberately *not* on
+    `NotificationService`, which has impls in `core` and in tests and no stake in account linking. See
+    "Player commands".
   - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands and a `PreferenceQuitListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
@@ -194,11 +201,13 @@ single preference row.
   `embedded` resolves the plugin's own `DiscordAccountLink` table and needs no other plugin, so a server
   with DiscordSRV absent still links and delivers. Listing both is the migration setting: new links land
   in the embedded table and win, old DiscordSRV-only links keep resolving.
-- **The link flow.** `/discordlink` (alias `/dlink`, plus `status` and `unlink` subcommands) issues a
+- **The link flow.** `/notifications link discord` (plus `… discord status` and the sibling
+  `/notifications unlink discord`) issues a
   6-character single-use code; the player sends `/link <code>` to **this module's bot** in Discord, and
   `LinkSlashCommandListener` writes the row. `DiscordLinkFlow` holds every decision and message — the
-  Brigadier command and the JDA listener are deliberately logic-free adapters over it, because neither
-  can be unit tested. Codes live in `LinkCodeService`, in memory only: a code's lifetime is minutes, so a
+  `DiscordAccountLinkProvider` and the JDA listener are deliberately logic-free adapters over it, because
+  neither can be unit tested. `DiscordLinkFlow.LINK_COMMAND` / `UNLINK_COMMAND` are the single source for
+  the command names every reply quotes, chat and Discord alike. Codes live in `LinkCodeService`, in memory only: a code's lifetime is minutes, so a
   restart invalidating one costs a re-run, whereas persisting it would mean a migration for state designed
   to expire. `redeem` folds expiry into `UNKNOWN_CODE` — it removes the expired entry, so nothing remains
   to tell the two apart.
@@ -208,14 +217,16 @@ single preference row.
   listeners, attached at build time so a listener cannot miss the ready event — the command is registered
   from `onReady`, since `awaitReady()` is never called. The command is global with
   `setContexts(BOT_DM, GUILD)`.
-- **`/discordlink` is module-owned, and only registered when `link-providers` lists `embedded`.** The host
-  gained nothing for it: no new registry, no `paper-plugin.yml` entry. Its permission
-  (`playernotifications.discord.link`, default `true`) is added programmatically because the module jar has
-  no plugin descriptor. `shutdown` unregisters both — Paper's Brigadier registrar has no unregister, so it
-  goes through `Bukkit.getCommandMap().getKnownCommands()` (which is API), matching on the whole name after
-  any namespace and never a substring, then calls `Player#updateCommands` on everyone online. Flag-guarded,
-  so shutdown is idempotent. Without this a module stop/start cycle leaves a `/discordlink` dispatching
-  into a dead flow and a shut-down bot.
+- **Linking is a registration, not a command.** `DiscordAccountLinkProvider` (a thin delegate over
+  `DiscordLinkFlow`) is registered in the host's `AccountLinkRegistry` under
+  `DiscordMedia.LINK_PROVIDER_KEY` (`"discord"`) — only when `link-providers` lists `embedded`, since a
+  DiscordSRV-only server has nothing for a code to redeem into. The module owns **no** command and **no**
+  permission: the host's `/notifications link|unlink` subtree already exists and is gated by
+  `playernotifications.command.preferences`. `shutdown` just unregisters the provider (flag-guarded, so
+  it is idempotent); the command node stays and the host replies "Discord linking is not available on
+  this server", which is also what a server without this module shows. This replaced a module-owned
+  `/discordlink` whose teardown had to go through `Bukkit.getCommandMap().getKnownCommands()` — that
+  surgery, and the programmatic `playernotifications.discord.link` permission, are both gone.
 - **A chain with nothing available now warns at startup.** `ChainedDiscordAccountProvider.reportAvailability`
   logs one line per configured provider and a `WARNING` naming `discord-dm` when none can answer. That case
   previously produced no log at all until a notification was dropped.
@@ -272,7 +283,7 @@ single preference row.
   the *host* jar's resources. Because merge only *adds* absent keys, an existing install keeps its old
   `link-providers` — an upgrade does not silently switch a server onto `embedded`.
 - **Untested by automated tests:** `DiscordBot`, `JdaDiscordMessenger`, `DiscordSrvAccountProvider`,
-  `DiscordModule`, `LinkSlashCommandListener`, and all of `DiscordLinkCommand` except `isOurs` — they need a live server, a real bot token and a Discord account.
+  `DiscordModule` and `LinkSlashCommandListener` — they need a live server, a real bot token and a Discord account.
   Two manual checklists exist and **neither has been run**: Task 8 of
   `docs/superpowers/plans/2026-07-29-discord-adapter.md` and Task 7 of
   `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`. Everything else in the module is unit
@@ -321,6 +332,8 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications types` — jumps straight to the "by notification type" picker.
 - `/notifications mute` — mutes every known `dataType` **immediately** (no staging).
 - `/notifications reset` — clears every stored preference **immediately** (no staging).
+- `/notifications link [provider] [status]` / `/notifications unlink [provider]` — account linking, backed
+  by the `AccountLinkRegistry`. See below.
 - `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
   immediately, off the main thread. Admin-only (`playernotifications.command.test`, `default: op`) and
   player-only. The **only** caller of `NotificationDelivery.deliver(UUID)` in the tree. Its reply names
@@ -336,13 +349,24 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 The player-facing subcommands are player-only, under permission `playernotifications.command.preferences`,
 declared in `paper-plugin.yml` with `default: true`.
 
-**`/discordlink` is not part of this tree.** It is registered by the *Discord adapter module*, not the
-host, and only when `link-providers` lists `embedded` — so it is absent on a DiscordSRV-only server and on
-one with no Discord module at all. Its permission is added programmatically (the module jar has no plugin
-descriptor) and both command and permission are removed in the module's `shutdown`. See "Discord adapter".
-The accepted cost: a player who has learned `/notifications` does not discover linking from it. Putting it
-under `/notifications link` would have meant giving the host an account-linking registry it has no other
-use for.
+**Account linking lives under this tree**, via `api.link.AccountLinkRegistry` — a host-owned registry a
+feature module registers an `AccountLinkProvider` against. This **reverses** an earlier decision (linking
+used to be the Discord module's own `/discordlink`, kept out of the host "to avoid a registry it has no
+other use for"); it still has exactly one consumer, but it deleted more host-adjacent machinery than it
+added, and linking is now discoverable from the command a player already knows.
+
+- `/notifications link` — lists every registered provider and how to use it.
+- `/notifications link <provider>` — starts a link; `… <provider> status` describes the current one.
+- `/notifications unlink <provider>` — a **sibling** literal of `link`, not a child of it.
+
+`<provider>` is a Brigadier **argument**, not one literal per provider: the tree is built once when Paper
+fires `LifecycleEvents.COMMANDS`, and modules register during `startModules()`, so static literals would
+freeze the provider set. Suggestions and resolution both read the registry live. The node exists even
+with nothing registered; an absent provider (never installed, or its module stopped) gets an explanatory
+reply — removing the node would need mutation of an already-registered Brigadier node, which Paper does
+not expose. `paper.command.AccountLinkDispatcher` holds all of this (resolution, routing, containing a
+throwing provider) precisely so it is unit-testable; `NotificationsCommand`'s `link` subtree is wiring
+only. Both branches are player-only and dispatched off the main thread, since providers block on JDBC.
 
 `paper.command.NotificationsCommand` builds the Brigadier node and delegates every subcommand to a
 `paper.preferences.PreferenceDialogRouter`, the single object owning the five dialog screens and the
@@ -459,7 +483,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 23 in `:api:test`, 21 in `:platform:paper-plugin:test`, 119 in `:platform:discord-adapter:test`** — 240 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 29 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 260 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -486,19 +510,23 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   they need a real bot token and an account link. Checklist: Task 8 of
   `docs/superpowers/plans/2026-07-29-discord-adapter.md`. `/notifications test` now exists to drive
   exactly this check — it is the intended way to run that checklist. Since `embedded` linking landed, a
-  DiscordSRV-linked account is no longer needed to run it: `/discordlink` can supply the link instead.
+  DiscordSRV-linked account is no longer needed to run it: `/notifications link discord` can supply the link instead.
 - **`/notifications test`'s own wiring is unverified by automated tests.** `TestNotificationSender`,
   the Brigadier `test` subcommand, the permission gate, and the `test` type appearing in the preference
   dialogs all need a live server. The path underneath them (`registerJsonRenderable` → enqueue →
   `deliver` → render → sink fan-out → prune) **is** covered, by `core`'s `RenderedDeliveryTest`.
-- **Discord linking exists but its end-to-end path has never been run.** `embedded` + `/discordlink` +
+- **Discord linking exists but its end-to-end path has never been run.** `embedded` + `/notifications link discord` +
   the Discord `/link` slash command are implemented and unit tested where testable, but JDA slash-command
   registration, the DM interaction, and a row actually landing need a live server, a bot token and a
-  Discord account. Checklist: Task 7 of `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`.
+  Discord account. Checklists: Task 7 of `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`
+  and Task 6 of `docs/superpowers/plans/2026-07-30-account-link-subcommand.md` (the move to
+  `/notifications link discord`; **not yet run** — the Brigadier `link`/`unlink` node wiring, tab
+  completion, and the absent-provider reply all need a live server. `AccountLinkDispatcher`, the logic
+  underneath, **is** unit tested).
   Remaining gaps in the feature itself:
   - **No admin link management** — no way to link, unlink or inspect another player's link, and no
     listing. A stuck link needs a manual `DELETE` against `DiscordAccountLink`.
-  - **No rate limiting** on `/discordlink` or on `/link` attempts. A 6-character code over a 32-character
+  - **No rate limiting** on `/notifications link discord` or on `/link` attempts. A 6-character code over a 32-character
     alphabet is ~10^9 with a 10-minute window, which makes brute force impractical rather than
     impossible; add a per-Discord-user attempt limit if abuse is ever seen.
   - **Codes do not survive a restart** (in memory by design), and **one Discord account per player** is

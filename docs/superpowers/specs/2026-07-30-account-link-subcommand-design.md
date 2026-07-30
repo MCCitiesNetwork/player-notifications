@@ -6,7 +6,7 @@
 ## Goal
 
 Replace the Discord adapter's own root command `/discordlink` (alias `/dlink`) with
-`/notifications link discord`, so account linking is discoverable from the command a player has already
+`/notifications link discord` and `/notifications unlink discord`, so account linking is discoverable from the command a player has already
 learned. `/discordlink` and `/dlink` are removed outright — no deprecated alias.
 
 This reverses a decision recorded in `CLAUDE.md` ("Player commands"), which noted that putting linking
@@ -75,9 +75,14 @@ implementations in `core` and in tests that would all need changing. It is expos
     ├─ (executes)                       → listProviders()
     └─ argument "provider" (word)       → suggests registeredProviders()
          ├─ (executes)                  → BEGIN
-         ├─ literal "status"            → STATUS
-         └─ literal "unlink"            → UNLINK
+         └─ literal "status"            → STATUS
+  unlink
+    ├─ (executes)                       → listProviders()
+    └─ argument "provider" (word)       → UNLINK
   ```
+
+  `unlink` is a **sibling** of `link`, not a child of it: they are opposite operations and read as peers.
+  (`status` stays under `link <provider>`, since it describes the link rather than performing one.)
 
   An **argument** node, not one literal per registered provider: the Brigadier tree is built once when
   Paper fires `LifecycleEvents.COMMANDS`, so static literals would freeze the provider set at that

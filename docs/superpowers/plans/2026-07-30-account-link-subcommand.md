@@ -97,8 +97,8 @@ tested seam; this task is wiring only. Verified manually in Task 6.
       the accessor.
 - [ ] Add the `link` subtree to `NotificationsCommand.create` per the spec: bare `link` →
       `listProviders()`; `Commands.argument("provider", StringArgumentType.word())` with a suggestion
-      provider reading `linkDispatcher.suggestions()`; bare / `status` / `unlink` children mapping to the
-      three `Action`s. All player-only, all dispatched via `Bukkit.getScheduler().runTaskAsynchronously`.
+      provider reading `linkDispatcher.suggestions()`; bare and `status` children under `link`, and a
+      sibling `unlink` literal taking the same provider argument — the three `Action`s. All player-only, all dispatched via `Bukkit.getScheduler().runTaskAsynchronously`.
 - [ ] Run `./gradlew :platform:paper-plugin:test` — expect 21 + Task 2's, still green.
 - [ ] Run `./gradlew build` — expect success.
 - [ ] Commit.
