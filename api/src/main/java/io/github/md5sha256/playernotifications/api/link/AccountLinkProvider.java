@@ -35,6 +35,14 @@ public interface AccountLinkProvider {
         return Component.text(titleCase(providerKey()));
     }
 
+    /**
+     * The default display name for a provider key, exposed so the host can name a key that <em>nothing</em>
+     * is registered under — the "no such provider" message has no instance to ask.
+     */
+    static @NotNull Component defaultDisplayName(@NotNull String providerKey) {
+        return Component.text(titleCase(providerKey));
+    }
+
     /** Starts a link: the reply to a bare {@code /notifications link <provider>}. */
     @NotNull Component begin(@NotNull UUID playerUuid);
 
