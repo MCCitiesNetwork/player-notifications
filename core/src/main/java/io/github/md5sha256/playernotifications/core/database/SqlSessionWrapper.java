@@ -1,6 +1,5 @@
 package io.github.md5sha256.playernotifications.core.database;
 
-import io.github.md5sha256.playernotifications.core.database.mapper.DiscordAccountLinkMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.PlayerNotificationPreferenceMapper;
@@ -24,12 +23,6 @@ public interface SqlSessionWrapper extends Closeable {
     @NotNull NotificationTargetMapper notificationTargetMapper();
 
     @NotNull PlayerNotificationPreferenceMapper playerNotificationPreferenceMapper();
-
-    /**
-     * Discord account links. Lives here rather than in the Discord adapter because a feature module
-     * cannot own a migration or register a mapper today.
-     */
-    @NotNull DiscordAccountLinkMapper discordAccountLinkMapper();
 
     @Override
     void close();

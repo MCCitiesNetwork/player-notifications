@@ -44,8 +44,7 @@ public final class MariaSchemaMigrator {
             """;
 
     private static final List<MigrationStep> DEFAULT_MIGRATIONS = List.of(
-            new MigrationStep(1, "initial schema", "V1__maria_initial_schema.sql"),
-            new MigrationStep(2, "discord account link", "V2__discord_account_link.sql")
+            new MigrationStep(1, "initial schema", "V1__maria_initial_schema.sql")
     );
 
     private MariaSchemaMigrator() {

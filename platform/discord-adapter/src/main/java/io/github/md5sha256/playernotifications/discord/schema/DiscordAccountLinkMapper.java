@@ -1,6 +1,5 @@
-package io.github.md5sha256.playernotifications.core.database.mapper;
+package io.github.md5sha256.playernotifications.discord.schema;
 
-import io.github.md5sha256.playernotifications.core.database.entity.DiscordAccountLinkEntity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

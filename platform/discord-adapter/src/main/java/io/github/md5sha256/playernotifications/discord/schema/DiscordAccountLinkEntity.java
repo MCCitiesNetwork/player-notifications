@@ -1,4 +1,4 @@
-package io.github.md5sha256.playernotifications.core.database.entity;
+package io.github.md5sha256.playernotifications.discord.schema;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -7,8 +7,11 @@ import java.util.UUID;
 
 /**
  * Internal entity record mapping one-to-one to a row of the {@code DiscordAccountLink} DDL table — a
- * verified link between a Minecraft player and a Discord user, written by the Discord adapter's link
- * flow and read by its {@code embedded} account-link provider.
+ * verified link between a Minecraft player and a Discord user, written by this module's link flow and read
+ * by its {@code embedded} account-link provider.
+ *
+ * <p>Owned by this module, not by {@code core}: the table, its migration and its mapper all live here, and
+ * only the connection pool is borrowed from the host. See {@link DiscordSchemaMigrator}.
  *
  * <p>The relation is one-to-one in both directions; see the migration script for why that is enforced
  * in the schema rather than in application code.

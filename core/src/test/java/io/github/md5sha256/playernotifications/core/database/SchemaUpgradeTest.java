@@ -48,21 +48,20 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
     }
 
     @Test
-    @DisplayName("the default chain applies V2 to a database already recorded at V1")
-    void appliesV2OnTopOfADatabaseAlreadyAtV1() throws Exception {
-        // First bring the schema to V1 only, as an existing database would already be.
+    @DisplayName("a database already at V1 needs no further core migration")
+    void aDatabaseAtV1IsUpToDate() throws Exception {
+        // Bring the schema to V1 only, as an existing database would already be.
         MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS, List.of(V1), LOGGER);
-        Assertions.assertEquals(List.of(1), appliedVersions(),
-                "the V1-only run should have recorded exactly one version");
-        Assertions.assertFalse(tableExists("DiscordAccountLink"),
-                "V1 must not create the V2 table, or this test proves nothing");
+        Assertions.assertEquals(List.of(1), appliedVersions());
 
-        // Then the full chain, which must add V2 without re-running V1.
+        // The full chain must then be a no-op rather than re-running V1.
         MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS,
                 MariaSchemaMigrator.defaultMigrations(), LOGGER);
 
-        Assertions.assertEquals(List.of(1, 2), appliedVersions());
-        Assertions.assertTrue(tableExists("DiscordAccountLink"));
+        Assertions.assertEquals(List.of(1), appliedVersions());
+        // Core owns no Discord schema: that table belongs to the Discord adapter's own migrator, tracked
+        // in its own discord_schema_version chain. If this ever passes, core has grown a module's table.
+        Assertions.assertFalse(tableExists("DiscordAccountLink"));
     }
 
     @Test
@@ -73,9 +72,9 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
         MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS,
                 MariaSchemaMigrator.defaultMigrations(), LOGGER);
 
-        // One row per version, not two: a second application would violate schema_version's primary key
-        // long before this assertion, so this also guards the "already applied" skip itself.
-        Assertions.assertEquals(List.of(1, 2), appliedVersions());
+        // A second application would violate schema_version's primary key long before this assertion, so
+        // this also guards the "already applied" skip itself.
+        Assertions.assertEquals(List.of(1), appliedVersions());
     }
 
     @Test

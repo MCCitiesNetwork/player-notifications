@@ -70,7 +70,6 @@ abstract class AbstractDatabaseTest {
                     TRUNCATE TABLE Notification;
                     TRUNCATE TABLE NotificationTarget;
                     TRUNCATE TABLE PlayerNotificationPreference;
-                    TRUNCATE TABLE DiscordAccountLink;
                     SET FOREIGN_KEY_CHECKS = 1;
                     """);
         }

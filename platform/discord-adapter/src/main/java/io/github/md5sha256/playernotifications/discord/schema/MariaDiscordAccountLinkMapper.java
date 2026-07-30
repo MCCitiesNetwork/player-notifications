@@ -1,7 +1,5 @@
-package io.github.md5sha256.playernotifications.core.database.maria.mapper;
+package io.github.md5sha256.playernotifications.discord.schema;
 
-import io.github.md5sha256.playernotifications.core.database.entity.DiscordAccountLinkEntity;
-import io.github.md5sha256.playernotifications.core.database.mapper.DiscordAccountLinkMapper;
 import org.apache.ibatis.annotations.Arg;
 import org.apache.ibatis.annotations.ConstructorArgs;
 import org.apache.ibatis.annotations.Delete;
