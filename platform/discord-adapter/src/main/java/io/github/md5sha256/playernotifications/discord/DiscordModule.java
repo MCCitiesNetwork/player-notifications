@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.discord;
 
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.PluginModule;
+import io.github.md5sha256.playernotifications.discord.schema.DiscordSchemaMigrator;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import org.bukkit.Bukkit;
@@ -15,6 +16,7 @@ import org.spongepowered.configurate.serialize.SerializationException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.util.concurrent.Executor;
 import java.util.logging.Logger;
@@ -49,6 +51,18 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
             throw new ModuleInitializationException(
                     "No Discord bot token configured in " + CONFIG_RESOURCE
                             + "; cannot enable the Discord adapter");
+        }
+
+        // This module owns its schema, so it migrates it itself — over the host's connection pool, but
+        // tracked in its own discord_schema_version chain. Before the store is constructed: the store must
+        // never be handed to the provider before its table exists.
+        try {
+            DiscordSchemaMigrator.migrate(plugin.database(), logger);
+        } catch (IOException | SQLException exception) {
+            // A Discord adapter whose table is missing is strictly worse than no Discord adapter: every
+            // link lookup would fail on every delivery.
+            throw new ModuleInitializationException(
+                    "Failed to migrate the Discord adapter schema: " + exception.getMessage());
         }
 
         DiscordAccountLinkStore linkStore =
