@@ -3,6 +3,7 @@ package io.github.md5sha256.playernotifications.core.database.maria;
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
+import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaDiscordAccountLinkMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaNotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaNotificationTargetMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaPlayerNotificationPreferenceMapper;
@@ -60,6 +61,7 @@ public class MariaDatabase implements Database {
         configuration.addMapper(MariaNotificationMapper.class);
         configuration.addMapper(MariaNotificationTargetMapper.class);
         configuration.addMapper(MariaPlayerNotificationPreferenceMapper.class);
+        configuration.addMapper(MariaDiscordAccountLinkMapper.class);
         return new SqlSessionFactoryBuilder().build(configuration);
     }
 
