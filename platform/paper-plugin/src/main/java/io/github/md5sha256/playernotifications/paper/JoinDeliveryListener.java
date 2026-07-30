@@ -40,9 +40,9 @@ public final class JoinDeliveryListener implements Listener {
      *                 reference would silently go stale after a reload.
      */
     public JoinDeliveryListener(@NotNull Plugin plugin,
-                               @NotNull Supplier<NotificationDelivery> delivery,
-                               boolean enabled,
-                               long delaySeconds) {
+                                @NotNull Supplier<NotificationDelivery> delivery,
+                                boolean enabled,
+                                long delaySeconds) {
         this.plugin = plugin;
         this.delivery = delivery;
         this.enabled = enabled;

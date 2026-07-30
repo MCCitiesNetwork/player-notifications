@@ -16,6 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * server, so {@code onJoin} itself is verified by hand with {@code runServer} — everything reachable
  * without a server is tested here, which is why the gate decision lives in {@code deliver} rather
  * than inline in the event handler.
+ *
+ * <p>The {@code Plugin} argument is {@code null} throughout: it is only dereferenced by {@code onJoin}
+ * (to reach the scheduler) and by the failure branch of {@code deliver} (to reach the logger), and no
+ * test here takes either path. It is not a claim that {@code null} is a legal argument.
  */
 class JoinDeliveryListenerTest {
 
