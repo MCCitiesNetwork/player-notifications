@@ -64,7 +64,7 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
     "Player commands".
   - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
-- **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands and a `PreferenceQuitListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
+- **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands, a `PreferenceQuitListener` and a `JoinDeliveryListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
 - **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type, via `registerJsonPayload` against its own `EssentialsMailPayload` record. It deliberately does **not** map to `String.class`: the registry keys handlers by payload class, so a shared class means a shared processor/serializer/renderer, and `unregisterPayloadMapping`'s cascade would tear out the host's shared `String` serializer on module unload. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
 - **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. It also **owns its own schema**: the `discord.schema` subpackage holds its migrator, migration script, entity and mappers, and `core` knows nothing of Discord. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
 
@@ -174,6 +174,41 @@ absent players. `Component` is the lingua franca; non-Minecraft sinks serialize 
 not rely on in-game-only affordances such as click events. Actions/buttons are intentionally **out of
 scope** (a dialog button and a Discord button share no execution model), so dialogs render as
 read-and-dismiss.
+
+### Join delivery
+
+Design doc: `docs/superpowers/specs/2026-07-30-join-delivery-trigger-design.md`.
+
+`paper.JoinDeliveryListener` delivers a joining player's due notifications, gated by
+`deliver-on-join` and delayed by `join-delivery-delay-seconds` (see "Configuration"). It is a
+**trigger** for the existing delivery loop, the same kind of thing as the async prune task — not a
+registry extension, which is why it lives in the Paper bootstrap and not behind
+`NotificationSinkRegistry`. A toggle inside `NotificationDelivery` was rejected: `core` has no Bukkit
+event surface, and a flag there would also gate `/notifications test`, which must keep working
+regardless.
+
+- **Always registered, gated internally.** `onJoin` returns early when disabled rather than the
+  listener being registered conditionally, so `/notifications reload` can flip the toggle through
+  `reloadSettings(boolean, long)` without `HandlerList` surgery. `enabled`/`delaySeconds` are `volatile`
+  fields — the same reload idiom as `DatabaseNotificationPreferences.reloadDefaultMedia` and
+  `PreferenceDialogRouter.reloadCategories`.
+- **Delivery is scheduled async** (`runTaskAsynchronously` when the delay is `0`, else
+  `runTaskLaterAsynchronously` with `delaySeconds * 20` ticks): the mappers and preference lookups do
+  blocking JDBC, and `DiscordDmSink` refuses the main thread outright.
+- **The scheduled body re-checks `isOnline()` and the toggle.** An offline `Audience` still makes
+  `ChatSink` report `DELIVERED`, so under the DELETE-wins fan-out delivering to a player who quit
+  mid-delay would consume the notification into nothing. Re-reading the toggle means a reload that turns
+  the trigger off cancels a delivery already waiting out its delay.
+- A `RuntimeException` from `deliver` is logged at `WARNING` and swallowed — an uncaught throw in a
+  scheduled task is reported by Bukkit with no useful attribution, and nothing is sent to the player,
+  who did not ask for a diagnostic.
+- **The delay is not cancellable.** Join → quit → rejoin inside the window schedules two tasks; the
+  second finds nothing due and no-ops. Two queries rather than one, judged not worth a per-player
+  pending-task map.
+- **`onJoin` itself is unverified by automated tests** — `PlayerJoinEvent` and the scheduler need a live
+  server. `JoinDeliveryListenerTest` covers the gate and the reload swap, which is why the gate lives in
+  a package-private `deliver(UUID)` rather than inline in the handler. Manual checklist: Task 3 of
+  `docs/superpowers/plans/2026-07-30-join-delivery-trigger.md` — **not yet run**.
 
 ### Discord adapter
 
@@ -345,6 +380,7 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
   dispatches it outside the player-only `run()` helper the rest of the tree uses. Deliberately does
   **not** reload `database.yml`, since that would mean rebuilding the MariaDB connection pool mid-request.
+  Also refreshes the `JoinDeliveryListener`'s `deliver-on-join` toggle and delay — see "Join delivery".
 
 The player-facing subcommands are player-only, under permission `playernotifications.command.preferences`,
 declared in `paper-plugin.yml` with `default: true`.
@@ -451,7 +487,7 @@ Implementation notes:
 
 All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getConfig()`. On enable the plugin copies bundled defaults into the data folder, merges in any new keys, and deserializes into `@ConfigSerializable` records:
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
-- `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows.
+- `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`). Both join keys are primitives and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
 - `categories.yml` → `NotificationCategoriesConfig` (in `core`, package `category`): `uncategorized-label` — the label for the catch-all category; `categories` — a map of category key → `{label, description, types}`, each `types` entry a registered `dataType` string. See "Notification categories".
 
 Conventions when editing config:
@@ -483,7 +519,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 29 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 260 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 39 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 270 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -502,7 +538,11 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   category system (and the two-pass rebuild-after-`startModules()` ordering in
   `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
   never end-to-end by a real module through the real module class loader.
-- **Only `/notifications test` calls `deliver(UUID)`.** `TestNotificationSender` is the sole caller; there is still **no join listener** — no `Listener` is registered for delivery anywhere in `platform/` (the one `Listener` that does exist, `PreferenceQuitListener`, only drops staged preference-edit sessions). So a player's notifications are delivered only when an admin manually triggers a test, never on join. Wiring delivery to a real trigger remains the open bootstrap step.
+- **Delivery has two triggers: joining, and `/notifications test`.** `paper.JoinDeliveryListener` and
+  `TestNotificationSender` are the only callers of `deliver(UUID)`. The remaining gap is that a
+  notification enqueued for an **already-online** player still waits until their next join — there is no
+  push path, because that would need the enqueue call to reach the Paper layer, which
+  `NotificationService` in `core` deliberately does not do. See "Join delivery" above.
 - **`ChatSink`, `DialogSink`, and the five preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
 - **The Discord adapter's end-to-end path has never been run.** `DiscordBot`, `JdaDiscordMessenger`,
   `DiscordSrvAccountProvider` and `DiscordModule` compile and are wired, but JDA login, the DiscordSRV
