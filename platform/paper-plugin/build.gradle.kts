@@ -5,6 +5,12 @@ plugins {
     id("com.gradleup.shadow") version "9.3.1"
 }
 
+// The distributable is player-notifications-paper-<version>.jar, not paper-plugin-<version>-all.jar:
+// the module directory name says nothing useful to a server operator.
+base {
+    archivesName = "player-notifications-paper"
+}
+
 repositories {
     // plugin-infrastructure is published here (see its README). Use /releases for release versions.
     maven("https://maven.democracycraft.net/snapshots")
@@ -49,7 +55,13 @@ tasks {
         dependsOn(shadowJar)
     }
 
+    // The shaded jar takes the plain name, so the thin jar has to move out of the way.
+    jar {
+        archiveClassifier = "unshaded"
+    }
+
     shadowJar {
+        archiveClassifier = ""
         // Defined in buildSrc because feature modules must relocate identically — see HostShading.
         HostShading.PACKAGES.forEach { relocate(it, "${HostShading.BASE}.$it") }
         mergeServiceFiles()
