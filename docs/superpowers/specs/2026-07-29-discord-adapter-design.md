@@ -178,10 +178,17 @@ turning `discord-dm` into `"Discord Dm"`. The sink overrides it to `"Discord DM"
 
 ## Known limitations
 
-- **No linking flow.** A player with no DiscordSRV link gets `UNSUPPORTED` forever. An in-game
-  `/notifications link` plus code redemption is its own design.
-- **DiscordSRV is a hard requirement for links,** even though delivery is independent of it. The
-  provider interface is the seam for removing that.
+- ~~**No linking flow.** A player with no DiscordSRV link gets `UNSUPPORTED` forever. An in-game
+  `/notifications link` plus code redemption is its own design.~~
+- ~~**DiscordSRV is a hard requirement for links,** even though delivery is independent of it. The
+  provider interface is the seam for removing that.~~
+
+  **Both superseded (2026-07-30) by `2026-07-30-embedded-discord-linking-design.md`**, which added an
+  `embedded` provider over an own link table in `core` (migration V2) and a `/discordlink` → Discord
+  `/link <code>` flow. It went in through `DiscordAccountProvider` exactly as anticipated above, with no
+  change to `DiscordDmSink`. The command ended up as a module-owned `/discordlink` rather than
+  `/notifications link`, to avoid giving the host an account-linking extension point it has no other use
+  for.
 - **Partial delivery stays silent,** inherited from the existing DELETE-wins fan-out: chat succeeding
   and Discord failing consumes the notification. Fixing it needs per-medium delivery tracking, already
   deferred by the renderer design.

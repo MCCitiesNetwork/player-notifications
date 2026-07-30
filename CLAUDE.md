@@ -155,6 +155,35 @@ unimplemented**: nothing registers it, so it can never be selected; the key exis
 not squatting on a generic `"discord"` name and a channel sink can be added later without migrating a
 single preference row.
 
+- **DiscordSRV is genuinely optional.** `link-providers` defaults to `[embedded, discordsrv]`;
+  `embedded` resolves the plugin's own `DiscordAccountLink` table and needs no other plugin, so a server
+  with DiscordSRV absent still links and delivers. Listing both is the migration setting: new links land
+  in the embedded table and win, old DiscordSRV-only links keep resolving.
+- **The link flow.** `/discordlink` (alias `/dlink`, plus `status` and `unlink` subcommands) issues a
+  6-character single-use code; the player sends `/link <code>` to **this module's bot** in Discord, and
+  `LinkSlashCommandListener` writes the row. `DiscordLinkFlow` holds every decision and message — the
+  Brigadier command and the JDA listener are deliberately logic-free adapters over it, because neither
+  can be unit tested. Codes live in `LinkCodeService`, in memory only: a code's lifetime is minutes, so a
+  restart invalidating one costs a re-run, whereas persisting it would mean a migration for state designed
+  to expire. `redeem` folds expiry into `UNKNOWN_CODE` — it removes the expired entry, so nothing remains
+  to tell the two apart.
+- **Redemption is a slash command, not a DM read.** Interactions require no gateway intent, privileged or
+  otherwise, so `DiscordBot` keeps `createLight` with an empty intent set; reading DM message *content*
+  would have needed the privileged `MESSAGE_CONTENT` intent. `DiscordBot.start` therefore takes event
+  listeners, attached at build time so a listener cannot miss the ready event — the command is registered
+  from `onReady`, since `awaitReady()` is never called. The command is global with
+  `setContexts(BOT_DM, GUILD)`.
+- **`/discordlink` is module-owned, and only registered when `link-providers` lists `embedded`.** The host
+  gained nothing for it: no new registry, no `paper-plugin.yml` entry. Its permission
+  (`playernotifications.discord.link`, default `true`) is added programmatically because the module jar has
+  no plugin descriptor. `shutdown` unregisters both — Paper's Brigadier registrar has no unregister, so it
+  goes through `Bukkit.getCommandMap().getKnownCommands()` (which is API), matching on the whole name after
+  any namespace and never a substring, then calls `Player#updateCommands` on everyone online. Flag-guarded,
+  so shutdown is idempotent. Without this a module stop/start cycle leaves a `/discordlink` dispatching
+  into a dead flow and a shut-down bot.
+- **A chain with nothing available now warns at startup.** `ChainedDiscordAccountProvider.reportAvailability`
+  logs one line per configured provider and a `WARNING` naming `discord-dm` when none can answer. That case
+  previously produced no log at all until a notification was dropped.
 - **It runs its own JDA bot with its own token.** Legacy DiscordSRV relocates its bundled JDA to
   `github.scarsz.discordsrv.dependencies.jda.*`, so its instance is *not* type-compatible with upstream
   `net.dv8tion`. DiscordSRV is therefore a **link source only** — nothing is ever sent through it.
@@ -171,27 +200,40 @@ single preference row.
   resolves UUID → Discord id. `discord.yml`'s `link-providers` is an ordered key list resolved against
   `DiscordAccountProviderRegistry` and wrapped in `ChainedDiscordAccountProvider` (first link wins;
   unknown key warned and skipped; unavailable skipped un-queried; a throwing provider logged and
-  skipped so it cannot mask a working one). Only `DiscordSrvAccountProvider` ships. Adding a provider
-  is one class, one registration and one config line — `DiscordDmSink` never changes.
+  skipped so it cannot mask a working one). Two providers ship: `EmbeddedDiscordAccountProvider`
+  (`embedded`, over the plugin's own table via `DiscordAccountLinkStore`, always available) and
+  `DiscordSrvAccountProvider` (`discordsrv`, available only when DiscordSRV is). Adding a provider is one
+  class, one registration and one config line — `DiscordDmSink` never changes, and did not change when
+  `embedded` was added.
 - **Rendering.** `DiscordMarkdownSerializer` drives Adventure's `ComponentFlattener` to Discord
   markdown (bold `**`, italic `*`, underlined `__`, strikethrough `~~`, obfuscated → spoiler `||`),
   escaping `` \ * _ ~ | ` > `` and dropping colours — Discord message text cannot be coloured.
   `DiscordMessageFactory` builds the `MessageCreateData` in one of three `message-format`s
   (`embed` | `markdown` | `plain`) and truncates to Discord's limits (title 256, description 4096,
   content 2000) *before* JDA's builders, which throw on overlong input rather than trimming.
+- **Shutdown blocks on purpose.** `DiscordBot.shutdown()` calls `jda.shutdown()` and then
+  `awaitShutdown` (5s, escalating to `shutdownNow`). `shutdown()` alone only *requests* teardown; JDA's
+  websocket reading thread then lazily loads more classes (`WebSocketClient.onShutdown`), and if the
+  module's `URLClassLoader`/host jar is already closed that fails with `IllegalStateException: zip file
+  closed` on disable. Do not make this fire-and-forget again.
 - **Result mapping.** No linked account → `UNSUPPORTED` (the exact case that result's javadoc names);
   `CANNOT_SEND_TO_USER`/`UNKNOWN_USER` → `UNSUPPORTED`; not connected, rate-limited, timed out, or any
   other exception → `UNREACHABLE`. `DiscordDmSink` also refuses to run on the main thread (warn +
   `UNREACHABLE`), since it blocks on a Discord round trip; the delivery loop is already async.
 - **`discord.yml`** (bundled in the *module* jar, written to `<dataFolder>/modules/discord.yml`):
   `bot-token` (blank refuses module startup), `message-format`, `embed-color` (`#RRGGBB`),
-  `delivery-timeout-seconds` (`long`, not a `Duration`), `link-providers`. Loaded by `ModuleConfigs`,
-  which reproduces the host's copy-defaults-then-merge idiom because
-  `PlayerNotificationsPlugin.copyDefaultsYaml` is private and reads the *host* jar's resources.
-- **Untested by automated tests:** `DiscordBot`, `JdaDiscordMessenger`, `DiscordSrvAccountProvider`
-  and `DiscordModule` — they need a live server, a real bot token and a DiscordSRV-linked account. The
-  manual checklist is Task 8 of `docs/superpowers/plans/2026-07-29-discord-adapter.md`, and it has
-  **not been run**. Everything else in the module is unit tested.
+  `delivery-timeout-seconds` (`long`, not a `Duration`), `link-providers`, `link-code-expiry-seconds`
+  (`long`, default 600, clamped like the timeout). Loaded by `ModuleConfigs`, which reproduces the host's
+  copy-defaults-then-merge idiom because `PlayerNotificationsPlugin.copyDefaultsYaml` is private and reads
+  the *host* jar's resources. Because merge only *adds* absent keys, an existing install keeps its old
+  `link-providers` — an upgrade does not silently switch a server onto `embedded`.
+- **Untested by automated tests:** `DiscordBot`, `JdaDiscordMessenger`, `DiscordSrvAccountProvider`,
+  `DiscordModule`, `LinkSlashCommandListener`, `DatabaseDiscordAccountLinkStore`, and all of
+  `DiscordLinkCommand` except `isOurs` — they need a live server, a real bot token and a Discord account.
+  Two manual checklists exist and **neither has been run**: Task 8 of
+  `docs/superpowers/plans/2026-07-29-discord-adapter.md` and Task 7 of
+  `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`. Everything else in the module is unit
+  tested — including `DiscordLinkFlow`, which is where the link logic deliberately lives for that reason.
 
 ## Notification categories
 
@@ -250,6 +292,14 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 
 The player-facing subcommands are player-only, under permission `playernotifications.command.preferences`,
 declared in `paper-plugin.yml` with `default: true`.
+
+**`/discordlink` is not part of this tree.** It is registered by the *Discord adapter module*, not the
+host, and only when `link-providers` lists `embedded` — so it is absent on a DiscordSRV-only server and on
+one with no Discord module at all. Its permission is added programmatically (the module jar has no plugin
+descriptor) and both command and permission are removed in the module's `shutdown`. See "Discord adapter".
+The accepted cost: a player who has learned `/notifications` does not discover linking from it. Putting it
+under `/notifications link` would have meant giving the host an account-linking registry it has no other
+use for.
 
 `paper.command.NotificationsCommand` builds the Brigadier node and delegates every subcommand to a
 `paper.preferences.PreferenceDialogRouter`, the single object owning the five dialog screens and the
@@ -345,17 +395,18 @@ Conventions when editing config:
 
 MyBatis over MariaDB, structured like a smaller version of the sibling `realty` project:
 - `database.Database` / `database.SqlSessionWrapper` — vendor-neutral interfaces; `SqlSessionWrapper` exposes the typed mappers bound to one `SqlSession`/transaction.
-- `database.entity` — record entities mirroring the DDL (`NotificationEntity`, `NotificationTargetEntity`, `PlayerNotificationPreferenceEntity`).
-- `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`).
+- `database.entity` — record entities mirroring the DDL (`NotificationEntity`, `NotificationTargetEntity`, `PlayerNotificationPreferenceEntity`, `DiscordAccountLinkEntity`).
+- `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`, `DiscordAccountLinkMapper`).
 - `database.maria` — `MariaDatabase` (builds the `SqlSessionFactory`, registers mappers + the `UUIDAsBin16Handler` UUID↔`BINARY(16)` type handler), `MariaSqlSession`, `MariaSchemaMigrator`.
 - `database.maria.mapper` — MariaDB mappers with `@Select`/`@Insert`/`@Delete` (and `<script>`/`<foreach>` for batch ops), extending the neutral interfaces.
-- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Currently a single step, `V1__maria_initial_schema.sql` — the project is still in prototyping with no data to preserve across schema versions, so earlier migrations were collapsed into it rather than layered.
+- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Currently **two** steps: `V1__maria_initial_schema.sql` (earlier migrations were collapsed into it, since the project had no data to preserve at the time) and `V2__discord_account_link.sql`. V2 was **layered rather than collapsed** because V1 is already recorded as applied in any database that has been run, so editing it would have required dropping that database — expect to layer from here on. `SchemaUpgradeTest` covers the V1-already-applied path specifically, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call.
 
 Schema (`V1__maria_initial_schema.sql`), three tables:
 - `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
 - `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord-dm` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
+- `DiscordAccountLink(playerUuid BINARY(16) PK, discordId BIGINT UNIQUE, linkedAt DATETIME)` (V2) — one-to-one **in both directions**, enforced in the schema so a concurrent double-redeem fails at the constraint rather than duplicating. `discordId` is signed: snowflakes are nominally unsigned 64-bit, but their timestamp field keeps real ids far below 2^63, and unsigned would force a `BigInteger` mapping for no benefit. `linkedAt` is written for operator diagnostics and read by nothing. **This is Discord-shaped schema living in `core` for a module that may not be installed** — the compromise exists because `MariaSchemaMigrator` tracks one `schema_version` chain and `MariaDatabase` registers mappers from a hardcoded list, so a module cannot own a migration. Retire it if that changes.
 
 `player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns) — it predates the `dataType` column (originally `category`) and has not been updated.
 
@@ -366,7 +417,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **74 tests in `:core:test`, 23 in `:api:test`, 21 in `:platform:paper-plugin:test`, 52 in `:platform:discord-adapter:test`** — 170 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **82 tests in `:core:test`, 23 in `:api:test`, 21 in `:platform:paper-plugin:test`, 96 in `:platform:discord-adapter:test`** — 222 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -390,21 +441,31 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
 - **The Discord adapter's end-to-end path has never been run.** `DiscordBot`, `JdaDiscordMessenger`,
   `DiscordSrvAccountProvider` and `DiscordModule` compile and are wired, but JDA login, the DiscordSRV
   lookup, module class loading through the shaded jar, and an actual DM landing have not been verified —
-  they need a real bot token and a DiscordSRV-linked account. Checklist: Task 8 of
+  they need a real bot token and an account link. Checklist: Task 8 of
   `docs/superpowers/plans/2026-07-29-discord-adapter.md`. `/notifications test` now exists to drive
-  exactly this check — it is the intended way to run that checklist.
+  exactly this check — it is the intended way to run that checklist. Since `embedded` linking landed, a
+  DiscordSRV-linked account is no longer needed to run it: `/discordlink` can supply the link instead.
 - **`/notifications test`'s own wiring is unverified by automated tests.** `TestNotificationSender`,
   the Brigadier `test` subcommand, the permission gate, and the `test` type appearing in the preference
   dialogs all need a live server. The path underneath them (`registerJsonRenderable` → enqueue →
   `deliver` → render → sink fan-out → prune) **is** covered, by `core`'s `RenderedDeliveryTest`.
-- **Discord account linking is DiscordSRV-only, and there is no in-game link flow.** A player with no
-  DiscordSRV link gets `UNSUPPORTED` from `discord-dm` forever. `DiscordAccountProvider` is the seam a
-  future own-link-table or `/notifications link` flow would slot into; the table would have to live in
-  `core` as a V2 migration, since `MariaSchemaMigrator` tracks one `schema_version` chain and
-  `MariaDatabase` registers mappers from a hardcoded list, so a module cannot own a migration today.
+- **Discord linking exists but its end-to-end path has never been run.** `embedded` + `/discordlink` +
+  the Discord `/link` slash command are implemented and unit tested where testable, but JDA slash-command
+  registration, the DM interaction, and a row actually landing need a live server, a bot token and a
+  Discord account. Checklist: Task 7 of `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`.
+  Remaining gaps in the feature itself:
+  - **No admin link management** — no way to link, unlink or inspect another player's link, and no
+    listing. A stuck link needs a manual `DELETE` against `DiscordAccountLink`.
+  - **No rate limiting** on `/discordlink` or on `/link` attempts. A 6-character code over a 32-character
+    alphabet is ~10^9 with a 10-minute window, which makes brute force impractical rather than
+    impossible; add a per-Discord-user attempt limit if abuse is ever seen.
+  - **Codes do not survive a restart** (in memory by design), and **one Discord account per player** is
+    enforced in the schema.
+  - **The link table is Discord-shaped schema in `core`** — see "Persistence layer" for why and when to
+    retire it.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON. A payload mapped to `String.class` is therefore JSON-encoded on write and arrives at its processor still quoted — the reason every in-tree payload now owns a record instead. `DefaultNotificationService` still pre-registers a `String` serializer and nothing forbids `String.class`, so the trap is still reachable; no registration guard was added (considered and deferred — see the test-notification design doc).
 - **Persisted `essentials-mail` rows predating the `EssentialsMailPayload` change will not deserialize** (they hold `"text"`, the type now expects `{"message":"text"}`). `decodePayload` logs a warning and retains them until expiry prunes them. Acceptable only because the project has no deployed data to preserve; a deployed server would have needed a payload-rewriting migration.
 - **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
 - **Rows for a category removed from `categories.yml` are kept, not pruned** — they resurface if the category is re-added, and are invisible in the dialogs meanwhile. No admin command prunes them.
-- Deferred to their own designs: **Discord account linking** (the sink itself now exists), a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (`/notifications` covers preferences only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences).
+- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (`/notifications` covers preferences only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences).

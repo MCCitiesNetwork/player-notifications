@@ -1,7 +1,8 @@
 # Embedded Discord account linking — design
 
 **Date:** 2026-07-30
-**Status:** proposed
+**Status:** implemented (plan: `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`).
+The manual end-to-end checklist in that plan's Task 7 has **not** been run.
 **Supersedes nothing.** Extends `2026-07-29-discord-adapter-design.md`, whose "Discord account
 linking is DiscordSRV-only, and there is no in-game link flow" limitation this closes.
 
@@ -103,6 +104,15 @@ Registration mechanics:
 - The permission `playernotifications.discord.link` cannot be declared in `paper-plugin.yml` — that file
   belongs to the host and the module jar has no plugin descriptor. The module registers it
   programmatically with `PermissionDefault.TRUE` on initialize and removes it on shutdown.
+- **Both are torn down in `shutdown`,** before the bot stops. Paper's Brigadier registrar exposes no
+  unregister, so `DiscordLinkCommand.unregister` goes through `Bukkit.getCommandMap()` — whose
+  `getKnownCommands()` *is* API — dropping the literal, its `dlink` alias and their plugin-namespaced
+  forms, then calling `Player#updateCommands` on everyone online, since clients cache the command tree.
+  Matching is on the whole name after any namespace, never a substring, because a mis-match would remove
+  *another plugin's* command from a running server; that matcher is the one unit-tested part of the class.
+  Both teardown steps are flag-guarded so shutdown is idempotent and undoes only what was registered.
+  Without this, a module stop/start cycle would leave a `/discordlink` dispatching into a dead flow and a
+  shut-down bot.
 - The command is registered **only when `link-providers` contains `embedded`**. An operator who
   deliberately runs DiscordSRV-only gets no dead command, and no config key is needed to express it.
 
@@ -215,8 +225,9 @@ row for that `playerUuid` and any row for that `discordId`, then inserts. Withou
 unique index on `discordId` would reject a player re-linking a Discord account previously linked to
 someone else, and the natural operator reading of "I linked my account again" is "replace", not "fail".
 
-`RedeemResult` is an enum — `LINKED`, `UNKNOWN_CODE`, `EXPIRED`, `ALREADY_LINKED_TO_THIS_ACCOUNT`,
-`FAILED` — mapped to a Discord reply string by the listener, so the flow stays free of JDA types.
+`RedeemResult` is an enum — `LINKED`, `UNKNOWN_CODE`, `ALREADY_LINKED_TO_THIS_ACCOUNT`, `FAILED` — mapped
+to a Discord reply string by the listener, so the flow stays free of JDA types. There is no separate
+`EXPIRED`; see the `/link` reply table for why.
 
 ## Behaviour
 
@@ -235,16 +246,20 @@ Permission `playernotifications.discord.link` (default `true`), player-only.
 
 ### Discord `/link <code>`
 
-| Case | Ephemeral reply |
-|---|---|
-| Code valid, no conflicting link | "Linked to *player*." |
-| Code unknown | "That code is not valid. Run `/discordlink` in game for a new one." |
-| Code expired | "That code has expired. Run `/discordlink` in game for a new one." |
-| This Discord account is already linked to that same player | "Already linked." — the code is still consumed |
-| Store throws | "Something went wrong; try again." + `WARNING` in the server log |
+| Case | `RedeemResult` | Ephemeral reply |
+|---|---|---|
+| Code valid, no conflicting link | `LINKED` | "Linked. Notifications you have set to Discord will arrive here." |
+| Code unknown **or** expired | `UNKNOWN_CODE` | "That code is not valid or has expired. Run `/discordlink` in game for a new one." |
+| This Discord account is already linked to that same player | `ALREADY_LINKED_TO_THIS_ACCOUNT` | "This Discord account is already linked to that player." |
+| Store throws | `FAILED` | "Something went wrong. Run `/discordlink` in game for a new code and try again." + `WARNING` in the server log |
 
-An expired code is reported distinctly from an unknown one, because "expired" tells the player exactly
-what to do next; both consume nothing beyond removing the stale entry.
+**Unknown and expired are deliberately one case.** An earlier draft of this spec separated them, on the
+grounds that "expired" tells the player more precisely what to do. It cannot be done without leaking
+expiry state out of `LinkCodeService`: `redeem` removes an expired entry and returns empty, so by the time
+the flow sees the result there is nothing left to distinguish the two by. Keeping the removal inside
+`redeem` is worth more than the finer message — it is what guarantees an expired code cannot linger — and
+the single reply names both causes, so the player's next action is the same either way. Revisit only if
+`redeem` ever needs to return a richer result for another reason.
 
 ### Availability reporting
 
