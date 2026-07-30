@@ -14,3 +14,6 @@ run/
 
 # Superpowers SDD workspace
 .superpowers/
+
+# Claude Code worktrees — nested checkouts, each with its own .git and build output
+.claude/worktrees/
