@@ -1,5 +1,7 @@
 package io.github.md5sha256.playernotifications.paper;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLifecycleManager;
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLoader;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
@@ -20,8 +22,6 @@ import io.github.md5sha256.playernotifications.core.category.NotificationCategor
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
-import net.democracrycraft.pluginInfrastructure.modules.ModuleLifecycleManager;
-import net.democracrycraft.pluginInfrastructure.modules.ModuleLoader;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;

@@ -1,10 +1,12 @@
 package io.github.md5sha256.playernotifications.essentials;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.PluginModule;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
-import net.democracrycraft.pluginInfrastructure.modules.ModuleInitializationException;
-import net.democracrycraft.pluginInfrastructure.modules.PluginModule;
 import org.jetbrains.annotations.NotNull;
+
+import java.nio.file.Path;
 
 /**
  * Plugin module that renders notifications through Essentials mail.
@@ -21,7 +23,7 @@ public final class EssentialsMailModule implements PluginModule<PlayerNotificati
     public static final String MAIL_DATA_TYPE = "essentials-mail";
 
     @Override
-    public void initialize(@NotNull PlayerNotificationsPlugin plugin) throws ModuleInitializationException {
+    public void initialize(@NotNull PlayerNotificationsPlugin plugin, @NotNull Path dataPath) throws ModuleInitializationException {
         if (!plugin.getServer().getPluginManager().isPluginEnabled("Essentials")) {
             throw new ModuleInitializationException(
                     "EssentialsX is not installed; cannot enable notifications module");

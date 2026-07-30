@@ -1,8 +1,8 @@
 package io.github.md5sha256.playernotifications.essentials;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
-import net.democracrycraft.pluginInfrastructure.modules.ModuleInitializationException;
 import org.jetbrains.annotations.NotNull;
 
 /**
