@@ -9,3 +9,12 @@ prune-interval-seconds: 3600
 # "discord-dm" (the last only when the discord-adapter module is installed).
 default-media:
   - chat
+
+# Whether a player's due notifications are delivered when they join the server.
+# Turn this off to leave notifications pending until some other trigger delivers them.
+deliver-on-join: true
+
+# How long after a player joins their notifications are delivered, in seconds.
+# A short delay keeps notifications from being buried under the join and MOTD messages.
+# 0 delivers as soon as the join event has been handled.
+join-delivery-delay-seconds: 3
