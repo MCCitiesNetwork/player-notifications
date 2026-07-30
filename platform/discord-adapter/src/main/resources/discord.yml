@@ -35,7 +35,7 @@ delivery-timeout-seconds: 15
 # back as undeliverable.
 #
 # Shipped keys:
-#   embedded   — this plugin's own link table, populated in game with /discordlink. Needs no other
+#   embedded   — this plugin's own link table, populated in game with /notifications link discord. Needs no other
 #                plugin, and is what lets you run the Discord adapter with DiscordSRV absent.
 #   discordsrv — legacy DiscordSRV 2.x's account link manager. Optional: if DiscordSRV is not
 #                installed, this source reports itself unavailable and is skipped.
@@ -43,14 +43,14 @@ delivery-timeout-seconds: 15
 # Listing both, as below, is the right setting for a server moving off DiscordSRV: new links land in the
 # embedded table and win, while players who only have an old DiscordSRV link keep working.
 #
-# /discordlink and the bot's /link slash command are only registered when "embedded" is listed, so a
+# /notifications link discord and the bot's /link slash command are only registered when "embedded" is listed, so a
 # DiscordSRV-only server gets no command it cannot use.
 link-providers:
   - embedded
   - discordsrv
 
-# How long a code issued by /discordlink stays redeemable, in seconds.
+# How long a code issued by /notifications link discord stays redeemable, in seconds.
 #
 # Codes are held in memory and do not survive a restart — a code's whole purpose is to be transient, and
-# a player who loses one simply runs /discordlink again.
+# a player who loses one simply runs /notifications link discord again.
 link-code-expiry-seconds: 600

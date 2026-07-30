@@ -87,7 +87,7 @@ class DiscordSettingsTest {
 
     @Test
     void theEmbeddedProviderIsDetectedInLinkProviders() {
-        // This is what decides whether /discordlink and the Discord /link command are registered at all.
+        // This is what decides whether /notifications link discord and the Discord /link command are registered at all.
         Assertions.assertTrue(settingsWithProviders(List.of("embedded", "discordsrv")).usesEmbeddedProvider());
         Assertions.assertTrue(settingsWithProviders(List.of("EMBEDDED")).usesEmbeddedProvider());
         Assertions.assertFalse(settingsWithProviders(List.of("discordsrv")).usesEmbeddedProvider());

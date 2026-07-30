@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * Read/write access to the plugin's own Discord account links, backing
- * {@link EmbeddedDiscordAccountProvider} and the {@code /discordlink} flow.
+ * {@link EmbeddedDiscordAccountProvider} and the {@code /notifications link discord} flow.
  *
  * <p>An interface rather than a concrete class purely so the flow and the provider are testable without
  * a database — {@link DatabaseDiscordAccountLinkStore} is the only production implementation.

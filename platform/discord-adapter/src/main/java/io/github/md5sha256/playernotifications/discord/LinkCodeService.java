@@ -14,12 +14,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Issues and redeems the short-lived codes that tie a {@code /discordlink} in game to a {@code /link}
+ * Issues and redeems the short-lived codes that tie a {@code /notifications link discord} in game to a {@code /link}
  * slash command in Discord.
  *
  * <p>Codes are held in memory and do not survive a restart. That is deliberate: a code's whole purpose is
  * to be transient, its lifetime is minutes, and a player who loses one to a restart simply runs
- * {@code /discordlink} again — persisting it would mean a schema migration for state designed to expire.
+ * {@code /notifications link discord} again — persisting it would mean a schema migration for state designed to expire.
  *
  * <p>The security property that matters is that a code cannot be guessed: a guessed code would link an
  * attacker's Discord account to the victim's player. Hence {@link SecureRandom}, single use, and a short

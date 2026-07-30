@@ -12,9 +12,9 @@ import java.util.logging.Logger;
 /**
  * Every decision and every player-facing message in the account-link flow.
  *
- * <p>{@link DiscordLinkCommand} and {@link LinkSlashCommandListener} are deliberately thin adapters over
- * this class: the command side cannot be unit tested without a server and the Discord side cannot without
- * a bot, so keeping all the logic here is what makes the flow testable at all.
+ * <p>{@link DiscordAccountLinkProvider} and {@link LinkSlashCommandListener} are deliberately thin
+ * adapters over this class: the command side cannot be unit tested without a server and the Discord side
+ * cannot without a bot, so keeping all the logic here is what makes the flow testable at all.
  *
  * <p>Every method may be called from a command thread or a JDA event thread and blocks on JDBC, so callers
  * must be off the main thread. No method throws: a database failure becomes an error message or
@@ -37,6 +37,13 @@ public final class DiscordLinkFlow {
         FAILED
     }
 
+    /**
+     * The host commands that reach this flow. Named here so every reply — chat and Discord alike — points
+     * at the same place, and so a rename is one edit rather than a grep.
+     */
+    public static final String LINK_COMMAND = "/notifications link " + DiscordMedia.LINK_PROVIDER_KEY;
+    public static final String UNLINK_COMMAND = "/notifications unlink " + DiscordMedia.LINK_PROVIDER_KEY;
+
     private final DiscordAccountLinkStore store;
     private final LinkCodeService codes;
     private final Logger logger;
@@ -49,7 +56,7 @@ public final class DiscordLinkFlow {
         this.logger = logger;
     }
 
-    /** The reply to a bare {@code /discordlink}: issue a code and explain how to redeem it. */
+    /** The reply to a bare {@code /notifications link discord}: issue a code and explain how to redeem it. */
     public @NotNull Component begin(@NotNull UUID playerUuid) {
         Optional<Long> existing;
         try {
@@ -62,7 +69,7 @@ public final class DiscordLinkFlow {
             return Component.text()
                     .append(Component.text("Your account is already linked to Discord. Run ",
                             NamedTextColor.YELLOW))
-                    .append(Component.text("/discordlink unlink", NamedTextColor.AQUA))
+                    .append(Component.text(UNLINK_COMMAND, NamedTextColor.AQUA))
                     .append(Component.text(" first if you want to link a different account.",
                             NamedTextColor.YELLOW))
                     .build();
@@ -80,7 +87,7 @@ public final class DiscordLinkFlow {
                 .build();
     }
 
-    /** The reply to {@code /discordlink status}. */
+    /** The reply to {@code /notifications link discord status}. */
     public @NotNull Component status(@NotNull UUID playerUuid) {
         Optional<Long> linked;
         try {
@@ -100,13 +107,13 @@ public final class DiscordLinkFlow {
         Component base = Component.text("Your account is not linked to Discord.", NamedTextColor.YELLOW);
         if (this.codes.hasOutstandingCode(playerUuid)) {
             return base.append(Component.text(
-                    " You have a link code outstanding — redeem it in Discord, or run /discordlink"
+                    " You have a link code outstanding — redeem it in Discord, or run " + LINK_COMMAND
                             + " again for a new one.", NamedTextColor.YELLOW));
         }
-        return base.append(Component.text(" Run /discordlink to start.", NamedTextColor.YELLOW));
+        return base.append(Component.text(" Run " + LINK_COMMAND + " to start.", NamedTextColor.YELLOW));
     }
 
-    /** The reply to {@code /discordlink unlink}. */
+    /** The reply to {@code /notifications unlink discord}. */
     public @NotNull Component unlink(@NotNull UUID playerUuid) {
         // Cancel first: even if the delete fails, an outstanding code should not survive an unlink attempt.
         this.codes.cancel(playerUuid);

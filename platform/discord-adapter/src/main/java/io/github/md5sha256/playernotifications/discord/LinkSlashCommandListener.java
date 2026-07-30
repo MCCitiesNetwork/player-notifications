@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 
 /**
  * The Discord half of the account-link flow: a {@code /link <code>} slash command that redeems a code
- * issued in game by {@code /discordlink}.
+ * issued in game by {@code /notifications link discord}.
  *
  * <p>An interaction rather than the bot reading a DM's text, because message <em>content</em> needs the
  * privileged {@code MESSAGE_CONTENT} intent while interactions need no intent at all. That keeps
@@ -54,7 +54,7 @@ public final class LinkSlashCommandListener extends ListenerAdapter {
         event.getJDA().updateCommands()
                 .addCommands(Commands.slash(COMMAND_NAME, "Link your Minecraft account to this Discord account")
                         .addOption(OptionType.STRING, CODE_OPTION,
-                                "The code shown by /discordlink in game", true)
+                                "The code shown by " + DiscordLinkFlow.LINK_COMMAND + " in game", true)
                         .setContexts(InteractionContextType.BOT_DM, InteractionContextType.GUILD))
                 .queue(
                         success -> this.logger.info("Registered the Discord /" + COMMAND_NAME
@@ -107,9 +107,11 @@ public final class LinkSlashCommandListener extends ListenerAdapter {
             case LINKED -> "Linked. Notifications you have set to Discord will arrive here.";
             // Unknown and expired are one message: the code service removes an expired entry on redeem, so
             // there is nothing left to tell them apart by.
-            case UNKNOWN_CODE -> "That code is not valid or has expired. Run /discordlink in game for a new one.";
+            case UNKNOWN_CODE -> "That code is not valid or has expired. Run " + DiscordLinkFlow.LINK_COMMAND
+                    + " in game for a new one.";
             case ALREADY_LINKED_TO_THIS_ACCOUNT -> "This Discord account is already linked to that player.";
-            case FAILED -> "Something went wrong. Run /discordlink in game for a new code and try again.";
+            case FAILED -> "Something went wrong. Run " + DiscordLinkFlow.LINK_COMMAND
+                    + " in game for a new code and try again.";
         };
     }
 }

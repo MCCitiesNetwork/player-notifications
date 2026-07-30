@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -121,6 +122,31 @@ class DiscordLinkFlowTest {
         this.flow.begin(player);
 
         Assertions.assertTrue(lower(this.flow.status(player)).contains("code"));
+    }
+
+    @Test
+    @DisplayName("every reply that names a command names the host's, never the removed /discordlink")
+    void repliesNameTheHostCommand() {
+        // The module no longer owns a root command; telling a player to run /discordlink would send them
+        // to something the server does not have.
+        UUID linked = UUID.randomUUID();
+        this.store.link(linked, DISCORD_ID);
+        UUID unlinked = UUID.randomUUID();
+        UUID withCode = UUID.randomUUID();
+        this.flow.begin(withCode);
+
+        for (Component reply : List.of(this.flow.begin(linked), this.flow.status(unlinked),
+                this.flow.status(withCode))) {
+            String text = plain(reply);
+            Assertions.assertFalse(text.contains("/discordlink"), text);
+        }
+
+        Assertions.assertTrue(plain(this.flow.begin(linked)).contains("/notifications unlink discord"),
+                plain(this.flow.begin(linked)));
+        Assertions.assertTrue(plain(this.flow.status(unlinked)).contains("/notifications link discord"),
+                plain(this.flow.status(unlinked)));
+        Assertions.assertTrue(plain(this.flow.status(withCode)).contains("/notifications link discord"),
+                plain(this.flow.status(withCode)));
     }
 
     @Test

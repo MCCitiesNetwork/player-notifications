@@ -9,9 +9,9 @@ import java.util.UUID;
 /**
  * Surfaces this module's account linking to the host as {@code /notifications link discord}.
  *
- * <p>A thin delegate over {@link DiscordLinkFlow} for the same reason the old {@code /discordlink}
- * command was: every decision and every message lives in the flow, which is unit tested, and this class
- * has nothing left to get wrong.
+ * <p>A thin delegate over {@link DiscordLinkFlow} for the same reason the module's former root command
+ * was: every decision and every message lives in the flow, which is unit tested, and this class has
+ * nothing left to get wrong.
  *
  * <p>Registered only when {@code link-providers} lists {@code embedded} — a DiscordSRV-only server has
  * nothing for a code to be redeemed into, so it offers no linking rather than a command that cannot work.

@@ -23,7 +23,7 @@ import java.util.List;
  *                                colour of its own, as {@code #RRGGBB}
  * @param deliveryTimeoutSeconds  how long a single DM send may block before it counts as unreachable
  * @param linkProviders           ordered {@link DiscordAccountProvider} keys forming the lookup chain
- * @param linkCodeExpirySeconds   how long a {@code /discordlink} code stays redeemable
+ * @param linkCodeExpirySeconds   how long a {@code /notifications link discord} code stays redeemable
  */
 @ConfigSerializable
 public record DiscordSettings(
@@ -68,7 +68,7 @@ public record DiscordSettings(
         }
     }
 
-    /** How long an issued {@code /discordlink} code stays redeemable. */
+    /** How long an issued {@code /notifications link discord} code stays redeemable. */
     public @NotNull Duration resolvedLinkCodeExpiry() {
         return Duration.ofSeconds(this.linkCodeExpirySeconds);
     }
@@ -76,7 +76,7 @@ public record DiscordSettings(
     /**
      * Whether {@code link-providers} lists the plugin's own link table.
      *
-     * <p>This is what decides whether {@code /discordlink} and the Discord {@code /link} slash command are
+     * <p>This is what decides whether {@code /notifications link discord} and the Discord {@code /link} slash command are
      * registered at all: an operator who deliberately runs DiscordSRV-only gets no dead command, and no
      * separate config key is needed to say so.
      */

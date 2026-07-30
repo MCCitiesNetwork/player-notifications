@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /**
  * Resolves Discord ids from the plugin's own {@code DiscordAccountLink} table, populated by the
- * {@code /discordlink} flow.
+ * {@code /notifications link discord} flow.
  *
  * <p>This is what makes DiscordSRV genuinely optional: with {@code embedded} in {@code link-providers}, a
  * server needs no third-party linking plugin at all. Listing both keys lets a server migrating off
