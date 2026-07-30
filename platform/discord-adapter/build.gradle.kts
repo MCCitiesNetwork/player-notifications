@@ -27,6 +27,14 @@ dependencies {
     // compileOnlyApi is not on the test runtime classpath, and the sink/factory tests touch
     // Adventure types. See "Testing gotchas" in CLAUDE.md.
     testRuntimeOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+
+    // This module owns its own schema and migrator, so the migrator, the mapper and the link store are
+    // tested against a real MariaDB. Like :core:test, this suite therefore NEEDS A RUNNING DOCKER DAEMON;
+    // without one it fails rather than skipping.
+    testImplementation("org.testcontainers:testcontainers-mariadb:2.0.1")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter:2.0.2")
+    // core declares the driver as `implementation`, so it does not reach this module transitively.
+    testImplementation("org.mariadb.jdbc:mariadb-java-client:3.5.6")
 }
 
 tasks {
