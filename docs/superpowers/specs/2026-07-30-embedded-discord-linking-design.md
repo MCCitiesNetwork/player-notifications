@@ -51,6 +51,13 @@ undelivered notifications.
 
 ### The link table lives in `core`, as migration V2
 
+> **Superseded 2026-07-30** by `2026-07-30-module-owned-discord-schema-design.md`. The table, its
+> migration and its mappers now live in `platform:discord-adapter`, which owns its own
+> `discord_schema_version` chain over the host's connection pool. The premise below was **too strong**: a
+> module cannot join core's hardcoded migration/mapper lists, but `SqlSessionWrapper#session()` already
+> exposes `getConnection()` and `getConfiguration()`, so it can own persistence outright. The rest of this
+> section is kept as a record of what was believed at the time.
+
 A feature module cannot own a schema migration today: `MariaSchemaMigrator` tracks a single
 `schema_version` chain from a hardcoded `DEFAULT_MIGRATIONS` list, and `MariaDatabase` registers its
 mappers from a hardcoded list too. So the table, entity, and mapper live in `core` even though only the
@@ -328,10 +335,10 @@ implementation plan.
 
 ## Known limitations
 
-- **A Discord-side table lives in `core`.** `DiscordAccountLink`, its entity and its mappers sit in a
-  module that has no other reason to know Discord exists, because `MariaSchemaMigrator` owns one
-  hardcoded migration chain and `MariaDatabase` one hardcoded mapper list. Retire this when a module can
-  own a migration and register a mapper; until then, adding a per-module table means editing `core`.
+- ~~**A Discord-side table lives in `core`.**~~ **Resolved 2026-07-30** by
+  `2026-07-30-module-owned-discord-schema-design.md`: the adapter owns its table, migration, migrator and
+  mappers, and `core` is Discord-free. It needed no new `core` API — the conclusion that this had to wait
+  for "a module can own a migration" was based on a premise that was never checked.
 - **Codes do not survive a restart.** Deliberate: a code's lifetime is minutes. A player who is issued a
   code and then sees the server restart gets "not valid" and must re-run `/discordlink`. Reconsider only
   if code issuance ever becomes expensive or asynchronous.

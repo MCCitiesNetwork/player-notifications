@@ -38,6 +38,7 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 - `./gradlew :platform:discord-adapter:shadowJar` — build the Discord adapter module jar. It must be the **shaded** (`-all`) jar: the module bundles its own relocated JDA, so the plain `jar` output has no Discord library in it at all.
 - `./gradlew test` — run all tests (JUnit 5 / Jupiter).
 - `./gradlew :core:test` — run the `core` persistence tests. **These require a running Docker daemon** — they spin up a real `mariadb:11.7` container via Testcontainers.
+- `./gradlew :platform:discord-adapter:test` — **also requires a running Docker daemon**, for the same reason: the module owns its own schema, so its migrator, mapper and link store are tested against a real `mariadb:11.7`. The rest of that module's tests are hermetic, but the suite as a whole is not.
 - `./gradlew :core:test --tests "io.github.md5sha256.playernotifications.*SomeTest"` — run a single test class/method.
 - `./gradlew :platform:paper-plugin:runServer` — launch a real Paper 1.21.8 test server with the plugin loaded (via the `xyz.jpenilla.run-paper` plugin). Server files go under `platform/paper-plugin/run/`. Needs a reachable MariaDB (see `database.yml`). It `dependsOn` `installFeatureModules`, so every feature module is built and installed first, and its `downloadPlugins` block fetches DiscordSRV `v1.30.5` from GitHub (the discord adapter's link source — without it `DiscordSrvAccountProvider` reports itself unavailable and the adapter cannot be exercised end to end).
 - `./gradlew :platform:paper-plugin:installFeatureModules` — `Sync` the feature-module jars into the runServer data folder's `run/plugins/PlayerNotifications/modules/`. Modules are **not** classpath entries (the host loads them through their own `URLClassLoader`), so they are installed as files, not added to the server classpath. Adding a new adapter means adding one `featureModules(project(path = ":platform:<name>", configuration = "moduleJar"))` line to `platform/paper-plugin/build.gradle.kts`. The `Sync` owns only the top-level `*.jar` files — everything else in that directory is preserved at any depth (`preserve { include("**"); exclude("*.jar") }`), so module configs written at runtime survive, whether they are loose files (`discord.yml`, holding the bot token) or a module's own config subdirectory.
@@ -58,7 +59,7 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands and a `PreferenceQuitListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
 - **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type, via `registerJsonPayload` against its own `EssentialsMailPayload` record. It deliberately does **not** map to `String.class`: the registry keys handlers by payload class, so a shared class means a shared processor/serializer/renderer, and `unregisterPayloadMapping`'s cascade would tear out the host's shared `String` serializer on module unload. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
-- **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
+- **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. It also **owns its own schema**: the `discord.schema` subpackage holds its migrator, migration script, entity and mappers, and `core` knows nothing of Discord. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
 
 ### Build conventions
 
@@ -96,6 +97,23 @@ identical under both schemes. `ModuleLoader.loadModulesFromDisk` then NPEs on
 `bot-token`, `uncategorized-label`.
 
 `expectedPluginClass` must equal the host plugin's runtime FQCN, or the module is skipped.
+
+**A module can own its own schema.** It cannot add a step to `MariaSchemaMigrator.DEFAULT_MIGRATIONS` or a
+mapper to `MariaDatabase`'s hardcoded list — both are fixed — but that does not stop it owning persistence,
+because `SqlSessionWrapper#session()` exposes everything needed:
+
+| Need | API |
+|---|---|
+| A connection for its own DDL | `session().getConnection()` |
+| Register its own mapper | `session().getConfiguration().addMapper(...)`, guarded by `hasMapper` |
+| Use it | `session().getMapper(...)` |
+| `UUID` ↔ `BINARY(16)` | already registered on the shared `Configuration` |
+
+`platform:discord-adapter` does exactly this: its own `V*.sql`, its own migrator, its own
+`discord_schema_version` chain, all over the **host's** pool and session factory, so there is no second
+pool and no second copy of the credentials. Two rules if you follow it: load scripts through **the module's
+own** class loader (core's cannot see inside a module jar), and remember that registering a mapper mutates
+the host's shared `Configuration`, which is the narrowest scope MyBatis offers.
 
 ## Rendering & delivery media
 
@@ -155,6 +173,16 @@ unimplemented**: nothing registers it, so it can never be selected; the key exis
 not squatting on a generic `"discord"` name and a channel sink can be added later without migrating a
 single preference row.
 
+- **The module owns its own schema.** `sql/discord/V1__discord_account_link.sql` (in the *module* jar),
+  `schema.DiscordSchemaMigrator`, `schema.DiscordMigrationStep`, its own `discord_schema_version` version
+  table, and its own entity/mappers in the `schema` subpackage. `core` contains no Discord-shaped type,
+  table or migration — `grep -ri discord core/src/main` returns nothing, and a server without this module
+  has no `DiscordAccountLink` table. Only the **connection** is borrowed, via `plugin.database()`; the
+  host's pool, session factory and `UUID` type handler are all reused. `DiscordModule.initialize` runs the
+  migration **before** constructing the store, and a failure fails module startup — an adapter whose table
+  is missing is worse than no adapter. Two traps this hit: scripts load through *this module's* class
+  loader, and `--` line comments are stripped before splitting on `;`, because a `;` inside a comment
+  otherwise splits the script mid-sentence. See "Module system" for the general pattern.
 - **DiscordSRV is genuinely optional.** `link-providers` defaults to `[embedded, discordsrv]`;
   `embedded` resolves the plugin's own `DiscordAccountLink` table and needs no other plugin, so a server
   with DiscordSRV absent still links and delivers. Listing both is the migration setting: new links land
@@ -228,8 +256,7 @@ single preference row.
   the *host* jar's resources. Because merge only *adds* absent keys, an existing install keeps its old
   `link-providers` — an upgrade does not silently switch a server onto `embedded`.
 - **Untested by automated tests:** `DiscordBot`, `JdaDiscordMessenger`, `DiscordSrvAccountProvider`,
-  `DiscordModule`, `LinkSlashCommandListener`, `DatabaseDiscordAccountLinkStore`, and all of
-  `DiscordLinkCommand` except `isOurs` — they need a live server, a real bot token and a Discord account.
+  `DiscordModule`, `LinkSlashCommandListener`, and all of `DiscordLinkCommand` except `isOurs` — they need a live server, a real bot token and a Discord account.
   Two manual checklists exist and **neither has been run**: Task 8 of
   `docs/superpowers/plans/2026-07-29-discord-adapter.md` and Task 7 of
   `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`. Everything else in the module is unit
@@ -395,29 +422,28 @@ Conventions when editing config:
 
 MyBatis over MariaDB, structured like a smaller version of the sibling `realty` project:
 - `database.Database` / `database.SqlSessionWrapper` — vendor-neutral interfaces; `SqlSessionWrapper` exposes the typed mappers bound to one `SqlSession`/transaction.
-- `database.entity` — record entities mirroring the DDL (`NotificationEntity`, `NotificationTargetEntity`, `PlayerNotificationPreferenceEntity`, `DiscordAccountLinkEntity`).
-- `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`, `DiscordAccountLinkMapper`).
+- `database.entity` — record entities mirroring the DDL (`NotificationEntity`, `NotificationTargetEntity`, `PlayerNotificationPreferenceEntity`).
+- `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`).
 - `database.maria` — `MariaDatabase` (builds the `SqlSessionFactory`, registers mappers + the `UUIDAsBin16Handler` UUID↔`BINARY(16)` type handler), `MariaSqlSession`, `MariaSchemaMigrator`.
 - `database.maria.mapper` — MariaDB mappers with `@Select`/`@Insert`/`@Delete` (and `<script>`/`<foreach>` for batch ops), extending the neutral interfaces.
-- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Currently **two** steps: `V1__maria_initial_schema.sql` (earlier migrations were collapsed into it, since the project had no data to preserve at the time) and `V2__discord_account_link.sql`. V2 was **layered rather than collapsed** because V1 is already recorded as applied in any database that has been run, so editing it would have required dropping that database — expect to layer from here on. `SchemaUpgradeTest` covers the V1-already-applied path specifically, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call.
+- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Currently a single step, `V1__maria_initial_schema.sql` — the project is still in prototyping with no data to preserve across schema versions, so earlier migrations were collapsed into it rather than layered. `SchemaUpgradeTest` covers the already-at-V1 path, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call. **A feature module can own its own migrations** without joining this list — see "Module system".
 
 Schema (`V1__maria_initial_schema.sql`), three tables:
 - `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
 - `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord-dm` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
-- `DiscordAccountLink(playerUuid BINARY(16) PK, discordId BIGINT UNIQUE, linkedAt DATETIME)` (V2) — one-to-one **in both directions**, enforced in the schema so a concurrent double-redeem fails at the constraint rather than duplicating. `discordId` is signed: snowflakes are nominally unsigned 64-bit, but their timestamp field keeps real ids far below 2^63, and unsigned would force a `BigInteger` mapping for no benefit. `linkedAt` is written for operator diagnostics and read by nothing. **This is Discord-shaped schema living in `core` for a module that may not be installed** — the compromise exists because `MariaSchemaMigrator` tracks one `schema_version` chain and `MariaDatabase` registers mappers from a hardcoded list, so a module cannot own a migration. Retire it if that changes.
 
 `player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns) — it predates the `dataType` column (originally `category`) and has not been updated.
 
 ## Testing gotchas
 
-- `:core:test` needs a **running Docker daemon** (Testcontainers, `mariadb:11.7`). Without it the suite fails rather than skipping.
+- `:core:test` **and `:platform:discord-adapter:test`** need a **running Docker daemon** (Testcontainers, `mariadb:11.7`). Without it the suite fails rather than skipping. The adapter's fixture (`discord.schema.DiscordSchemaTestSupport`) hands each test its **own fresh schema** rather than truncating a shared one, because its migrator tests assert on DDL and on version bookkeeping and so must start with no tables at all.
 - `api`, `core`, **and `platform:paper-plugin`** declare **`testRuntimeOnly("io.papermc.paper:paper-api")`**. `compileOnlyApi` is not on the test runtime classpath, so without it tests touching Adventure/Bukkit types die at discovery with `NoClassDefFoundError: net/kyori/adventure/text/Component`.
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **82 tests in `:core:test`, 23 in `:api:test`, 21 in `:platform:paper-plugin:test`, 96 in `:platform:discord-adapter:test`** — 222 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 23 in `:api:test`, 21 in `:platform:paper-plugin:test`, 119 in `:platform:discord-adapter:test`** — 240 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -461,8 +487,6 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
     impossible; add a per-Discord-user attempt limit if abuse is ever seen.
   - **Codes do not survive a restart** (in memory by design), and **one Discord account per player** is
     enforced in the schema.
-  - **The link table is Discord-shaped schema in `core`** — see "Persistence layer" for why and when to
-    retire it.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON. A payload mapped to `String.class` is therefore JSON-encoded on write and arrives at its processor still quoted — the reason every in-tree payload now owns a record instead. `DefaultNotificationService` still pre-registers a `String` serializer and nothing forbids `String.class`, so the trap is still reachable; no registration guard was added (considered and deferred — see the test-notification design doc).
 - **Persisted `essentials-mail` rows predating the `EssentialsMailPayload` change will not deserialize** (they hold `"text"`, the type now expects `{"message":"text"}`). `decodePayload` logs a warning and retains them until expiry prunes them. Acceptable only because the project has no deployed data to preserve; a deployed server would have needed a payload-rewriting migration.
 - **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
