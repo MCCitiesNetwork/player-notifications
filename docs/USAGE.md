@@ -12,19 +12,26 @@ Requires Paper **1.21.8**, Java **21**, and a MariaDB database.
 
 ### Commands
 
-Every command below is a subcommand of `/notifications` (alias `/notifs`) and must be run in game.
+Everything lives under `/notifications` (alias `/notifs`), and must be run in game — the one exception
+is `/notifications reload`, noted below.
 
 | Command | What it does |
 |---|---|
-| `/notifications` | Opens the preferences screen. Same as `/notifications preferences`. |
-| `/notifications media` | Jumps straight to "by delivery method" — pick a method, then tick which notifications reach you there. |
-| `/notifications types` | Jumps straight to "by notification type" — pick a category, then tick which methods it uses. |
-| `/notifications mute` | Mutes **everything**, immediately. |
-| `/notifications reset` | Clears all your preferences, immediately, back to the server default. |
+| `/notifications` | Nothing yet. The name is **reserved** for a notification management screen that has not been built — running it tells you so and points you at `/notifications preferences`. |
+| `/notifications preferences` | Opens the preferences screen. |
+| `/notifications preferences media` | Jumps straight to "by delivery method" — pick a method, then tick which notifications reach you there. |
+| `/notifications preferences types` | Jumps straight to "by notification type" — pick a category, then tick which methods it uses. |
+| `/notifications preferences mute` | Mutes **everything**, immediately. |
+| `/notifications preferences reset` | Clears all your preferences, immediately, back to the server default. |
+| `/notifications mute` | Shortcut for `/notifications preferences mute` — the same action, kept at the top level because it is the one people want in a hurry. There is no matching `/notifications reset` shortcut. |
 | `/notifications link` | Lists the accounts you can link (only those the server has set up). |
 | `/notifications link <service>` | Starts linking that account — e.g. `/notifications link discord`. |
 | `/notifications link <service> status` | Shows whether that account is currently linked. |
 | `/notifications unlink <service>` | Removes the link. |
+
+> The preference subcommands used to sit directly under `/notifications` (`/notifications media`, and
+> so on). They moved under `preferences` to keep the top level free for the management screen, whose
+> own verbs would otherwise clash with names like `mute` and `reset`.
 
 Permission: `playernotifications.command.preferences`, granted to everyone by default — linking
 included.
@@ -72,7 +79,7 @@ displayed.
 A mute means "do not tell me" — muted notifications are consumed, not saved up for later. Unticking
 everything stages a mute; it never silently falls back to the server default.
 
-`/notifications mute` also covers notification types added by modules installed *later*.
+Muting also covers notification types added by modules installed *later*.
 
 ### Linking your Discord account
 
@@ -132,13 +139,20 @@ Changing this needs a full restart — `/notifications reload` deliberately skip
 ### `settings.yml`
 
 ```yaml
-prune-interval-seconds: 3600   # how often expired notifications are deleted
-default-media:                 # what a player with no saved preference receives
+prune-interval-seconds: 3600     # how often expired notifications are deleted
+default-media:                   # what a player with no saved preference receives
   - chat
+deliver-on-join: true            # deliver a player's waiting notifications when they log in
+join-delivery-delay-seconds: 3   # how long after joining to wait; 0 = immediately
 ```
 
 Valid `default-media` values are whatever delivery methods are registered — `chat`, `dialog`,
 `essentials-mail`, `discord-dm` (the last two only with their module installed).
+
+`deliver-on-join` is the main way notifications reach players. The short delay exists so messages do
+not arrive during the join flood, while the client is still loading. A negative value is treated as
+`0`. Both keys are picked up by `/notifications reload`, including for a player already waiting out
+the delay — turning the setting off cancels their pending delivery.
 
 ### `categories.yml`
 
@@ -219,10 +233,12 @@ notifications are truncated to Discord's limits.
 
 ### Known limitations
 
-- **Notifications are only delivered when `/notifications test` is run.** There is no join listener
-  yet, so queued notifications are not pushed to players automatically.
-- There is no inbox — `/notifications` covers preferences only. There is no way to list past
-  notifications, and no admin view of another player's preferences.
+- **Delivery is triggered by logging in, or by `/notifications test`** — nothing else. A notification
+  queued for a player who is **already online** waits until their next login; there is no push to a
+  connected player.
+- **There is no inbox.** The commands cover preferences and account linking only — there is no way to
+  list past notifications, no player-initiated clear, and no admin view of another player's
+  preferences. The bare `/notifications` is reserved for this, but nothing implements it yet.
 - Partial delivery failures are silent (see the player caveat above).
 - `discord-channel-ping` is reserved but not implemented; nothing can select it.
 - **No admin tools for account links.** You cannot link, unlink, inspect or list another player's
