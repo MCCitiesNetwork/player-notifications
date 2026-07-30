@@ -4,9 +4,11 @@ import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLifecycleMa
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLoader;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
+import io.github.md5sha256.playernotifications.api.link.AccountLinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
 import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
+import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
@@ -44,6 +46,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.logging.Level;
 
 public final class PlayerNotificationsPlugin extends JavaPlugin {
@@ -54,6 +57,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private Database database;
     private DefaultNotificationService notificationService;
     private NotificationSinkRegistry sinkRegistry;
+    private AccountLinkRegistry accountLinkRegistry;
     private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
@@ -78,6 +82,16 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     @NotNull
     public NotificationSinkRegistry sinkRegistry() {
         return this.sinkRegistry;
+    }
+
+    /**
+     * The registry feature modules register their own
+     * {@link io.github.md5sha256.playernotifications.api.link.AccountLinkProvider}s against, surfacing
+     * them as {@code /notifications link <provider>}.
+     */
+    @NotNull
+    public AccountLinkRegistry accountLinkRegistry() {
+        return this.accountLinkRegistry;
     }
 
     @NotNull
@@ -143,6 +157,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             return;
         }
 
+        this.accountLinkRegistry = new AccountLinkRegistry();
         this.sinkRegistry = new NotificationSinkRegistry();
         this.sinkRegistry.registerSink(new ChatSink(this));
         this.sinkRegistry.registerSink(new DialogSink(this));
@@ -213,9 +228,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
         TestNotificationSender testSender = new TestNotificationSender(
                 this, this.notificationService, this.preferences, () -> this.notificationDelivery);
+        // Built here, resolved per dispatch: modules register their providers during startModules(),
+        // which runs after this method but before Paper fires the COMMANDS event.
+        AccountLinkDispatcher linkDispatcher =
+                new AccountLinkDispatcher(this.accountLinkRegistry, getLogger());
+        Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(
-                        NotificationsCommand.create(this.preferenceDialogRouter, this::reload, testSender),
+                        NotificationsCommand.create(this.preferenceDialogRouter, this::reload, testSender,
+                                linkDispatcher, asyncExecutor),
                         NotificationsCommand.DESCRIPTION,
                         List.of("notifs")
                 ));
@@ -325,6 +346,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             this.notificationService = null;
         }
         this.sinkRegistry = null;
+        this.accountLinkRegistry = null;
         this.preferences = null;
         this.notificationDelivery = null;
         this.categories = null;
