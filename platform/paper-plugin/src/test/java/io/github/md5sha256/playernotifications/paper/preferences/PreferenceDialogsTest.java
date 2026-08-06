@@ -132,6 +132,21 @@ class PreferenceDialogsTest {
         Assertions.assertEquals("You have 2 unsaved changes. Press Apply to save them.", plain(summary));
     }
 
+    @Test
+    void applyLabelIsBareWhenNothingIsStagedYet() {
+        Assertions.assertEquals("Apply", plain(PreferenceDialogs.applyLabel(session())));
+    }
+
+    @Test
+    void applyLabelCountsWhatIsStaged() {
+        PreferenceEditSession session = session();
+        Instant now = Instant.now();
+        session.toggleDataTypeMedium("mail", "chat", false, now);
+        session.toggleDataTypeMedium("test", "chat", true, now);
+
+        Assertions.assertEquals("Apply (2 changed)", plain(PreferenceDialogs.applyLabel(session)));
+    }
+
     /** Categories with one "Mail" category claiming {@code essentials-mail}; everything else falls to "Other". */
     private static NotificationCategories mailCategories() {
         return new NotificationCategories(

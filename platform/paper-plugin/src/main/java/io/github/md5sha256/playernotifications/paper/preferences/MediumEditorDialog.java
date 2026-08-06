@@ -23,13 +23,15 @@ import java.util.function.Consumer;
 
 /**
  * Editor for one medium: a checkbox per notification data type (grouped for readability by its primary
- * category), indicating whether it currently reaches the player through this medium. Save writes into
- * the session only; Apply — shown here as on every screen once anything is staged — persists it.
+ * category), indicating whether it currently reaches the player through this medium.
+ *
+ * <p>Apply and Discard are the only buttons besides Back: Apply folds the checkboxes into the session
+ * and persists everything staged, Discard throws the session away. There is no Save — staging without
+ * persisting was a third option indistinguishable from Apply to the player pressing it.
  */
 final class MediumEditorDialog {
 
     private static final Component BACK_LABEL = Component.text("Back");
-    private static final Component SAVE_LABEL = Component.text("Save");
 
     private final PreferenceDialogRouter router;
 
@@ -50,8 +52,8 @@ final class MediumEditorDialog {
                     .initial(initial).build());
         }
 
-        // Shared by Save and Apply: both must fold this screen's checkbox state into the session, and
-        // each click callback carries its own response, so it is passed in rather than captured.
+        // Folds this screen's checkbox state into the session on Apply. Each click callback carries its
+        // own response, so it is passed in rather than captured.
         Consumer<DialogResponseView> commit = response -> {
             Instant now = Instant.now();
             for (Map.Entry<String, String> entry : inputKeyToDataType.entrySet()) {
@@ -61,17 +63,18 @@ final class MediumEditorDialog {
         };
 
         List<ActionButton> buttons = new ArrayList<>();
-        buttons.add(ActionButton.builder(SAVE_LABEL)
+        PreferenceDialogs.addEditorCommitButtons(this.router, player, session, buttons,
+                () -> this.router.openMediaPicker(player),
+                () -> this.router.openMediaEditor(player, mediumKey),
+                commit);
+        // Back stages this screen's checkboxes rather than dropping them. With no Save button, a Back
+        // that discarded them would lose work silently — and the staged count on the next screen is
+        // what tells the player the edit survived and is waiting for Apply.
+        ActionButton back = ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
                     commit.accept(response);
                     this.router.showMediaPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
-                .build());
-        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
-                () -> this.router.openMediaPicker(player), commit);
-        ActionButton back = ActionButton.builder(BACK_LABEL)
-                .action(DialogAction.customClick((response, audience) ->
-                        this.router.showMediaPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
         List<DialogBody> body = new ArrayList<>();

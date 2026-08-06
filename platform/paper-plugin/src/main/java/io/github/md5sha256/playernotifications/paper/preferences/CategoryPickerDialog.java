@@ -54,7 +54,7 @@ final class CategoryPickerDialog {
                     .build());
         }
         PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
-                () -> this.router.openCategoryPicker(player), response -> {});
+                () -> this.router.openCategoryPicker(player));
         ActionButton back = ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showRoot(player, session), PreferenceDialogs.callbackOptions()))

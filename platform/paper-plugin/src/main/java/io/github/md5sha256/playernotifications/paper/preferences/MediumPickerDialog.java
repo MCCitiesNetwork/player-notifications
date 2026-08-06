@@ -48,7 +48,7 @@ final class MediumPickerDialog {
                     .build());
         }
         PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
-                () -> this.router.openMediaPicker(player), response -> {});
+                () -> this.router.openMediaPicker(player));
         ActionButton back = ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showRoot(player, session), PreferenceDialogs.callbackOptions()))

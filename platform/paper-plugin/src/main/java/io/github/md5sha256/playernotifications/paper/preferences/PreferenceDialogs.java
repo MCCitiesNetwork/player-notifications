@@ -88,37 +88,73 @@ final class PreferenceDialogs {
     }
 
     /**
-     * Appends the {@code Apply}/{@code Discard} pair to a screen's buttons when the session holds
-     * unapplied edits. Every screen carries them, so a player never has to navigate back to a screen
-     * they have left in order to save what they just changed.
-     *
-     * @param reopen      reopens the calling screen once the session has been written or dropped. It must
-     *                    be one of the router's <em>reloading</em> entry points: applying and discarding
-     *                    both drop the session, so the instance the caller holds is dead afterwards.
-     * @param beforeApply folds the calling screen's own unsaved state into the session first, given the
-     *                    response from the Apply click itself. The editors keep their checkbox state in
-     *                    the dialog response rather than in the session, so without this an Apply pressed
-     *                    there would write only what Save had already staged and silently drop the ticks
-     *                    on screen. Screens with no inputs pass a no-op.
+     * The Apply button's label: bare while nothing is staged, and carrying the pending count once
+     * something is. The count is what tells a player on a picker screen that edits made elsewhere are
+     * still waiting.
+     */
+    @NotNull
+    static Component applyLabel(@NotNull PreferenceEditSession session) {
+        return session.isDirty()
+                ? Component.text("Apply (" + session.dirtyCount() + " changed)")
+                : Component.text("Apply");
+    }
+
+    /**
+     * Appends {@code Apply}/{@code Discard} to a screen with no inputs of its own, but only while the
+     * session holds unapplied edits — with nothing staged there is nothing for either button to do.
      */
     static void addStagedButtons(@NotNull PreferenceDialogRouter router,
                                  @NotNull Player player,
                                  @NotNull PreferenceEditSession session,
                                  @NotNull List<ActionButton> buttons,
-                                 @NotNull Runnable reopen,
-                                 @NotNull Consumer<DialogResponseView> beforeApply) {
+                                 @NotNull Runnable reopen) {
         if (!session.isDirty()) {
             return;
         }
-        buttons.add(ActionButton.builder(Component.text("Apply (" + session.dirtyCount() + " changed)"))
+        addCommitButtons(router, player, session, buttons, reopen, reopen, response -> {});
+    }
+
+    /**
+     * Appends {@code Apply}/{@code Discard} to an editor screen. They are the editor's <em>only</em>
+     * buttons — there is deliberately no separate Save. A Save that staged without persisting, sitting
+     * next to an Apply that did both, was a third option whose difference from Apply nobody could state.
+     *
+     * <p>Unlike {@link #addStagedButtons} these show unconditionally, because an editor's checkboxes
+     * live in the dialog response until a button is pressed: a first edit on a clean session has nothing
+     * staged yet, so a dirty-gated Apply would be missing at exactly the moment it is needed.
+     *
+     * @param onApplied   reopens whatever should follow a successful write, and {@code onDiscarded} the
+     *                    same for a discard. Both must be <em>reloading</em> router entry points: either
+     *                    action drops the session, so the instance the caller holds is dead afterwards.
+     * @param commit      folds this screen's checkbox state into the session, given the response from the
+     *                    Apply click itself.
+     */
+    static void addEditorCommitButtons(@NotNull PreferenceDialogRouter router,
+                                       @NotNull Player player,
+                                       @NotNull PreferenceEditSession session,
+                                       @NotNull List<ActionButton> buttons,
+                                       @NotNull Runnable onApplied,
+                                       @NotNull Runnable onDiscarded,
+                                       @NotNull Consumer<DialogResponseView> commit) {
+        addCommitButtons(router, player, session, buttons, onApplied, onDiscarded, commit);
+    }
+
+    private static void addCommitButtons(@NotNull PreferenceDialogRouter router,
+                                         @NotNull Player player,
+                                         @NotNull PreferenceEditSession session,
+                                         @NotNull List<ActionButton> buttons,
+                                         @NotNull Runnable onApplied,
+                                         @NotNull Runnable onDiscarded,
+                                         @NotNull Consumer<DialogResponseView> commit) {
+        buttons.add(ActionButton.builder(applyLabel(session))
                 .action(DialogAction.customClick((response, audience) -> {
-                    beforeApply.accept(response);
-                    router.apply(player, session, reopen);
+                    commit.accept(response);
+                    router.apply(player, session, onApplied);
                 }, callbackOptions()))
                 .build());
         buttons.add(ActionButton.builder(Component.text("Discard changes"))
                 .action(DialogAction.customClick((response, audience) ->
-                        router.discard(player, reopen), callbackOptions()))
+                        router.discard(player, onDiscarded), callbackOptions()))
                 .build());
     }
 

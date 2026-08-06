@@ -64,18 +64,21 @@ disagree:
 
 The root screen also has **Mute everything** and **Reset all to server default**.
 
-**Changes are staged.** Pressing *Save* in an editor only records the change; nothing is written
-until you press **Apply**, which saves everything at once. **Discard** throws the staged changes
-away and puts the screen back to what is stored.
+**Apply and Discard.** Each editor has exactly two buttons besides *Back*: **Apply** saves what you
+have ticked, together with anything staged on other screens, and **Discard** throws all of it away.
+There is no separate *Save* — Apply is the one that writes.
 
-**Apply and Discard are on every screen**, and appear as soon as you have unsaved changes, alongside
-a line saying how many are waiting. You never have to navigate back somewhere else to save. Pressing
-Apply inside an editor also includes whatever you have just ticked on that screen, so it does the job
-of Save as well.
+The two are on every screen, not just the editors. On the root and picker screens they appear as soon
+as you have unsaved changes, alongside a line saying how many are waiting. You never have to navigate
+somewhere else to save.
 
-Two things about the category editor worth knowing: pressing *Save* writes the state of **every**
-type in that category for every method shown, even ones you didn't touch — so opening it and saving
-with no changes converts those types from "server default" to an explicit setting matching what was
+*Back* leaves without applying, but does **not** throw away what you ticked — it keeps it staged, so
+you can visit several editors and Apply once at the end. The pending count tells you it is still
+waiting. Only *Discard* actually throws changes away.
+
+One thing about the category editor worth knowing: Apply writes the state of **every** type in that
+category for every method shown, even ones you didn't touch — so opening it and applying with no
+changes converts those types from "server default" to an explicit setting matching what was
 displayed.
 
 ### The three states a notification type can be in

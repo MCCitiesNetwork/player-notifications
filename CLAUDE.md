@@ -469,28 +469,41 @@ shared `PreferenceSessionManager` (`paper.preferences.session`):
   (`NotificationCategories#dataTypesForCategory`), and shows "(partly on)" when the category's member
   `dataType`s currently disagree on that medium.
 
-**Apply and Discard are on every screen**, not just the root, and appear as soon as the session is
-dirty — along with a `PreferenceDialogs.stagedSummary` line naming the pending count. Both are added
-by the shared `PreferenceDialogs.addStagedButtons`, which takes the *reloading* entry point
-(`openRoot`/`openMediaPicker`/`openCategoryPicker`) to reopen afterwards, since applying and
-discarding both drop the session the caller holds. On the two editors, Apply first runs the same
-commit Save does — an editor's checkbox state lives in the dialog response, not the session, so a
-bare Apply there would silently drop what is on screen; that is why `addStagedButtons` takes a
-`Consumer<DialogResponseView>` rather than a `Runnable`. Discard reopens the screen rather than just
-closing it, so the revert is visible. This replaced an Apply/Discard pair that existed **only** on the
-root screen, which players reported as the main confusion: Save navigated away and nothing on the
-screen they landed on said anything was unsaved.
+**Apply and Discard are on every screen**, not just the root — along with a
+`PreferenceDialogs.stagedSummary` line naming the pending count. This replaced an Apply/Discard pair
+that existed **only** on the root screen, which players reported as the main confusion: Save navigated
+away and nothing on the screen they landed on said anything was unsaved.
+
+- **The editors have no Save.** `addEditorCommitButtons` shows Apply and Discard *unconditionally*;
+  `addStagedButtons` (root and pickers, which have no inputs) shows them only while the session is
+  dirty. The distinction matters: an editor's checkbox state lives in the dialog response until a
+  button is pressed, so a first edit on a clean session has nothing staged yet and a dirty-gated Apply
+  would be missing exactly when it is needed. A Save that staged without persisting, sitting next to
+  an Apply that did both, was a third option whose difference from Apply nobody could state.
+- **Apply folds in the on-screen response first**, via the `Consumer<DialogResponseView>` the editors
+  pass — without it Apply would write only what was already staged and silently drop the ticks in
+  front of the player.
+- **`Back` on an editor stages rather than discards.** It runs the same commit, since with no Save a
+  discarding Back would lose work silently. Only Discard throws anything away.
+- **Both actions take *reloading* router entry points** (`openRoot`/`openMediaPicker`/
+  `openCategoryPicker`, plus `openMediaEditor`/`openCategoryEditor` added for this) because applying
+  and discarding both drop the session the caller holds. Apply returns to the picker; an editor's
+  Discard reopens *that editor*, so the reverted checkboxes are visible rather than the player being
+  dropped elsewhere to infer what happened.
+- `CategoryEditorDialog` keeps **"Use server default"**, being a different action rather than a second
+  way to save.
 
 Both editors mutate the same `paper.preferences.session.PreferenceEditSession`, keyed by `dataType` (not
-category), so the two pivots can never disagree. Editor "Save" writes only into the session; nothing is
-persisted until **Apply**, which writes every dirty `dataType` in one transaction
+category), so the two pivots can never disagree. An editor's checkboxes reach the session only when a
+button commits them (Apply, or `Back`); nothing is persisted until **Apply**, which writes every dirty
+`dataType` in one transaction
 (`DatabaseNotificationPreferences.applyChanges`). A `dataType` emptied to nothing — from either editor —
 stages a mute (`{"none"}`), never a silent fall-through to the server default; only the explicit "use
 server default" action stages a reset (`DatabaseNotificationPreferences.resetDataType` equivalent,
-clearing that `dataType`'s rows on Apply). In `CategoryEditorDialog`, pressing Save always writes every
+clearing that `dataType`'s rows on Apply). In `CategoryEditorDialog`, committing always writes every
 member `dataType`'s state for every medium shown, even ones the player didn't touch — opening a category
-editor and pressing Save with no changes still marks every member `dataType` dirty and, on Apply,
-converts them from "server default" to an explicit row matching whatever was already displayed.
+editor and pressing Apply with no changes still marks every member `dataType` dirty and converts them
+from "server default" to an explicit row matching whatever was already displayed.
 
 **Three preference states per `dataType`**, expressible per-`dataType` via the medium editor or (fanned
 out) via the category editor:
@@ -581,7 +594,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 46 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 277 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 48 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 279 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 

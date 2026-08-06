@@ -103,6 +103,21 @@ public final class PreferenceDialogRouter {
                 player, session -> this.categoryPickerDialog.show(player, session));
     }
 
+    /**
+     * Reopens one editor with a freshly loaded session. Used by that editor's own Discard, so the
+     * reverted checkboxes are visible rather than the player being dropped somewhere else and left to
+     * infer what happened.
+     */
+    public void openMediaEditor(@NotNull Player player, @NotNull String medium) {
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.dataTypeRegistry, this.preferences,
+                player, session -> this.mediumEditorDialog.show(player, session, medium));
+    }
+
+    public void openCategoryEditor(@NotNull Player player, @NotNull String category) {
+        PreferenceDialogs.withSession(this.plugin, this.sessions, this.dataTypeRegistry, this.preferences,
+                player, session -> this.categoryEditorDialog.show(player, session, category));
+    }
+
     void showRoot(@NotNull Player player, @NotNull PreferenceEditSession session) {
         this.rootDialog.show(player, new PreferenceEditSessionHandle(session));
     }

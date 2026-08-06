@@ -73,7 +73,7 @@ final class PreferenceRootDialog {
                 }, PreferenceDialogs.callbackOptions()))
                 .build());
         PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
-                () -> this.router.openRoot(player), response -> {});
+                () -> this.router.openRoot(player));
         ActionButton close = ActionButton.builder(CLOSE_LABEL).build();
 
         List<DialogBody> body = new ArrayList<>();

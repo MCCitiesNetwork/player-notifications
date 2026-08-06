@@ -26,15 +26,18 @@ import java.util.function.Consumer;
 /**
  * Editor for one notification category: a checkbox per registered medium, plus "use server default" to
  * stage clearing every data type this category claims. Checking or unchecking a medium away from what
- * was rendered fans out to a per-data-type write on Save; a checkbox left exactly as rendered is a
- * no-op, except a "(mixed)" medium always resolves on Save (it has no single "current" value to compare
- * against, so it always fans out uniformly). Save writes into the session only; Apply — shown here as
- * on every screen once anything is staged — persists it.
+ * was rendered fans out to a per-data-type write on Apply; a checkbox left exactly as rendered is a
+ * no-op, except a "(partly on)" medium always resolves on Apply (it has no single "current" value to
+ * compare against, so it always fans out uniformly).
+ *
+ * <p>Apply folds the checkboxes into the session and persists everything staged, Discard throws the
+ * session away. There is no Save — staging without persisting was a third option indistinguishable
+ * from Apply to the player pressing it. "Use server default" remains, being a different action rather
+ * than a second way to save.
  */
 final class CategoryEditorDialog {
 
     private static final Component BACK_LABEL = Component.text("Back");
-    private static final Component SAVE_LABEL = Component.text("Save");
     private static final Component USE_DEFAULT_LABEL = Component.text("Use server default");
     private static final Component MIXED_SUFFIX = Component.text(" (partly on)", NamedTextColor.GRAY);
 
@@ -64,8 +67,8 @@ final class CategoryEditorDialog {
             inputs.add(DialogInput.bool(inputKey, label).initial(state == MixedState.ALL_CHECKED).build());
         }
 
-        // Shared by Save and Apply: both must fold this screen's checkbox state into the session, and
-        // each click callback carries its own response, so it is passed in rather than captured.
+        // Folds this screen's checkbox state into the session on Apply. Each click callback carries its
+        // own response, so it is passed in rather than captured.
         Consumer<DialogResponseView> commit = response -> {
             Instant now = Instant.now();
             for (Map.Entry<String, String> entry : inputKeyToMedium.entrySet()) {
@@ -80,12 +83,6 @@ final class CategoryEditorDialog {
             }
         };
 
-        ActionButton save = ActionButton.builder(SAVE_LABEL)
-                .action(DialogAction.customClick((response, audience) -> {
-                    commit.accept(response);
-                    this.router.showCategoryPicker(player, session);
-                }, PreferenceDialogs.callbackOptions()))
-                .build();
         ActionButton useDefault = ActionButton.builder(USE_DEFAULT_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
                     Instant now = Instant.now();
@@ -95,14 +92,19 @@ final class CategoryEditorDialog {
                     this.router.showCategoryPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
                 .build();
+        // Back stages this screen's checkboxes rather than dropping them — see MediumEditorDialog.
         ActionButton back = ActionButton.builder(BACK_LABEL)
-                .action(DialogAction.customClick((response, audience) ->
-                        this.router.showCategoryPicker(player, session), PreferenceDialogs.callbackOptions()))
+                .action(DialogAction.customClick((response, audience) -> {
+                    commit.accept(response);
+                    this.router.showCategoryPicker(player, session);
+                }, PreferenceDialogs.callbackOptions()))
                 .build();
 
-        List<ActionButton> buttons = new ArrayList<>(List.of(save, useDefault));
-        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
-                () -> this.router.openCategoryPicker(player), commit);
+        List<ActionButton> buttons = new ArrayList<>(List.of(useDefault));
+        PreferenceDialogs.addEditorCommitButtons(this.router, player, session, buttons,
+                () -> this.router.openCategoryPicker(player),
+                () -> this.router.openCategoryEditor(player, categoryKey),
+                commit);
 
         List<DialogBody> body = new ArrayList<>();
         body.add(DialogBody.plainMessage(Component.text(
