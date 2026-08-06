@@ -33,8 +33,13 @@ is `/notifications reload`, noted below.
 > so on). They moved under `preferences` to keep the top level free for the management screen, whose
 > own verbs would otherwise clash with names like `mute` and `reset`.
 
-Permission: `playernotifications.command.preferences`, granted to everyone by default — linking
-included.
+Permission: `playernotifications.command.preferences`, granted to everyone by default.
+
+Linking has its own permission on top of that, `playernotifications.command.link`, also granted to
+everyone by default — so out of the box nothing changes. Negate it to leave preferences open while
+restricting `/notifications link` and `/notifications unlink` to a rank. It is an *extra* gate, not a
+replacement: `playernotifications.command.preferences` still covers the whole command, so revoking
+that hides linking as well.
 
 `<service>` tab-completes to whatever the server has available. Asking for one it does not have (or
 whose module is switched off) gets you a message saying so, not an error.

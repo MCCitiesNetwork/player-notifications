@@ -257,7 +257,8 @@ single preference row.
   `DiscordMedia.LINK_PROVIDER_KEY` (`"discord"`) — only when `link-providers` lists `embedded`, since a
   DiscordSRV-only server has nothing for a code to redeem into. The module owns **no** command and **no**
   permission: the host's `/notifications link|unlink` subtree already exists and is gated by
-  `playernotifications.command.preferences`. `shutdown` just unregisters the provider (flag-guarded, so
+  `playernotifications.command.link` (on top of the root's `playernotifications.command.preferences`).
+  `shutdown` just unregisters the provider (flag-guarded, so
   it is idempotent); the command node stays and the host replies "Discord linking is not available on
   this server", which is also what a server without this module shows. This replaced a module-owned
   `/discordlink` whose teardown had to go through `Bukkit.getCommandMap().getKnownCommands()` — that
@@ -403,7 +404,8 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   implementation), since muting everything is the operation most often wanted in a hurry. There is
   deliberately no top-level `reset` counterpart.
 - `/notifications link [provider] [status]` / `/notifications unlink [provider]` — account linking, backed
-  by the `AccountLinkRegistry`. See below.
+  by the `AccountLinkRegistry`. Gated by its own `playernotifications.command.link`
+  (`NotificationsCommand.LINK_PERMISSION`, `default: true`) — see below.
 - `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
   immediately, off the main thread. Admin-only (`playernotifications.command.test`, `default: op`) and
   player-only. The **only** caller of `NotificationDelivery.deliver(UUID)` in the tree. Its reply names
@@ -418,7 +420,10 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   Also refreshes the `JoinDeliveryListener`'s `deliver-on-join` toggle and delay — see "Join delivery".
 
 The player-facing subcommands are player-only, under permission `playernotifications.command.preferences`,
-declared in `paper-plugin.yml` with `default: true`.
+declared in `paper-plugin.yml` with `default: true`. `link`/`unlink` carry an **additional**
+`playernotifications.command.link` (also `default: true`), so a server can restrict linking without
+closing preferences; because Brigadier `requires` nest, revoking the root permission still hides
+linking. Both defaulting to `true` means the split is a no-op until an operator negates one.
 
 **Account linking lives under this tree**, via `api.link.AccountLinkRegistry` — a host-owned registry a
 feature module registers an `AccountLinkProvider` against. This **reverses** an earlier decision (linking

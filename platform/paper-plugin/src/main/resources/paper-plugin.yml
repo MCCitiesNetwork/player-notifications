@@ -27,6 +27,12 @@ permissions:
   playernotifications.command.preferences:
     description: Open the notification preferences dialog with /notifications preferences.
     default: true
+  # Separable from the preferences grant: linking a Minecraft account to an external one is a
+  # different decision from choosing delivery media. Additive, not a replacement — the command root
+  # still requires playernotifications.command.preferences, so revoking that hides linking too.
+  playernotifications.command.link:
+    description: Link and unlink external accounts with /notifications link|unlink.
+    default: true
   playernotifications.command.reload:
     description: Reload categories.yml and settings.yml with /notifications reload.
     default: op

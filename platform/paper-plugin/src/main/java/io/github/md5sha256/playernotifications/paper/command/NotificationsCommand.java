@@ -24,7 +24,7 @@ import java.util.function.Supplier;
  * The player-facing {@code /notifications} command.
  *
  * <p>The <strong>bare root is reserved</strong> for a notification management UI and only prints a notice
- * saying so. Everything preference-related hangs off {@code preferences}: that literal opens the
+* saying so. Everything preference-related hangs off {@code preferences}: that literal opens the
  * staged root dialog, its {@code media}/{@code types} children jump straight to the corresponding picker
  * on the same session, and its {@code mute}/{@code reset} children write immediately and discard any open
  * session, unlike their staged root-screen equivalents. Nesting them keeps the top level clear for the
@@ -44,6 +44,15 @@ import java.util.function.Supplier;
 public final class NotificationsCommand {
 
     public static final String PERMISSION = "playernotifications.command.preferences";
+
+    /**
+     * Gates the {@code link}/{@code unlink} subtrees. Linking a Minecraft account to an external one is a
+     * different grant from choosing delivery media, so it is separable — a server can leave preferences open
+     * to everyone while restricting linking to a rank. It is an <em>additional</em> gate, not a replacement:
+     * the tree root already requires {@link #PERMISSION}, so revoking that hides linking too. Both default to
+     * {@code true}, so the split changes nothing until an operator negates one.
+     */
+    public static final String LINK_PERMISSION = "playernotifications.command.link";
 
     public static final String RELOAD_PERMISSION = "playernotifications.command.reload";
 
@@ -135,6 +144,7 @@ public final class NotificationsCommand {
     private static LiteralArgumentBuilder<CommandSourceStack> linkNode(
             @NotNull AccountLinkDispatcher dispatcher, @NotNull Executor asyncExecutor) {
         return Commands.literal("link")
+                .requires(source -> source.getSender().hasPermission(LINK_PERMISSION))
                 .executes(context -> run(context,
                         player -> reply(player, asyncExecutor, dispatcher::listProviders)))
                 .then(providerArgument(dispatcher)
@@ -149,6 +159,7 @@ public final class NotificationsCommand {
     private static LiteralArgumentBuilder<CommandSourceStack> unlinkNode(
             @NotNull AccountLinkDispatcher dispatcher, @NotNull Executor asyncExecutor) {
         return Commands.literal("unlink")
+                .requires(source -> source.getSender().hasPermission(LINK_PERMISSION))
                 .executes(context -> run(context,
                         player -> reply(player, asyncExecutor, dispatcher::listProviders)))
                 .then(providerArgument(dispatcher)
