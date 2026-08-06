@@ -97,8 +97,7 @@ class PreferenceDialogsTest {
     }
 
     private static PreferenceEditSession session() {
-        return new PreferenceEditSession(UUID.randomUUID(), Map.of("mail", Set.of("chat")),
-                Set.of(), Set.of("chat"), Instant.now());
+        return new PreferenceEditSession(UUID.randomUUID(), Map.of("mail", Set.of("chat")), Instant.now());
     }
 
     private static String plain(Component component) {

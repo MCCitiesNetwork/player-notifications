@@ -14,8 +14,7 @@ class PreferenceSessionManagerTest {
     private static final UUID PLAYER = UUID.randomUUID();
 
     private static PreferenceEditSession freshSession() {
-        return new PreferenceEditSession(PLAYER, Map.of("economy", Set.of("chat")),
-                Set.of("economy"), Set.of("chat"), Instant.now());
+        return new PreferenceEditSession(PLAYER, Map.of("economy", Set.of("chat")), Instant.now());
     }
 
     @Test
@@ -61,7 +60,7 @@ class PreferenceSessionManagerTest {
         PreferenceSessionManager manager = new PreferenceSessionManager();
         Instant longAgo = Instant.now().minus(PreferenceSessionManager.IDLE_TIMEOUT).minusSeconds(60);
         PreferenceEditSession expired = new PreferenceEditSession(PLAYER, Map.of("economy", Set.of("chat")),
-                Set.of("economy"), Set.of("chat"), longAgo);
+                longAgo);
         manager.getOrCreate(PLAYER, () -> expired);
 
         PreferenceEditSession rebuilt = manager.getOrCreate(PLAYER, PreferenceSessionManagerTest::freshSession);

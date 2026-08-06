@@ -19,11 +19,11 @@ import java.util.Set;
 
 /**
  * The root notification-preferences screen: choose a pivot ("delivery methods" or "notification
- * types"), stage a global mute/reset, or apply/discard whatever is currently staged.
+ * types"), stage a global mute, or apply/discard whatever is currently staged.
  *
  * <p>Apply and Discard are no longer unique to this screen — every screen carries them (see
- * {@link PreferenceDialogs#addStagedButtons}). Mute everything and Reset all deliberately stay staged
- * here, unlike their immediate {@code /notifications preferences mute|reset} counterparts.
+ * {@link PreferenceDialogs#addStagedButtons}). Mute everything deliberately stays staged here, unlike
+ * its immediate {@code /notifications preferences mute} counterpart.
  */
 final class PreferenceRootDialog {
 
@@ -33,7 +33,6 @@ final class PreferenceRootDialog {
     private static final Component BY_MEDIUM_LABEL = Component.text("Delivery methods");
     private static final Component BY_CATEGORY_LABEL = Component.text("Notification types");
     private static final Component MUTE_ALL_LABEL = Component.text("Mute everything");
-    private static final Component RESET_ALL_LABEL = Component.text("Reset all to server default");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     private final PreferenceDialogRouter router;
@@ -60,15 +59,6 @@ final class PreferenceRootDialog {
                         session.setDataTypeMedia(dataType, Set.of(), now);
                     }
                     session.setDataTypeMedia(DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, Set.of(), now);
-                    show(player, handle);
-                }, PreferenceDialogs.callbackOptions()))
-                .build());
-        buttons.add(ActionButton.builder(RESET_ALL_LABEL)
-                .action(DialogAction.customClick((response, audience) -> {
-                    Instant now = Instant.now();
-                    for (String dataType : this.router.dataTypeRegistry().dataTypes()) {
-                        session.resetDataType(dataType, now);
-                    }
                     show(player, handle);
                 }, PreferenceDialogs.callbackOptions()))
                 .build());

@@ -392,17 +392,27 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   yet**; prints a notice saying so and pointing at `/notifications preferences`. It deliberately does
   **not** open the preferences dialog. The preference subcommands were nested under `preferences` at the
   same time, to keep the top level clear for that UI's own verbs — which would otherwise collide with
-  names like `mute` and `reset`. A player-facing inbox is still a deferred item (see "Current state");
+  a name like `mute`. A player-facing inbox is still a deferred item (see "Current state");
   reserving the name is not implementing it.
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
 - `/notifications preferences mute` — mutes every known `dataType` **immediately** (no staging).
-- `/notifications preferences reset` — clears every stored preference **immediately** (no staging).
 - `/notifications mute` — the one preference subcommand kept **also** at the top level, as a proxy onto
   the same `PreferenceDialogRouter.muteImmediately` action the nested form calls (not a second
-  implementation), since muting everything is the operation most often wanted in a hurry. There is
-  deliberately no top-level `reset` counterpart.
+  implementation), since muting everything is the operation most often wanted in a hurry.
+
+There is **no player-facing way back to the server default.** `/notifications preferences reset`, the
+root screen's "Reset all to server default", the category editor's "Use server default" and the
+picker's "(server default)" suffix were all removed together, along with
+`PreferenceEditSession.resetDataType`/`dataTypesToReset`/`isUsingServerDefault` and
+`PreferenceDialogRouter.resetImmediately`: players read "defaults" as a fourth preference state they
+had to reason about. Every edit a player makes is now an explicit choice, and the only way out of one
+is to pick different media or mute. `default-media` still exists and still applies to a `dataType` the
+player has never configured — it is just no longer reachable once they have. `core` kept
+`DatabaseNotificationPreferences.resetAll`/`explicitlyConfiguredDataTypes` and `applyChanges`'s
+`dataTypesToReset` parameter, which are now **uncalled** — persistence-level operations left in place
+(and still tested) for a future admin command, not UI.
 - `/notifications link [provider] [status]` / `/notifications unlink [provider]` — account linking, backed
   by the `AccountLinkRegistry`. Gated by its own `playernotifications.command.link`
   (`NotificationsCommand.LINK_PERMISSION`, `default: true`) — see below.
@@ -459,15 +469,17 @@ only. Both branches are player-only and dispatched off the main thread, since pr
 shared `PreferenceSessionManager` (`paper.preferences.session`):
 
 - `PreferenceRootDialog` — pick a pivot ("Delivery methods" / "Notification types"), or stage
-  "Mute everything" / "Reset all to server default".
+  "Mute everything".
 - `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
   (grouped/labeled by its primary category for readability, and title-cased rather than shown as the
   raw registry key — see `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`), e.g. "which
   notifications reach me on Discord".
-- `CategoryPickerDialog` → `CategoryEditorDialog` — pick a category, then one checkbox per **medium**
-  plus "use server default"; each medium's checkbox fans out to every `dataType` the category claims
+- `CategoryPickerDialog` → `CategoryEditorDialog` — pick a category, then one checkbox per **medium**;
+  each medium's checkbox fans out to every `dataType` the category claims
   (`NotificationCategories#dataTypesForCategory`), and shows "(partly on)" when the category's member
-  `dataType`s currently disagree on that medium.
+  `dataType`s currently disagree on that medium. **Structurally the mirror of the medium pair**: same
+  button set (Apply / Discard / Back, no Save and no per-row state annotation on the picker), differing
+  only in which axis is the row and which is the checkbox.
 
 **Apply and Discard are on every screen**, not just the root — along with a
 `PreferenceDialogs.stagedSummary` line naming the pending count. This replaced an Apply/Discard pair
@@ -492,20 +504,18 @@ away and nothing on the screen they landed on said anything was unsaved.
   and discarding both drop the session the caller holds. Apply returns to the picker; an editor's
   Discard reopens *that editor*, so the reverted checkboxes are visible rather than the player being
   dropped elsewhere to infer what happened.
-- `CategoryEditorDialog` keeps **"Use server default"**, being a different action rather than a second
-  way to save.
 
 Both editors mutate the same `paper.preferences.session.PreferenceEditSession`, keyed by `dataType` (not
 category), so the two pivots can never disagree. An editor's checkboxes reach the session only when a
 button commits them, which only Apply does; nothing is persisted until **Apply**, which writes every dirty
 `dataType` in one transaction
-(`DatabaseNotificationPreferences.applyChanges`). A `dataType` emptied to nothing — from either editor —
-stages a mute (`{"none"}`), never a silent fall-through to the server default; only the explicit "use
-server default" action stages a reset (`DatabaseNotificationPreferences.resetDataType` equivalent,
-clearing that `dataType`'s rows on Apply). In `CategoryEditorDialog`, committing always writes every
-member `dataType`'s state for every medium shown, even ones the player didn't touch — opening a category
-editor and pressing Apply with no changes still marks every member `dataType` dirty and converts them
-from "server default" to an explicit row matching whatever was already displayed.
+(`DatabaseNotificationPreferences.applyChanges`, called with an empty `dataTypesToReset` — the session
+has no reset concept left, so every staged edit is an explicit write). A `dataType` emptied to nothing —
+from either editor — stages a mute (`{"none"}`); there is no staged form of "fall back to the server
+default" at all. In `CategoryEditorDialog`, committing always writes every member `dataType`'s state for
+every medium shown, even ones the player didn't touch — opening a category editor and pressing Apply
+with no changes still marks every member `dataType` dirty and converts them from unconfigured to an
+explicit row matching whatever was already displayed.
 
 **Three preference states per `dataType`**, expressible per-`dataType` via the medium editor or (fanned
 out) via the category editor:
@@ -515,6 +525,11 @@ out) via the category editor:
 | Unconfigured | no exact rows for that `dataType` | `*` rows, else `default-media` from `settings.yml` |
 | Explicit selection | one row per medium for that `dataType` | that set |
 | Explicit mute | a single `medium = 'none'` row for that `dataType` | `{none}` |
+
+**Unconfigured is now a one-way state**: it is where a `dataType` starts, and nothing in the UI returns
+a `dataType` to it since the "server default" affordances were removed. The row remains because
+`preferredMedia` still resolves it — for a `dataType` the player has never touched, and for one
+registered by a module installed after they last edited their preferences.
 
 `NullSink` is registered for `"none"` and returns `DELIVERED`, so a muted `dataType`'s notifications are
 **consumed** rather than accumulating until expiry — a mute means "do not tell me", not "queue this for
@@ -528,9 +543,9 @@ Implementation notes:
 - `PreferenceSessionManager` expires a session after 15 minutes idle (`IDLE_TIMEOUT`) and
   `PreferenceQuitListener` drops it on `PlayerQuitEvent`; reopening after either starts fresh from the
   database.
-- `/notifications preferences mute` and `… reset` write **immediately** and discard any open staged
-  session with a chat notice — the one deliberate asymmetry with the root screen's staged equivalents,
-  which only take effect on Apply.
+- `/notifications preferences mute` writes **immediately** and discards any open staged session with a
+  chat notice — the one deliberate asymmetry with the root screen's staged "Mute everything", which
+  only takes effect on Apply.
 - `DatabaseNotificationPreferences` does blocking JDBC while `Player#showDialog` must run on the main
   thread, so dialog loads/writes marshal onto the async scheduler and back (`PreferenceDialogs.withSession`).
 - Dialog input keys are **positional** (`medium_0`, `category_0`, …) with a key→value map, because
@@ -596,7 +611,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 48 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 279 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 46 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 277 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 

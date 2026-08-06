@@ -284,10 +284,8 @@ final class PreferenceDialogs {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             Set<String> dataTypes = dataTypeRegistry.dataTypes();
             Map<String, Set<String>> effective = preferences.effectiveMediaByDataType(uuid, dataTypes);
-            Set<String> explicitAtLoad = preferences.explicitlyConfiguredDataTypes(uuid, dataTypes);
-            Set<String> fallback = preferences.preferredMedia(uuid, DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY);
             PreferenceEditSession session = sessions.getOrCreate(uuid, () ->
-                    new PreferenceEditSession(uuid, effective, explicitAtLoad, fallback, Instant.now()));
+                    new PreferenceEditSession(uuid, effective, Instant.now()));
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (player.isOnline()) {
                     onLoaded.accept(session);

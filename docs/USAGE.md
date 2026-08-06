@@ -22,8 +22,7 @@ is `/notifications reload`, noted below.
 | `/notifications preferences media` | Jumps straight to "Delivery methods" — pick a method, then tick which notifications reach you there. |
 | `/notifications preferences types` | Jumps straight to "Notification types" — pick a category, then tick which methods it uses. |
 | `/notifications preferences mute` | Mutes **everything**, immediately. |
-| `/notifications preferences reset` | Clears all your preferences, immediately, back to the server default. |
-| `/notifications mute` | Shortcut for `/notifications preferences mute` — the same action, kept at the top level because it is the one people want in a hurry. There is no matching `/notifications reset` shortcut. |
+| `/notifications mute` | Shortcut for `/notifications preferences mute` — the same action, kept at the top level because it is the one people want in a hurry. |
 | `/notifications link` | Lists the accounts you can link (only those the server has set up). |
 | `/notifications link <service>` | Starts linking that account — e.g. `/notifications link discord`. |
 | `/notifications link <service> status` | Shows whether that account is currently linked. |
@@ -31,7 +30,7 @@ is `/notifications reload`, noted below.
 
 > The preference subcommands used to sit directly under `/notifications` (`/notifications media`, and
 > so on). They moved under `preferences` to keep the top level free for the management screen, whose
-> own verbs would otherwise clash with names like `mute` and `reset`.
+> own verbs would otherwise clash with a name like `mute`.
 
 Permission: `playernotifications.command.preferences`, granted to everyone by default.
 
@@ -59,10 +58,12 @@ disagree:
 - **Delivery methods** — "which notifications reach me on Discord?" Pick a method, then tick each
   notification type. Types are grouped under their category to make the list readable.
 - **Notification types** — "how should Mail reach me?" Pick a category, then tick each delivery
-  method, plus a "use server default" option. A method shows **(partly on)** when the types inside
-  that category currently disagree about it.
+  method. A method shows **(partly on)** when the types inside that category currently disagree
+  about it.
 
-The root screen also has **Mute everything** and **Reset all to server default**.
+The two work identically — same buttons, same rules. They differ only in which axis you pick first.
+
+The root screen also has **Mute everything**.
 
 **Apply and Discard.** Each editor has exactly two buttons besides *Back*: **Apply** saves what you
 have ticked, together with anything staged on other screens, and **Discard** throws all of it away.
@@ -78,16 +79,19 @@ staged from another screen, is left alone. *Discard* is the one that throws ever
 
 One thing about the category editor worth knowing: Apply writes the state of **every** type in that
 category for every method shown, even ones you didn't touch — so opening it and applying with no
-changes converts those types from "server default" to an explicit setting matching what was
-displayed.
+changes converts those types from unconfigured to an explicit setting matching what was displayed.
 
 ### The three states a notification type can be in
 
 | State | How you get it | What happens |
 |---|---|---|
-| **Server default** | You have never configured that type, or you used "use server default" | You receive it on whatever `default-media` says (chat, out of the box) |
+| **Server default** | You have never configured that type | You receive it on whatever the server's `default-media` says (chat, out of the box) |
 | **Explicit selection** | You ticked one or more methods | You receive it on exactly those methods |
 | **Muted** | You unticked everything, or used mute | You do not receive it at all, and it is discarded rather than queued |
+
+**The first state is a starting point, not a choice you can make.** There is no "reset to server
+default" — once you have configured a type, your setting stands until you change it to something
+else. Pick different methods, or mute it.
 
 A mute means "do not tell me" — muted notifications are consumed, not saved up for later. Unticking
 everything stages a mute; it never silently falls back to the server default.

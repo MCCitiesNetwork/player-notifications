@@ -9,18 +9,16 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
  * "Notification types" picker: choose one category to configure which media it reaches the player
- * through. A category label is suffixed "(server default)" when every data type it claims is currently
- * showing the server default.
+ * through. Deliberately the mirror image of {@link MediumPickerDialog} — a plain list of rows, with no
+ * per-row state annotation.
  */
 final class CategoryPickerDialog {
 
@@ -28,8 +26,6 @@ final class CategoryPickerDialog {
     private static final Component INTRO = Component.text(
             "Pick a kind of notification to choose where it is sent.");
     private static final Component BACK_LABEL = Component.text("Back");
-    private static final Component SERVER_DEFAULT_SUFFIX = Component.text(" (server default)",
-            NamedTextColor.GRAY);
 
     private final PreferenceDialogRouter router;
 
@@ -39,16 +35,9 @@ final class CategoryPickerDialog {
 
     void show(@NotNull Player player, @NotNull PreferenceEditSession session) {
         List<String> categoryKeys = PreferenceDialogs.sortedCategoryKeys(this.router.categories());
-        Set<String> allDataTypes = this.router.dataTypeRegistry().dataTypes();
         List<ActionButton> buttons = new ArrayList<>();
         for (String category : categoryKeys) {
-            Set<String> members = this.router.categories().dataTypesForCategory(category, allDataTypes);
-            boolean usingDefault = members.isEmpty() || members.stream().allMatch(session::isUsingServerDefault);
-            Component label = PreferenceDialogs.categoryLabel(this.router.categories(), category);
-            if (usingDefault) {
-                label = label.append(SERVER_DEFAULT_SUFFIX);
-            }
-            buttons.add(ActionButton.builder(label)
+            buttons.add(ActionButton.builder(PreferenceDialogs.categoryLabel(this.router.categories(), category))
                     .action(DialogAction.customClick((response, audience) ->
                             this.router.showCategoryEditor(player, session, category), PreferenceDialogs.callbackOptions()))
                     .build());

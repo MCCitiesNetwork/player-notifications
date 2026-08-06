@@ -146,11 +146,10 @@ public final class PreferenceDialogRouter {
      */
     void apply(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull Runnable onSaved) {
         Map<String, Set<String>> explicit = session.explicitChanges();
-        Set<String> resets = session.dataTypesToReset();
         UUID uuid = player.getUniqueId();
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             try {
-                this.preferences.applyChanges(uuid, explicit, resets);
+                this.preferences.applyChanges(uuid, explicit, Set.of());
             } catch (RuntimeException ex) {
                 this.plugin.getLogger().warning(
                         "Failed to apply notification preferences for " + uuid + ": " + ex.getMessage());
@@ -205,31 +204,4 @@ public final class PreferenceDialogRouter {
         });
     }
 
-    /**
-     * Immediately clears every stored preference for the player and discards any staged, unapplied
-     * session — the one deliberate asymmetry with the root screen's staged "Reset all" button.
-     */
-    public void resetImmediately(@NotNull Player player) {
-        UUID uuid = player.getUniqueId();
-        boolean hadSession = this.sessions.get(uuid).isPresent();
-        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            try {
-                this.preferences.resetAll(uuid);
-            } catch (RuntimeException ex) {
-                this.plugin.getLogger().warning(
-                        "Failed to reset notification preferences for " + uuid + ": " + ex.getMessage());
-                PreferenceDialogs.message(this.plugin, player, Component.text(
-                        "Could not reset your notification preferences; please try again.", NamedTextColor.RED));
-                return;
-            }
-            this.sessions.drop(uuid);
-            Component message = Component.text("Notification preferences reset to the server default.",
-                    NamedTextColor.GREEN);
-            if (hadSession) {
-                message = message.append(Component.text(" Any unsaved preference changes were discarded.",
-                        NamedTextColor.GRAY));
-            }
-            PreferenceDialogs.message(this.plugin, player, message);
-        });
-    }
 }

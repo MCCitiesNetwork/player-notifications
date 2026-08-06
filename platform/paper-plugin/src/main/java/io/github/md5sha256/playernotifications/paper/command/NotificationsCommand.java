@@ -26,9 +26,9 @@ import java.util.function.Supplier;
  * <p>The <strong>bare root is reserved</strong> for a notification management UI and only prints a notice
 * saying so. Everything preference-related hangs off {@code preferences}: that literal opens the
  * staged root dialog, its {@code media}/{@code types} children jump straight to the corresponding picker
- * on the same session, and its {@code mute}/{@code reset} children write immediately and discard any open
- * session, unlike their staged root-screen equivalents. Nesting them keeps the top level clear for the
- * management UI's own verbs, which would otherwise collide with names like {@code mute} and {@code reset}.
+ * on the same session, and its {@code mute} child writes immediately and discards any open session,
+ * unlike its staged root-screen equivalent. Nesting them keeps the top level clear for the management
+ * UI's own verbs, which would otherwise collide with a name like {@code mute}.
  *
  * <p>{@code /notifications mute} survives at the top level as a proxy onto
  * {@link PreferenceDialogRouter#muteImmediately} — the same action the nested form invokes, not a second
@@ -104,8 +104,7 @@ public final class NotificationsCommand {
                         .executes(context -> run(context, router::openRoot))
                         .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))
                         .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
-                        .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
-                        .then(Commands.literal("reset").executes(context -> run(context, router::resetImmediately))))
+                        .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately))))
                 .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
                 .then(linkNode(linkDispatcher, asyncExecutor))
                 .then(unlinkNode(linkDispatcher, asyncExecutor))

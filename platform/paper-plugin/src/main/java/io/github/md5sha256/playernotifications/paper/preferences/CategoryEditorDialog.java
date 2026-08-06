@@ -24,21 +24,19 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * Editor for one notification category: a checkbox per registered medium, plus "use server default" to
- * stage clearing every data type this category claims. Checking or unchecking a medium away from what
- * was rendered fans out to a per-data-type write on Apply; a checkbox left exactly as rendered is a
- * no-op, except a "(partly on)" medium always resolves on Apply (it has no single "current" value to
- * compare against, so it always fans out uniformly).
+ * Editor for one notification category: a checkbox per registered medium. Checking or unchecking a
+ * medium away from what was rendered fans out to a per-data-type write on Apply; a checkbox left
+ * exactly as rendered is a no-op, except a "(partly on)" medium always resolves on Apply (it has no
+ * single "current" value to compare against, so it always fans out uniformly).
  *
- * <p>Apply folds the checkboxes into the session and persists everything staged, Discard throws the
- * session away. There is no Save — staging without persisting was a third option indistinguishable
- * from Apply to the player pressing it. "Use server default" remains, being a different action rather
- * than a second way to save.
+ * <p>Its button set is deliberately identical to {@link MediumEditorDialog}'s: Apply folds the
+ * checkboxes into the session and persists everything staged, Discard throws the session away, Back
+ * leaves without saving. There is no Save, and no "use server default" — a player's edit is always an
+ * explicit choice, and unticking everything means mute rather than a fall back to the server default.
  */
 final class CategoryEditorDialog {
 
     private static final Component BACK_LABEL = Component.text("Back");
-    private static final Component USE_DEFAULT_LABEL = Component.text("Use server default");
     private static final Component MIXED_SUFFIX = Component.text(" (partly on)", NamedTextColor.GRAY);
 
     private final PreferenceDialogRouter router;
@@ -83,22 +81,13 @@ final class CategoryEditorDialog {
             }
         };
 
-        ActionButton useDefault = ActionButton.builder(USE_DEFAULT_LABEL)
-                .action(DialogAction.customClick((response, audience) -> {
-                    Instant now = Instant.now();
-                    for (String dataType : memberDataTypes) {
-                        session.resetDataType(dataType, now);
-                    }
-                    this.router.showCategoryPicker(player, session);
-                }, PreferenceDialogs.callbackOptions()))
-                .build();
         // Back abandons this screen's checkboxes rather than staging them — see MediumEditorDialog.
         ActionButton back = ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showCategoryPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
-        List<ActionButton> buttons = new ArrayList<>(List.of(useDefault));
+        List<ActionButton> buttons = new ArrayList<>();
         PreferenceDialogs.addEditorCommitButtons(this.router, player, session, buttons,
                 () -> this.router.openCategoryPicker(player),
                 () -> this.router.openCategoryEditor(player, categoryKey),

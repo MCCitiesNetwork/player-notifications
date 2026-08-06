@@ -14,14 +14,13 @@ class PreferenceEditSessionTest {
     private static final UUID PLAYER = UUID.randomUUID();
     private static final Instant NOW = Instant.now();
 
-    private static PreferenceEditSession newSession(Map<String, Set<String>> initial, Set<String> explicitAtLoad) {
-        return new PreferenceEditSession(PLAYER, initial, explicitAtLoad, Set.of("chat"), NOW);
+    private static PreferenceEditSession newSession(Map<String, Set<String>> initial) {
+        return new PreferenceEditSession(PLAYER, initial, NOW);
     }
 
     @Test
     void startsClean() {
-        PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("chat")), Set.of("economy"));
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")));
 
         Assertions.assertFalse(session.isDirty());
         Assertions.assertEquals(0, session.dirtyCount());
@@ -30,8 +29,7 @@ class PreferenceEditSessionTest {
 
     @Test
     void setDataTypeMediaMarksItDirty() {
-        PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("chat")), Set.of("economy"));
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")));
 
         session.setDataTypeMedia("economy", Set.of("discord"), NOW);
 
@@ -42,8 +40,7 @@ class PreferenceEditSessionTest {
 
     @Test
     void toggleDataTypeMediumAddsAndRemoves() {
-        PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("chat")), Set.of("economy"));
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")));
 
         session.toggleDataTypeMedium("economy", "discord", true, NOW);
         Assertions.assertEquals(Set.of("chat", "discord"), session.mediaFor("economy"));
@@ -54,58 +51,29 @@ class PreferenceEditSessionTest {
 
     @Test
     void emptyingADataTypeStagesAMute() {
-        PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("chat")), Set.of("economy"));
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")));
 
         session.setDataTypeMedia("economy", Set.of(), NOW);
 
         Assertions.assertEquals(Map.of("economy", Set.of("none")), session.explicitChanges());
-        Assertions.assertEquals(Set.of(), session.dataTypesToReset());
     }
 
     @Test
-    void resetDataTypeStagesAResetUsingFallbackMedia() {
+    void everyDirtyDataTypeBecomesAnExplicitChange() {
         PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("discord")), Set.of("economy"));
+                Map.of("economy", Set.of("discord"), "moderation", Set.of("chat")));
 
-        session.resetDataType("economy", NOW);
-
-        Assertions.assertEquals(Set.of("chat"), session.mediaFor("economy"));
-        Assertions.assertEquals(Set.of("economy"), session.dataTypesToReset());
-        Assertions.assertTrue(session.explicitChanges().isEmpty());
-    }
-
-    @Test
-    void reSettingMediaAfterAResetCancelsTheReset() {
-        PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("discord")), Set.of("economy"));
-
-        session.resetDataType("economy", NOW);
         session.setDataTypeMedia("economy", Set.of("dialog"), NOW);
+        session.toggleDataTypeMedium("moderation", "chat", false, NOW);
 
-        Assertions.assertEquals(Set.of(), session.dataTypesToReset());
-        Assertions.assertEquals(Map.of("economy", Set.of("dialog")), session.explicitChanges());
-    }
-
-    @Test
-    void isUsingServerDefaultReflectsLoadStateAndStagedResets() {
-        PreferenceEditSession session = newSession(
-                Map.of("economy", Set.of("discord"), "moderation", Set.of("chat")),
-                Set.of("economy"));
-
-        Assertions.assertFalse(session.isUsingServerDefault("economy"));
-        Assertions.assertTrue(session.isUsingServerDefault("moderation"));
-
-        session.resetDataType("economy", NOW);
-        Assertions.assertTrue(session.isUsingServerDefault("economy"));
-
-        session.setDataTypeMedia("moderation", Set.of("discord"), NOW);
-        Assertions.assertFalse(session.isUsingServerDefault("moderation"));
+        Assertions.assertEquals(
+                Map.of("economy", Set.of("dialog"), "moderation", Set.of("none")),
+                session.explicitChanges());
     }
 
     @Test
     void expiresAfterTheIdleTimeout() {
-        PreferenceEditSession session = newSession(Map.of(), Set.of());
+        PreferenceEditSession session = newSession(Map.of());
 
         Assertions.assertFalse(session.isExpired(NOW.plus(Duration.ofMinutes(5)), Duration.ofMinutes(15)));
         Assertions.assertTrue(session.isExpired(NOW.plus(Duration.ofMinutes(16)), Duration.ofMinutes(15)));
@@ -113,7 +81,7 @@ class PreferenceEditSessionTest {
 
     @Test
     void touchingResetsTheIdleClock() {
-        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")), Set.of("economy"));
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")));
 
         Instant later = NOW.plus(Duration.ofMinutes(10));
         session.setDataTypeMedia("economy", Set.of("discord"), later);
