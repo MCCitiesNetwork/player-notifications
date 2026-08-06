@@ -19,8 +19,8 @@ is `/notifications reload`, noted below.
 |---|---|
 | `/notifications` | Nothing yet. The name is **reserved** for a notification management screen that has not been built — running it tells you so and points you at `/notifications preferences`. |
 | `/notifications preferences` | Opens the preferences screen. |
-| `/notifications preferences media` | Jumps straight to "by delivery method" — pick a method, then tick which notifications reach you there. |
-| `/notifications preferences types` | Jumps straight to "by notification type" — pick a category, then tick which methods it uses. |
+| `/notifications preferences media` | Jumps straight to "Delivery methods" — pick a method, then tick which notifications reach you there. |
+| `/notifications preferences types` | Jumps straight to "Notification types" — pick a category, then tick which methods it uses. |
 | `/notifications preferences mute` | Mutes **everything**, immediately. |
 | `/notifications preferences reset` | Clears all your preferences, immediately, back to the server default. |
 | `/notifications mute` | Shortcut for `/notifications preferences mute` — the same action, kept at the top level because it is the one people want in a hurry. There is no matching `/notifications reset` shortcut. |
@@ -56,17 +56,22 @@ Admin-only extras (op by default):
 The root screen offers two ways in — both edit the same underlying settings, so they can never
 disagree:
 
-- **By delivery method** — "which notifications reach me on Discord?" Pick a method, then tick each
+- **Delivery methods** — "which notifications reach me on Discord?" Pick a method, then tick each
   notification type. Types are grouped under their category to make the list readable.
-- **By notification type** — "how should Mail reach me?" Pick a category, then tick each delivery
-  method, plus a "use server default" option. A method shows **(mixed)** when the types inside that
-  category currently disagree about it.
+- **Notification types** — "how should Mail reach me?" Pick a category, then tick each delivery
+  method, plus a "use server default" option. A method shows **(partly on)** when the types inside
+  that category currently disagree about it.
 
 The root screen also has **Mute everything** and **Reset all to server default**.
 
 **Changes are staged.** Pressing *Save* in an editor only records the change; nothing is written
-until you press **Apply** on the root screen, which saves everything at once. **Discard** throws the
-staged changes away. Apply/Discard only appear once you have unsaved changes.
+until you press **Apply**, which saves everything at once. **Discard** throws the staged changes
+away and puts the screen back to what is stored.
+
+**Apply and Discard are on every screen**, and appear as soon as you have unsaved changes, alongside
+a line saying how many are waiting. You never have to navigate back somewhere else to save. Pressing
+Apply inside an editor also includes whatever you have just ticked on that screen, so it does the job
+of Save as well.
 
 Two things about the category editor worth knowing: pressing *Save* writes the state of **every**
 type in that category for every method shown, even ones you didn't touch — so opening it and saving
@@ -161,7 +166,7 @@ the delay — turning the setting off cancels their pending delivery.
 
 ### `categories.yml`
 
-Categories are a **display grouping only** — they decide how the "by notification type" screen is
+Categories are a **display grouping only** — they decide how the "Notification types" screen is
 organised. They have no effect on how notifications are actually delivered.
 
 ```yaml

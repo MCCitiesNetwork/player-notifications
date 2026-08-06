@@ -9,7 +9,6 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -19,20 +18,22 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The root notification-preferences screen: choose a pivot ("by delivery method" or "by notification
- * type"), stage a global mute/reset, or apply/discard whatever is currently staged.
+ * The root notification-preferences screen: choose a pivot ("delivery methods" or "notification
+ * types"), stage a global mute/reset, or apply/discard whatever is currently staged.
+ *
+ * <p>Apply and Discard are no longer unique to this screen — every screen carries them (see
+ * {@link PreferenceDialogs#addStagedButtons}). Mute everything and Reset all deliberately stay staged
+ * here, unlike their immediate {@code /notifications preferences mute|reset} counterparts.
  */
 final class PreferenceRootDialog {
 
     private static final Component TITLE = Component.text("Notification Preferences");
     private static final Component INTRO = Component.text(
-            "Manage notifications by delivery method or by notification type. Changes are staged until"
-                    + " you press Apply.");
-    private static final Component BY_MEDIUM_LABEL = Component.text("By delivery method");
-    private static final Component BY_CATEGORY_LABEL = Component.text("By notification type");
+            "Choose how notifications reach you. Nothing is saved until you press Apply.");
+    private static final Component BY_MEDIUM_LABEL = Component.text("Delivery methods");
+    private static final Component BY_CATEGORY_LABEL = Component.text("Notification types");
     private static final Component MUTE_ALL_LABEL = Component.text("Mute everything");
     private static final Component RESET_ALL_LABEL = Component.text("Reset all to server default");
-    private static final Component DISCARD_LABEL = Component.text("Discard changes");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     private final PreferenceDialogRouter router;
@@ -71,24 +72,17 @@ final class PreferenceRootDialog {
                     show(player, handle);
                 }, PreferenceDialogs.callbackOptions()))
                 .build());
-        if (session.isDirty()) {
-            Component applyLabel = Component.text("Apply (" + session.dirtyCount() + " changed)");
-            buttons.add(ActionButton.builder(applyLabel)
-                    .action(DialogAction.customClick((response, audience) ->
-                            this.router.apply(player, session), PreferenceDialogs.callbackOptions()))
-                    .build());
-            buttons.add(ActionButton.builder(DISCARD_LABEL)
-                    .action(DialogAction.customClick((response, audience) -> {
-                        this.router.sessions().drop(player.getUniqueId());
-                        PreferenceDialogs.message(this.router.plugin(), player,
-                                Component.text("Changes discarded.", NamedTextColor.YELLOW));
-                    }, PreferenceDialogs.callbackOptions()))
-                    .build());
-        }
+        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
+                () -> this.router.openRoot(player), response -> {});
         ActionButton close = ActionButton.builder(CLOSE_LABEL).build();
 
+        List<DialogBody> body = new ArrayList<>();
+        body.add(DialogBody.plainMessage(INTRO));
+        PreferenceDialogs.stagedSummary(session).ifPresent(summary ->
+                body.add(DialogBody.plainMessage(summary)));
+
         DialogBase base = DialogBase.builder(TITLE)
-                .body(List.of(DialogBody.plainMessage(INTRO)))
+                .body(body)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();
         Dialog dialog = Dialog.create(factory -> {

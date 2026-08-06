@@ -395,8 +395,8 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   names like `mute` and `reset`. A player-facing inbox is still a deferred item (see "Current state");
   reserving the name is not implementing it.
 - `/notifications preferences` — opens the root preferences dialog.
-- `/notifications preferences media` — jumps straight to the "by delivery method" picker.
-- `/notifications preferences types` — jumps straight to the "by notification type" picker.
+- `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
+- `/notifications preferences types` — jumps straight to the "Notification types" picker.
 - `/notifications preferences mute` — mutes every known `dataType` **immediately** (no staging).
 - `/notifications preferences reset` — clears every stored preference **immediately** (no staging).
 - `/notifications mute` — the one preference subcommand kept **also** at the top level, as a proxy onto
@@ -458,20 +458,32 @@ only. Both branches are player-only and dispatched off the main thread, since pr
 `paper.preferences.PreferenceDialogRouter`, the single object owning the five dialog screens and the
 shared `PreferenceSessionManager` (`paper.preferences.session`):
 
-- `PreferenceRootDialog` — pick a pivot ("By delivery method" / "By notification type"), or stage
-  "Mute everything" / "Reset all to server default"; shows Apply / Discard only while the session is
-  dirty.
+- `PreferenceRootDialog` — pick a pivot ("Delivery methods" / "Notification types"), or stage
+  "Mute everything" / "Reset all to server default".
 - `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
-  (grouped/labeled by its primary category for readability — see `PreferenceDialogs.sortedDataTypes`/
-  `dataTypeLabel`), e.g. "which notifications reach me on Discord".
+  (grouped/labeled by its primary category for readability, and title-cased rather than shown as the
+  raw registry key — see `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`), e.g. "which
+  notifications reach me on Discord".
 - `CategoryPickerDialog` → `CategoryEditorDialog` — pick a category, then one checkbox per **medium**
   plus "use server default"; each medium's checkbox fans out to every `dataType` the category claims
-  (`NotificationCategories#dataTypesForCategory`), and shows "(mixed)" when the category's member
+  (`NotificationCategories#dataTypesForCategory`), and shows "(partly on)" when the category's member
   `dataType`s currently disagree on that medium.
+
+**Apply and Discard are on every screen**, not just the root, and appear as soon as the session is
+dirty — along with a `PreferenceDialogs.stagedSummary` line naming the pending count. Both are added
+by the shared `PreferenceDialogs.addStagedButtons`, which takes the *reloading* entry point
+(`openRoot`/`openMediaPicker`/`openCategoryPicker`) to reopen afterwards, since applying and
+discarding both drop the session the caller holds. On the two editors, Apply first runs the same
+commit Save does — an editor's checkbox state lives in the dialog response, not the session, so a
+bare Apply there would silently drop what is on screen; that is why `addStagedButtons` takes a
+`Consumer<DialogResponseView>` rather than a `Runnable`. Discard reopens the screen rather than just
+closing it, so the revert is visible. This replaced an Apply/Discard pair that existed **only** on the
+root screen, which players reported as the main confusion: Save navigated away and nothing on the
+screen they landed on said anything was unsaved.
 
 Both editors mutate the same `paper.preferences.session.PreferenceEditSession`, keyed by `dataType` (not
 category), so the two pivots can never disagree. Editor "Save" writes only into the session; nothing is
-persisted until the root screen's **Apply**, which writes every dirty `dataType` in one transaction
+persisted until **Apply**, which writes every dirty `dataType` in one transaction
 (`DatabaseNotificationPreferences.applyChanges`). A `dataType` emptied to nothing — from either editor —
 stages a mute (`{"none"}`), never a silent fall-through to the server default; only the explicit "use
 server default" action stages a reset (`DatabaseNotificationPreferences.resetDataType` equivalent,
@@ -569,7 +581,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 41 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 272 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 46 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 277 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 

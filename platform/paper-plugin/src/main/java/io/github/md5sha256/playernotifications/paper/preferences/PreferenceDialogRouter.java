@@ -123,7 +123,13 @@ public final class PreferenceDialogRouter {
         this.categoryEditorDialog.show(player, session, category);
     }
 
-    void apply(@NotNull Player player, @NotNull PreferenceEditSession session) {
+    /**
+     * Persists the staged session and drops it, then runs {@code onSaved} on the main thread — the
+     * screen the player pressed Apply on, reopened from the database so it shows what was actually
+     * written. A failure leaves the session staged so the edits are not lost to a transient database
+     * error, and does not reopen anything.
+     */
+    void apply(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull Runnable onSaved) {
         Map<String, Set<String>> explicit = session.explicitChanges();
         Set<String> resets = session.dataTypesToReset();
         UUID uuid = player.getUniqueId();
@@ -141,7 +147,20 @@ public final class PreferenceDialogRouter {
             this.sessions.drop(uuid);
             PreferenceDialogs.message(this.plugin, player,
                     Component.text("Notification preferences saved.", NamedTextColor.GREEN));
+            PreferenceDialogs.onMainThread(this.plugin, player, onSaved);
         });
+    }
+
+    /**
+     * Throws the staged session away and reopens the calling screen, which then reloads from the
+     * database. Reopening rather than simply closing is the point: a Discard that left the player
+     * looking at nothing gave no sign the values had gone back to what was stored.
+     */
+    void discard(@NotNull Player player, @NotNull Runnable reopen) {
+        this.sessions.drop(player.getUniqueId());
+        PreferenceDialogs.message(this.plugin, player,
+                Component.text("Changes discarded.", NamedTextColor.YELLOW));
+        PreferenceDialogs.onMainThread(this.plugin, player, reopen);
     }
 
     /**

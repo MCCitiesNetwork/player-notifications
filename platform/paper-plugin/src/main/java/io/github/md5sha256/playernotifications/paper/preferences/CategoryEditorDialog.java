@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.paper.preferences;
 
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import io.papermc.paper.dialog.Dialog;
+import io.papermc.paper.dialog.DialogResponseView;
 import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.DialogBase;
 import io.papermc.paper.registry.data.dialog.DialogRegistryEntry;
@@ -20,21 +21,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Editor for one notification category: a checkbox per registered medium, plus "use server default" to
  * stage clearing every data type this category claims. Checking or unchecking a medium away from what
  * was rendered fans out to a per-data-type write on Save; a checkbox left exactly as rendered is a
  * no-op, except a "(mixed)" medium always resolves on Save (it has no single "current" value to compare
- * against, so it always fans out uniformly). Save writes into the session only; nothing is persisted
- * until the root screen's Apply.
+ * against, so it always fans out uniformly). Save writes into the session only; Apply — shown here as
+ * on every screen once anything is staged — persists it.
  */
 final class CategoryEditorDialog {
 
     private static final Component BACK_LABEL = Component.text("Back");
     private static final Component SAVE_LABEL = Component.text("Save");
     private static final Component USE_DEFAULT_LABEL = Component.text("Use server default");
-    private static final Component MIXED_SUFFIX = Component.text(" (mixed)", NamedTextColor.GRAY);
+    private static final Component MIXED_SUFFIX = Component.text(" (partly on)", NamedTextColor.GRAY);
 
     private final PreferenceDialogRouter router;
 
@@ -62,19 +64,25 @@ final class CategoryEditorDialog {
             inputs.add(DialogInput.bool(inputKey, label).initial(state == MixedState.ALL_CHECKED).build());
         }
 
+        // Shared by Save and Apply: both must fold this screen's checkbox state into the session, and
+        // each click callback carries its own response, so it is passed in rather than captured.
+        Consumer<DialogResponseView> commit = response -> {
+            Instant now = Instant.now();
+            for (Map.Entry<String, String> entry : inputKeyToMedium.entrySet()) {
+                boolean checked = Boolean.TRUE.equals(response.getBoolean(entry.getKey()));
+                MixedState state = inputKeyToState.get(entry.getKey());
+                if (state != MixedState.MIXED && checked == (state == MixedState.ALL_CHECKED)) {
+                    continue;
+                }
+                for (String dataType : memberDataTypes) {
+                    session.toggleDataTypeMedium(dataType, entry.getValue(), checked, now);
+                }
+            }
+        };
+
         ActionButton save = ActionButton.builder(SAVE_LABEL)
                 .action(DialogAction.customClick((response, audience) -> {
-                    Instant now = Instant.now();
-                    for (Map.Entry<String, String> entry : inputKeyToMedium.entrySet()) {
-                        boolean checked = Boolean.TRUE.equals(response.getBoolean(entry.getKey()));
-                        MixedState state = inputKeyToState.get(entry.getKey());
-                        if (state != MixedState.MIXED && checked == (state == MixedState.ALL_CHECKED)) {
-                            continue;
-                        }
-                        for (String dataType : memberDataTypes) {
-                            session.toggleDataTypeMedium(dataType, entry.getValue(), checked, now);
-                        }
-                    }
+                    commit.accept(response);
                     this.router.showCategoryPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
                 .build();
@@ -92,15 +100,24 @@ final class CategoryEditorDialog {
                         this.router.showCategoryPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
+        List<ActionButton> buttons = new ArrayList<>(List.of(save, useDefault));
+        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
+                () -> this.router.openCategoryPicker(player), commit);
+
+        List<DialogBody> body = new ArrayList<>();
+        body.add(DialogBody.plainMessage(Component.text(
+                "Choose where this kind of notification is sent.")));
+        PreferenceDialogs.stagedSummary(session).ifPresent(summary ->
+                body.add(DialogBody.plainMessage(summary)));
+
         DialogBase base = DialogBase.builder(PreferenceDialogs.categoryLabel(this.router.categories(), categoryKey))
-                .body(List.of(DialogBody.plainMessage(Component.text(
-                        "Choose where this kind of notification reaches you."))))
+                .body(body)
                 .inputs(inputs)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();
         Dialog dialog = Dialog.create(factory -> {
             DialogRegistryEntry.Builder builder = factory.empty();
-            builder.base(base).type(DialogType.multiAction(List.of(save, useDefault)).exitAction(back)
+            builder.base(base).type(DialogType.multiAction(buttons).exitAction(back)
                     .columns(2).build());
         });
         player.showDialog(dialog);

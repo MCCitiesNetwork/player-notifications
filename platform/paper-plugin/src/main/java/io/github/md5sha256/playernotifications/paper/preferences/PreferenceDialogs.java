@@ -7,8 +7,12 @@ import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferen
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
+import io.papermc.paper.dialog.DialogResponseView;
+import io.papermc.paper.registry.data.dialog.ActionButton;
+import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickCallback;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -20,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
@@ -47,12 +52,74 @@ final class PreferenceDialogs {
                 .build();
     }
 
+    /**
+     * The line every screen shows while the session holds unapplied edits, or empty when it is clean.
+     *
+     * <p>It exists because staging was previously invisible: Save wrote into the session and navigated
+     * away, and the only sign anything was pending was an Apply button on the root screen the player had
+     * already left. Shown on every screen, so "how do I save this?" is answerable without navigating.
+     */
+    @NotNull
+    static Optional<Component> stagedSummary(@NotNull PreferenceEditSession session) {
+        if (!session.isDirty()) {
+            return Optional.empty();
+        }
+        int count = session.dirtyCount();
+        String text = count == 1
+                ? "You have 1 unsaved change. Press Apply to save it."
+                : "You have " + count + " unsaved changes. Press Apply to save them.";
+        return Optional.of(Component.text(text, NamedTextColor.YELLOW));
+    }
+
     static void message(@NotNull Plugin plugin, @NotNull Player player, @NotNull Component component) {
+        onMainThread(plugin, player, () -> player.sendMessage(component));
+    }
+
+    /**
+     * Runs {@code action} on the server main thread, skipping it if the player has since logged out.
+     * Showing a dialog is main-thread-only, and the write that precedes it is not.
+     */
+    static void onMainThread(@NotNull Plugin plugin, @NotNull Player player, @NotNull Runnable action) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (player.isOnline()) {
-                player.sendMessage(component);
+                action.run();
             }
         });
+    }
+
+    /**
+     * Appends the {@code Apply}/{@code Discard} pair to a screen's buttons when the session holds
+     * unapplied edits. Every screen carries them, so a player never has to navigate back to a screen
+     * they have left in order to save what they just changed.
+     *
+     * @param reopen      reopens the calling screen once the session has been written or dropped. It must
+     *                    be one of the router's <em>reloading</em> entry points: applying and discarding
+     *                    both drop the session, so the instance the caller holds is dead afterwards.
+     * @param beforeApply folds the calling screen's own unsaved state into the session first, given the
+     *                    response from the Apply click itself. The editors keep their checkbox state in
+     *                    the dialog response rather than in the session, so without this an Apply pressed
+     *                    there would write only what Save had already staged and silently drop the ticks
+     *                    on screen. Screens with no inputs pass a no-op.
+     */
+    static void addStagedButtons(@NotNull PreferenceDialogRouter router,
+                                 @NotNull Player player,
+                                 @NotNull PreferenceEditSession session,
+                                 @NotNull List<ActionButton> buttons,
+                                 @NotNull Runnable reopen,
+                                 @NotNull Consumer<DialogResponseView> beforeApply) {
+        if (!session.isDirty()) {
+            return;
+        }
+        buttons.add(ActionButton.builder(Component.text("Apply (" + session.dirtyCount() + " changed)"))
+                .action(DialogAction.customClick((response, audience) -> {
+                    beforeApply.accept(response);
+                    router.apply(player, session, reopen);
+                }, callbackOptions()))
+                .build());
+        buttons.add(ActionButton.builder(Component.text("Discard changes"))
+                .action(DialogAction.customClick((response, audience) ->
+                        router.discard(player, reopen), callbackOptions()))
+                .build());
     }
 
     /**
@@ -112,13 +179,42 @@ final class PreferenceDialogs {
     }
 
     /**
-     * A data type's row label in the "by delivery method" editor: its primary category's label,
-     * prefixed for readability, followed by the raw data type key.
+     * A data type's row label in the delivery-method editor: its primary category's label, prefixed for
+     * readability, followed by the data type itself.
+     *
+     * <p>The data type is title-cased rather than shown raw. A registry key such as
+     * {@code essentials-mail} is an identifier meant for module authors, and a player reading a checkbox
+     * list has no way to know it is the same thing as the "Essentials Mail" named everywhere else.
      */
     @NotNull
     static Component dataTypeLabel(@NotNull NotificationCategories categories, @NotNull String dataType) {
         String category = primaryCategoryFor(categories, dataType);
-        return Component.text(categories.label(category) + ": " + dataType);
+        return Component.text(categories.label(category) + ": " + titleCase(dataType));
+    }
+
+    /**
+     * Title-cases a registry key: {@code '-'} and {@code '_'} separate words, each word is capitalized,
+     * and words are rejoined with spaces. A deliberate third copy of the helper on
+     * {@code NotificationSink} and {@code AccountLinkProvider} — those live in {@code api} and neither
+     * should become public API for the sake of fifteen lines, which is the reasoning their own javadoc
+     * already records.
+     */
+    @NotNull
+    private static String titleCase(@NotNull String key) {
+        StringBuilder builder = new StringBuilder(key.length());
+        boolean startOfWord = true;
+        for (int i = 0; i < key.length(); i++) {
+            char c = key.charAt(i);
+            if (c == '-' || c == '_') {
+                builder.append(' ');
+                startOfWord = true;
+                continue;
+            }
+            builder.append(startOfWord ? Character.toUpperCase(c) : Character.toLowerCase(c));
+            startOfWord = false;
+        }
+        String titled = builder.toString();
+        return titled.isEmpty() ? key : titled;
     }
 
     /**

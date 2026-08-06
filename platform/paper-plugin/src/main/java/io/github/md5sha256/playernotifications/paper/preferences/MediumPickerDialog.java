@@ -17,14 +17,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * "By delivery method" picker: choose one registered medium to configure which notification categories
+ * "Delivery methods" picker: choose one registered medium to configure which notification categories
  * reach the player through it.
  */
 final class MediumPickerDialog {
 
-    private static final Component TITLE = Component.text("By Delivery Method");
+    private static final Component TITLE = Component.text("Delivery Methods");
     private static final Component INTRO = Component.text(
-            "Choose a delivery method to configure which notifications reach you there.");
+            "Pick a delivery method to choose which notifications are sent to it.");
     private static final Component BACK_LABEL = Component.text("Back");
 
     private final PreferenceDialogRouter router;
@@ -47,13 +47,20 @@ final class MediumPickerDialog {
                             this.router.showMediaEditor(player, session, medium), PreferenceDialogs.callbackOptions()))
                     .build());
         }
+        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
+                () -> this.router.openMediaPicker(player), response -> {});
         ActionButton back = ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showRoot(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
+        List<DialogBody> body = new ArrayList<>();
+        body.add(DialogBody.plainMessage(INTRO));
+        PreferenceDialogs.stagedSummary(session).ifPresent(summary ->
+                body.add(DialogBody.plainMessage(summary)));
+
         DialogBase base = DialogBase.builder(TITLE)
-                .body(List.of(DialogBody.plainMessage(INTRO)))
+                .body(body)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();
         Dialog dialog = Dialog.create(factory -> {

@@ -18,15 +18,15 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * "By notification type" picker: choose one category to configure which media it reaches the player
+ * "Notification types" picker: choose one category to configure which media it reaches the player
  * through. A category label is suffixed "(server default)" when every data type it claims is currently
  * showing the server default.
  */
 final class CategoryPickerDialog {
 
-    private static final Component TITLE = Component.text("By Notification Type");
+    private static final Component TITLE = Component.text("Notification Types");
     private static final Component INTRO = Component.text(
-            "Choose a notification type to configure where it reaches you.");
+            "Pick a kind of notification to choose where it is sent.");
     private static final Component BACK_LABEL = Component.text("Back");
     private static final Component SERVER_DEFAULT_SUFFIX = Component.text(" (server default)",
             NamedTextColor.GRAY);
@@ -53,13 +53,20 @@ final class CategoryPickerDialog {
                             this.router.showCategoryEditor(player, session, category), PreferenceDialogs.callbackOptions()))
                     .build());
         }
+        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
+                () -> this.router.openCategoryPicker(player), response -> {});
         ActionButton back = ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showRoot(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
+        List<DialogBody> body = new ArrayList<>();
+        body.add(DialogBody.plainMessage(INTRO));
+        PreferenceDialogs.stagedSummary(session).ifPresent(summary ->
+                body.add(DialogBody.plainMessage(summary)));
+
         DialogBase base = DialogBase.builder(TITLE)
-                .body(List.of(DialogBody.plainMessage(INTRO)))
+                .body(body)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();
         Dialog dialog = Dialog.create(factory -> {

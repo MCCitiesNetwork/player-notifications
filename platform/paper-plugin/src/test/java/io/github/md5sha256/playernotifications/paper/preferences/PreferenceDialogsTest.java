@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
+import io.github.md5sha256.playernotifications.api.category.DefaultNotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
@@ -9,9 +10,13 @@ import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoryDefinition;
+import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -89,6 +94,65 @@ class PreferenceDialogsTest {
         List<String> sorted = PreferenceDialogs.sortedCategoryKeys(categories);
 
         Assertions.assertEquals(List.of("economy", "moderation", "uncategorized"), sorted);
+    }
+
+    private static PreferenceEditSession session() {
+        return new PreferenceEditSession(UUID.randomUUID(), Map.of("mail", Set.of("chat")),
+                Set.of(), Set.of("chat"), Instant.now());
+    }
+
+    private static String plain(Component component) {
+        return PlainTextComponentSerializer.plainText().serialize(component);
+    }
+
+    @Test
+    void stagedSummaryIsAbsentWhileNothingIsStaged() {
+        Assertions.assertTrue(PreferenceDialogs.stagedSummary(session()).isEmpty());
+    }
+
+    @Test
+    void stagedSummaryNamesHowManyChangesAreWaitingToBeApplied() {
+        PreferenceEditSession session = session();
+        session.toggleDataTypeMedium("mail", "chat", false, Instant.now());
+
+        Component summary = PreferenceDialogs.stagedSummary(session).orElseThrow();
+
+        Assertions.assertEquals("You have 1 unsaved change. Press Apply to save it.", plain(summary));
+    }
+
+    @Test
+    void stagedSummaryPluralisesForSeveralChanges() {
+        PreferenceEditSession session = session();
+        Instant now = Instant.now();
+        session.toggleDataTypeMedium("mail", "chat", false, now);
+        session.toggleDataTypeMedium("test", "chat", true, now);
+
+        Component summary = PreferenceDialogs.stagedSummary(session).orElseThrow();
+
+        Assertions.assertEquals("You have 2 unsaved changes. Press Apply to save them.", plain(summary));
+    }
+
+    /** Categories with one "Mail" category claiming {@code essentials-mail}; everything else falls to "Other". */
+    private static NotificationCategories mailCategories() {
+        return new NotificationCategories(
+                new NotificationCategoriesConfig("Other", Map.of(
+                        "mail", new NotificationCategoryDefinition("Mail", "desc", List.of("essentials-mail")))),
+                new DefaultNotificationCategoryRegistry(),
+                Logger.getLogger("test"));
+    }
+
+    @Test
+    void dataTypeLabelTitleCasesTheRawKey() {
+        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), "essentials-mail");
+
+        Assertions.assertEquals("Mail: Essentials Mail", plain(label));
+    }
+
+    @Test
+    void dataTypeLabelTitleCasesASingleWordKey() {
+        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), "test");
+
+        Assertions.assertEquals("Other: Test", plain(label));
     }
 
     @Test
