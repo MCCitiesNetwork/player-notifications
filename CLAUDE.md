@@ -409,9 +409,19 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
   immediately, off the main thread. Admin-only (`playernotifications.command.test`, `default: op`) and
   player-only. The **only** caller of `NotificationDelivery.deliver(UUID)` in the tree. Its reply names
-  the media *attempted*, not delivered — `RenderingProcessor` reports no per-sink outcome. Backed by
+  the media *attempted*, not delivered — `RenderingProcessor` reports no per-sink outcome — labelled via
+  `NotificationSinkRegistry#displayName(String)` so they match the preference dialogs, and separates the
+  three preference states: a `{none}` mute and an empty selection each get their own "nothing was sent"
+  reply, and a preferred medium with **no registered sink** is called out, since `RenderingProcessor`
+  skips it silently and the reply would otherwise overstate what happened. Backed by
   `paper.diagnostic.TestNotificationSender`, which takes a `Supplier<NotificationDelivery>` rather than
   the instance because `reload()` replaces that object.
+  `TestNotificationRenderer` titles the notification `[Test] Test Notification` and opens the body by
+  saying what a test notification is and that `/notifications test` sent it — it lands in the same inbox
+  as real ones (a Discord DM, Essentials mail) with no other context, and previously read as a stray
+  debug message. It names the target rather than printing its raw UUID, taking a
+  `Function<UUID, String>` name lookup so it stays unit-testable; `TestNotificationRenderer.usingServerNames()`
+  is the production wiring over `Bukkit.getOfflinePlayer`.
 - `/notifications reload` — reloads `categories.yml` and `settings.yml` without a restart. Admin-only
   (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
   subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
@@ -559,7 +569,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 39 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 270 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 41 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 272 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 

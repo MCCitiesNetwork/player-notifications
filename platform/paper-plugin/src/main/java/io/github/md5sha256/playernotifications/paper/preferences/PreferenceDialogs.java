@@ -2,7 +2,6 @@ package io.github.md5sha256.playernotifications.paper.preferences;
 
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
-import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
@@ -104,9 +103,7 @@ final class PreferenceDialogs {
 
     @NotNull
     static Component mediumLabel(@NotNull NotificationSinkRegistry sinkRegistry, @NotNull String medium) {
-        return sinkRegistry.getSink(medium)
-                .map(NotificationSink::displayName)
-                .orElseGet(() -> Component.text(medium));
+        return sinkRegistry.displayName(medium);
     }
 
     @NotNull

@@ -48,7 +48,7 @@ Admin-only extras (op by default):
 
 | Command | Permission | Notes |
 |---|---|---|
-| `/notifications test [message]` | `playernotifications.command.test` | Sends yourself a test notification right now, through your current preferences. The reply lists the methods it *attempted* — it cannot confirm each one landed. |
+| `/notifications test [message]` | `playernotifications.command.test` | Sends yourself a test notification right now, through your current preferences. The reply names the methods it *attempted*, by the same names the preferences screen uses — it cannot confirm each one landed. It says so plainly instead if you have test notifications muted, if you have no methods chosen, or if a method you prefer has no sink installed on this server. The notification itself is titled `[Test]` and explains what it is, since it arrives in the same inbox as real ones. |
 | `/notifications reload` | `playernotifications.command.reload` | Reloads `categories.yml` and `settings.yml`. Usable from console. Does **not** reload `database.yml`. |
 
 ### Setting your preferences

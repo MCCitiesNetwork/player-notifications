@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.api;
 
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
+import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collections;
@@ -32,6 +33,20 @@ public class NotificationSinkRegistry {
     @NotNull
     public Optional<NotificationSink> getSink(@NotNull String mediumKey) {
         return Optional.ofNullable(this.sinks.get(mediumKey));
+    }
+
+    /**
+     * The player-facing label for a medium: the registered sink's {@link NotificationSink#displayName()},
+     * or the raw key when nothing is registered under it.
+     *
+     * <p>Naming a medium lives here rather than in each caller because an unregistered key is a normal
+     * case — a player can hold a preference row for a medium whose module is not installed — and every
+     * caller that shows media to a player must render that case the same way.
+     */
+    @NotNull
+    public Component displayName(@NotNull String mediumKey) {
+        return getSink(mediumKey).map(NotificationSink::displayName)
+                .orElseGet(() -> Component.text(mediumKey));
     }
 
     @NotNull

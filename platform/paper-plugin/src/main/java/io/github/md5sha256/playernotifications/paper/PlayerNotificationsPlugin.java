@@ -179,7 +179,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationService.registerJsonRenderable(
                 TestNotificationPayload.TEST_DATA_TYPE,
                 TestNotificationPayload.class,
-                new TestNotificationRenderer());
+                TestNotificationRenderer.usingServerNames());
 
         registerCommands();
 
@@ -237,7 +237,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
         TestNotificationSender testSender = new TestNotificationSender(
-                this, this.notificationService, this.preferences, () -> this.notificationDelivery);
+                this, this.notificationService, this.preferences, this.sinkRegistry,
+                () -> this.notificationDelivery);
         // Built here, resolved per dispatch: modules register their providers during startModules(),
         // which runs after this method but before Paper fires the COMMANDS event.
         AccountLinkDispatcher linkDispatcher =
