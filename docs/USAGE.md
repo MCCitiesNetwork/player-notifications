@@ -72,9 +72,9 @@ The two are on every screen, not just the editors. On the root and picker screen
 as you have unsaved changes, alongside a line saying how many are waiting. You never have to navigate
 somewhere else to save.
 
-*Back* leaves without applying, but does **not** throw away what you ticked — it keeps it staged, so
-you can visit several editors and Apply once at the end. The pending count tells you it is still
-waiting. Only *Discard* actually throws changes away.
+*Back* leaves an editor **without saving, and resets what you ticked there** — it is the way out when
+you have changed your mind. It only affects the screen you are on; anything you already applied, or
+staged from another screen, is left alone. *Discard* is the one that throws everything away.
 
 One thing about the category editor worth knowing: Apply writes the state of **every** type in that
 category for every method shown, even ones you didn't touch — so opening it and applying with no

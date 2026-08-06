@@ -483,8 +483,10 @@ away and nothing on the screen they landed on said anything was unsaved.
 - **Apply folds in the on-screen response first**, via the `Consumer<DialogResponseView>` the editors
   pass — without it Apply would write only what was already staged and silently drop the ticks in
   front of the player.
-- **`Back` on an editor stages rather than discards.** It runs the same commit, since with no Save a
-  discarding Back would lose work silently. Only Discard throws anything away.
+- **`Back` on an editor abandons that screen's checkboxes.** It deliberately does not commit, so
+  leaving an editor without pressing Apply resets what was ticked there — Back is the way out without
+  saving. It is not a session-wide undo: edits applied or staged from another screen are untouched,
+  and Discard remains the button that throws the whole session away.
 - **Both actions take *reloading* router entry points** (`openRoot`/`openMediaPicker`/
   `openCategoryPicker`, plus `openMediaEditor`/`openCategoryEditor` added for this) because applying
   and discarding both drop the session the caller holds. Apply returns to the picker; an editor's
@@ -495,7 +497,7 @@ away and nothing on the screen they landed on said anything was unsaved.
 
 Both editors mutate the same `paper.preferences.session.PreferenceEditSession`, keyed by `dataType` (not
 category), so the two pivots can never disagree. An editor's checkboxes reach the session only when a
-button commits them (Apply, or `Back`); nothing is persisted until **Apply**, which writes every dirty
+button commits them, which only Apply does; nothing is persisted until **Apply**, which writes every dirty
 `dataType` in one transaction
 (`DatabaseNotificationPreferences.applyChanges`). A `dataType` emptied to nothing — from either editor —
 stages a mute (`{"none"}`), never a silent fall-through to the server default; only the explicit "use

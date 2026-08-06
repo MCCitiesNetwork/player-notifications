@@ -92,12 +92,10 @@ final class CategoryEditorDialog {
                     this.router.showCategoryPicker(player, session);
                 }, PreferenceDialogs.callbackOptions()))
                 .build();
-        // Back stages this screen's checkboxes rather than dropping them — see MediumEditorDialog.
+        // Back abandons this screen's checkboxes rather than staging them — see MediumEditorDialog.
         ActionButton back = ActionButton.builder(BACK_LABEL)
-                .action(DialogAction.customClick((response, audience) -> {
-                    commit.accept(response);
-                    this.router.showCategoryPicker(player, session);
-                }, PreferenceDialogs.callbackOptions()))
+                .action(DialogAction.customClick((response, audience) ->
+                        this.router.showCategoryPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
         List<ActionButton> buttons = new ArrayList<>(List.of(useDefault));

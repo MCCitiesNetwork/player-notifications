@@ -27,7 +27,8 @@ import java.util.function.Consumer;
  *
  * <p>Apply and Discard are the only buttons besides Back: Apply folds the checkboxes into the session
  * and persists everything staged, Discard throws the session away. There is no Save — staging without
- * persisting was a third option indistinguishable from Apply to the player pressing it.
+ * persisting was a third option indistinguishable from Apply to the player pressing it. Back is the
+ * way out without saving, and resets what was ticked here.
  */
 final class MediumEditorDialog {
 
@@ -67,14 +68,12 @@ final class MediumEditorDialog {
                 () -> this.router.openMediaPicker(player),
                 () -> this.router.openMediaEditor(player, mediumKey),
                 commit);
-        // Back stages this screen's checkboxes rather than dropping them. With no Save button, a Back
-        // that discarded them would lose work silently — and the staged count on the next screen is
-        // what tells the player the edit survived and is waiting for Apply.
+        // Back abandons this screen's checkboxes: it deliberately does not commit, so leaving without
+        // pressing Apply resets what was ticked here. Anything applied or staged on another screen is
+        // untouched — Back backs out of this editor, it is not a session-wide undo.
         ActionButton back = ActionButton.builder(BACK_LABEL)
-                .action(DialogAction.customClick((response, audience) -> {
-                    commit.accept(response);
-                    this.router.showMediaPicker(player, session);
-                }, PreferenceDialogs.callbackOptions()))
+                .action(DialogAction.customClick((response, audience) ->
+                        this.router.showMediaPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build();
 
         List<DialogBody> body = new ArrayList<>();
