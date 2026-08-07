@@ -2,7 +2,9 @@ package io.github.md5sha256.playernotifications.essentials;
 
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
 import io.github.md5sha256.playernotifications.api.NotificationService;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
+import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -41,5 +43,11 @@ final class EssentialsMailBinding {
         // registered alongside the mapping, and the host only pre-registers one for String.
         service.registerJsonPayload(
                 EssentialsMailModule.MAIL_DATA_TYPE, EssentialsMailPayload.class, processor);
+        // A renderer alongside the processor: the two answer different questions. Dispatch precedence
+        // is unaffected — the explicit processor still wins, so delivery is unchanged — but without this
+        // an Essentials mail notification has no title or body for the inbox to show.
+        service.dataTypeRegistry().registerRenderer(EssentialsMailPayload.class,
+                (payload, target) -> new RenderableNotification(
+                        Component.text("Mail"), Component.text(payload.message())));
     }
 }
