@@ -7,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,11 +22,14 @@ import java.util.logging.Logger;
  *
  * <p>{@link #receiveNotification(Object, UUID)}:
  * <ol>
- *     <li>Resolves the target's {@link NotificationPreferences#preferredMedia(UUID) preferred media}.</li>
+ *     <li>Resolves the target's {@link NotificationPreferences#preferredMedia(UUID) preferred media},
+ *     dropping {@link NotificationPreferences#MUTED_MEDIUM}. If nothing deliverable remains, logs at
+ *     {@code fine} and returns {@link NotificationDisposition#RETAIN}, leaving the notification unread
+ *     in the player's inbox — a mute means "do not interrupt me", not "throw this away".</li>
  *     <li>Renders the payload once into a {@link RenderableNotification}.</li>
  *     <li>Delivers to the sink registered for each preferred medium. A medium with no registered sink
  *     is logged at {@code fine} and skipped — the sink may simply not be installed yet.</li>
- *     <li>Folds the results: returns {@link NotificationDisposition#DELETE} if any sink reported
+ *     <li>Folds the results: returns {@link NotificationDisposition#MARK_SEEN} if any sink reported
  *     {@link DeliveryResult#DELIVERED}, otherwise {@link NotificationDisposition#RETAIN}.</li>
  *     <li>If at least one sink delivered and another did not, logs which media were dropped so the
  *     partial-delivery limitation is observable: {@link DeliveryResult#UNREACHABLE} at {@code fine}
@@ -67,9 +71,10 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
 
     @Override
     public @NotNull NotificationDisposition receiveNotification(@NotNull T payload, @NotNull UUID target) {
-        Set<String> media = this.preferences.preferredMedia(target, this.dataType);
+        Set<String> media = new LinkedHashSet<>(this.preferences.preferredMedia(target, this.dataType));
+        media.remove(NotificationPreferences.MUTED_MEDIUM);
         if (media.isEmpty()) {
-            this.logger.fine(() -> "No preferred media for " + target + "; retaining notification");
+            this.logger.fine(() -> "No deliverable media for " + target + "; leaving notification unread");
             return NotificationDisposition.RETAIN;
         }
 
@@ -106,7 +111,7 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
         boolean anyDelivered = results.containsValue(DeliveryResult.DELIVERED);
         if (anyDelivered) {
             logDropped(results);
-            return NotificationDisposition.DELETE;
+            return NotificationDisposition.MARK_SEEN;
         }
         warnIfAllUnsupported(results, target);
         return NotificationDisposition.RETAIN;
@@ -116,7 +121,7 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
      * When nothing was delivered and at least one medium reported {@link DeliveryResult#UNSUPPORTED},
      * logs a warning naming those media. This is the "player prefers only Discord and never links an
      * account" case from the design doc's "Known limitations" — without this, the notification silently
-     * accumulates until {@code notifExpiryTime} with no operator-visible signal.
+     * sits unread until {@code notifExpiryTime} with no operator-visible signal.
      */
     private void warnIfAllUnsupported(@NotNull Map<String, DeliveryResult> results, @NotNull UUID target) {
         List<String> unsupported = new ArrayList<>();
@@ -142,10 +147,10 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
                     // Nothing to log; this is the success case.
                 }
                 case UNREACHABLE -> this.logger.fine(() -> "Medium '" + entry.getKey()
-                        + "' was unreachable while another medium delivered; notification consumed");
+                        + "' was unreachable while another medium delivered; notification marked seen");
                 case UNSUPPORTED -> this.logger.warning("Medium '" + entry.getKey()
                         + "' does not support this player while another medium delivered; notification"
-                        + " consumed. This is a standing misconfiguration.");
+                        + " marked seen. This is a standing misconfiguration.");
             }
         }
     }

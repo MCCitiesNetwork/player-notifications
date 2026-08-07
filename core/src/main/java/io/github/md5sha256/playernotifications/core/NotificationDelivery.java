@@ -99,7 +99,7 @@ public class NotificationDelivery {
 
         List<NotificationEntity> toPrune = new ArrayList<>();
         for (NotificationEntity notification : due) {
-            if (dispatch(notification, target) == NotificationDisposition.DELETE) {
+            if (dispatch(notification, target) == NotificationDisposition.MARK_SEEN) {
                 toPrune.add(notification);
             }
         }

@@ -13,6 +13,14 @@ import java.util.UUID;
 public interface NotificationPreferences {
 
     /**
+     * The reserved medium encoding an explicit mute. Stored as a row rather than as zero rows,
+     * because zero rows already means "has expressed no preference" and the two must stay
+     * distinguishable. It is not a registered sink: {@link RenderingProcessor} filters it out and
+     * delivers nothing, leaving the notification unread in the player's inbox.
+     */
+    String MUTED_MEDIUM = "none";
+
+    /**
      * Returns the media keys the given player currently prefers, with no notification-category context.
      * Implementations are expected to fall back to some configured default set when the player has
      * expressed no preference, so a player is never silently cut off from all notifications.

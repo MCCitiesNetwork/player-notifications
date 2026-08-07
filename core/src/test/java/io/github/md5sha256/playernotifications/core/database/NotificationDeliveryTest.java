@@ -36,7 +36,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @Test
     @DisplayName("processes a due notification for the target and prunes it on DELETE")
     void deliversAndPrunes() {
-        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
+        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.MARK_SEEN);
         NotificationDelivery delivery = deliveryFor(processor);
         insert("n1", TYPE, STORED, DUE, null, PLAYER_A, PLAYER_B);
 
@@ -66,7 +66,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @Test
     @DisplayName("delivering to the last target deletes the notification")
     void lastTargetDeletesNotification() {
-        NotificationDelivery delivery = deliveryFor(new RecordingProcessor(NotificationDisposition.DELETE));
+        NotificationDelivery delivery = deliveryFor(new RecordingProcessor(NotificationDisposition.MARK_SEEN));
         insert("solo", TYPE, STORED, DUE, null, PLAYER_A);
 
         delivery.deliver(PLAYER_A, NOW);
@@ -77,7 +77,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @Test
     @DisplayName("does not deliver notifications scheduled in the future")
     void skipsFutureScheduled() {
-        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
+        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.MARK_SEEN);
         NotificationDelivery delivery = deliveryFor(processor);
         insert("future", TYPE, STORED, NOW.plus(1, ChronoUnit.HOURS), null, PLAYER_A);
 
@@ -90,7 +90,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @Test
     @DisplayName("does not deliver expired notifications")
     void skipsExpired() {
-        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
+        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.MARK_SEEN);
         NotificationDelivery delivery = deliveryFor(processor);
         insert("expired", TYPE, STORED, DUE, NOW.minus(1, ChronoUnit.MINUTES), PLAYER_A);
 
@@ -103,7 +103,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @Test
     @DisplayName("retains notifications whose data type has no registered processor")
     void retainsWhenNoProcessor() {
-        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
+        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.MARK_SEEN);
         NotificationDelivery delivery = deliveryFor(processor);
         insert("unhandled", "other-type", STORED, DUE, null, PLAYER_A);
 
@@ -116,7 +116,7 @@ class NotificationDeliveryTest extends AbstractDatabaseTest {
     @Test
     @DisplayName("a service-enqueued notification is delivered to the processor for its data type")
     void enqueueThenDeliver() {
-        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.DELETE);
+        RecordingProcessor processor = new RecordingProcessor(NotificationDisposition.MARK_SEEN);
         service.dataTypeRegistry().registerPayloadMapping(TYPE, String.class);
         service.dataTypeRegistry().registerProcessor(String.class, processor);
         NotificationDelivery delivery =

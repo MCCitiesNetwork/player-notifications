@@ -31,7 +31,7 @@ class TypedPayloadDeliveryTest extends AbstractDatabaseTest {
         List<Greeting> received = new ArrayList<>();
         service.registerJsonPayload("greeting", Greeting.class, (payload, target) -> {
             received.add(payload);
-            return NotificationDisposition.DELETE;
+            return NotificationDisposition.MARK_SEEN;
         });
 
         service.enqueueNotification(new TypedNotification<>(

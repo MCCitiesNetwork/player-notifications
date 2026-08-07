@@ -1,7 +1,6 @@
 package io.github.md5sha256.playernotifications.core;
 
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
-import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.PlayerNotificationPreferenceEntity;
@@ -145,9 +144,9 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
     public void muteAll(@NotNull UUID player, @NotNull Set<String> dataTypes) {
         Map<String, Set<String>> mutes = new LinkedHashMap<>();
         for (String dataType : dataTypes) {
-            mutes.put(dataType, Set.of(NullSink.MEDIUM_KEY));
+            mutes.put(dataType, Set.of(NotificationPreferences.MUTED_MEDIUM));
         }
-        mutes.put(ALL_DATA_TYPES_KEY, Set.of(NullSink.MEDIUM_KEY));
+        mutes.put(ALL_DATA_TYPES_KEY, Set.of(NotificationPreferences.MUTED_MEDIUM));
         applyChanges(player, mutes, Set.of());
     }
 

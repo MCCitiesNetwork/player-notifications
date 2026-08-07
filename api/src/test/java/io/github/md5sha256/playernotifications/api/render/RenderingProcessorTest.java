@@ -37,14 +37,14 @@ class RenderingProcessorTest {
 
         NotificationDisposition disposition = processor.receiveNotification("payload", TARGET);
 
-        Assertions.assertEquals(NotificationDisposition.DELETE, disposition);
+        Assertions.assertEquals(NotificationDisposition.MARK_SEEN, disposition);
         Assertions.assertEquals(List.of(RENDERED), chat.received);
         Assertions.assertEquals(List.of(RENDERED), discord.received);
     }
 
     @Test
-    @DisplayName("DELETE wins when at least one sink delivers")
-    void deleteWinsOnMixedResults() {
+    @DisplayName("MARK_SEEN wins when at least one sink delivers")
+    void markSeenWinsOnMixedResults() {
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         sinks.registerSink(new RecordingSink("chat", DeliveryResult.UNREACHABLE));
         sinks.registerSink(new RecordingSink("discord", DeliveryResult.DELIVERED));
@@ -52,7 +52,7 @@ class RenderingProcessorTest {
         RenderingProcessor<String> processor = new RenderingProcessor<>(
                 RENDERER, sinks, fixedPreferences("chat", "discord"), "test-type", Logger.getLogger("test"));
 
-        Assertions.assertEquals(NotificationDisposition.DELETE,
+        Assertions.assertEquals(NotificationDisposition.MARK_SEEN,
                 processor.receiveNotification("payload", TARGET));
     }
 
@@ -155,7 +155,7 @@ class RenderingProcessorTest {
         RenderingProcessor<String> processor = new RenderingProcessor<>(
                 RENDERER, sinks, fixedPreferences("chat", "carrier-pigeon"), "test-type", Logger.getLogger("test"));
 
-        Assertions.assertEquals(NotificationDisposition.DELETE,
+        Assertions.assertEquals(NotificationDisposition.MARK_SEEN,
                 processor.receiveNotification("payload", TARGET));
         Assertions.assertEquals(List.of(RENDERED), chat.received);
     }
@@ -182,7 +182,7 @@ class RenderingProcessorTest {
         RenderingProcessor<String> processor = new RenderingProcessor<>(
                 RENDERER, sinks, fixedPreferences("broken", "chat"), "test-type", Logger.getLogger("test"));
 
-        Assertions.assertEquals(NotificationDisposition.DELETE,
+        Assertions.assertEquals(NotificationDisposition.MARK_SEEN,
                 processor.receiveNotification("payload", TARGET));
         Assertions.assertEquals(List.of(RENDERED), chat.received);
     }
@@ -196,6 +196,40 @@ class RenderingProcessorTest {
 
         Assertions.assertEquals(NotificationDisposition.RETAIN,
                 processor.receiveNotification("payload", TARGET));
+    }
+
+    @Test
+    @DisplayName("a muted target retains the notification and delivers nothing")
+    void mutedTargetRetainsAndDeliversNothing() {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
+        sinks.registerSink(chat);
+
+        RenderingProcessor<String> processor = new RenderingProcessor<>(
+                RENDERER, sinks, fixedPreferences(NotificationPreferences.MUTED_MEDIUM), "test-type",
+                Logger.getLogger("test"));
+
+        // A mute means "do not interrupt me", not "throw this away": the notification stays unread in
+        // the player's inbox rather than being marked seen.
+        Assertions.assertEquals(NotificationDisposition.RETAIN,
+                processor.receiveNotification("payload", TARGET));
+        Assertions.assertEquals(List.of(), chat.received);
+    }
+
+    @Test
+    @DisplayName("the muted medium is dropped from a set that also names a real medium")
+    void mutedMediumIsDroppedAlongsideARealMedium() {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
+        sinks.registerSink(chat);
+
+        RenderingProcessor<String> processor = new RenderingProcessor<>(
+                RENDERER, sinks, fixedPreferences(NotificationPreferences.MUTED_MEDIUM, "chat"), "test-type",
+                Logger.getLogger("test"));
+
+        Assertions.assertEquals(NotificationDisposition.MARK_SEEN,
+                processor.receiveNotification("payload", TARGET));
+        Assertions.assertEquals(List.of(RENDERED), chat.received);
     }
 
     @Test
@@ -223,7 +257,7 @@ class RenderingProcessorTest {
         RenderingProcessor<String> processor = new RenderingProcessor<>(
                 RENDERER, sinks, preferences, "economy-payout", Logger.getLogger("test"));
 
-        Assertions.assertEquals(NotificationDisposition.DELETE,
+        Assertions.assertEquals(NotificationDisposition.MARK_SEEN,
                 processor.receiveNotification("payload", TARGET));
         Assertions.assertEquals(List.of("economy-payout"), dataTypesSeen);
     }

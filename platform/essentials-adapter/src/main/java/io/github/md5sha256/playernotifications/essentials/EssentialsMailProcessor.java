@@ -37,7 +37,7 @@ final class EssentialsMailProcessor implements NotificationProcessor<EssentialsM
             Bukkit.getScheduler().runTask(this.plugin, () -> deliver(message, target));
         }
         // The mail has been dispatched, so the notification has been consumed and can be removed.
-        return NotificationDisposition.DELETE;
+        return NotificationDisposition.MARK_SEEN;
     }
 
     private void deliver(@NotNull String message, @NotNull UUID target) {

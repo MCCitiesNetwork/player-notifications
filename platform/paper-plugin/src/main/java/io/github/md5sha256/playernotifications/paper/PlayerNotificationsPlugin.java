@@ -7,7 +7,6 @@ import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.link.AccountLinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
-import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
@@ -163,7 +162,6 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.sinkRegistry.registerSink(new ChatSink(this));
         this.sinkRegistry.registerSink(new DialogSink(this));
         // Backs an explicit mute; not offered as a choice in the preferences dialog.
-        this.sinkRegistry.registerSink(new NullSink());
         this.preferences =
                 new DatabaseNotificationPreferences(mariaDatabase, pluginSettings.defaultMedia());
         this.notificationDelivery = new NotificationDelivery(

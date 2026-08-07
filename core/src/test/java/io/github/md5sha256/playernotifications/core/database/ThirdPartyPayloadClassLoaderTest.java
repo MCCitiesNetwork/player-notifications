@@ -85,7 +85,7 @@ class ThirdPartyPayloadClassLoaderTest extends AbstractDatabaseTest {
         List<Object> received = new ArrayList<>();
         NotificationProcessor processor = (p, target) -> {
             received.add(p);
-            return NotificationDisposition.DELETE;
+            return NotificationDisposition.MARK_SEEN;
         };
         service.registerJsonPayload("player-score", (Class) pojoClass, processor);
 

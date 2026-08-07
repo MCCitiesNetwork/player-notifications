@@ -51,7 +51,7 @@ class NotificationDeliveryPrecedenceTest extends AbstractDatabaseTest {
         registry.registerSerializer(String.class, new JacksonPayloadSerializer<>(new ObjectMapper(), String.class));
         registry.registerProcessor(String.class, (payload, target) -> {
             processorInvocations.add(payload);
-            return NotificationDisposition.DELETE;
+            return NotificationDisposition.MARK_SEEN;
         });
         registry.registerRenderer(String.class, (payload, target) -> new RenderableNotification(
                 Component.text("title"), Component.text(payload)));

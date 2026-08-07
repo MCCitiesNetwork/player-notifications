@@ -1,8 +1,8 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
+import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
-import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
@@ -166,7 +166,7 @@ final class PreferenceDialogs {
     @NotNull
     static List<String> selectableMedia(@NotNull NotificationSinkRegistry sinkRegistry) {
         Set<String> sorted = new TreeSet<>(sinkRegistry.registeredMedia());
-        sorted.remove(NullSink.MEDIUM_KEY);
+        sorted.remove(NotificationPreferences.MUTED_MEDIUM);
         return List.copyOf(sorted);
     }
 

@@ -5,7 +5,6 @@ import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
-import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -113,7 +112,7 @@ public final class TestNotificationSender {
         Set<String> media = this.preferences.preferredMedia(
                 target, TestNotificationPayload.TEST_DATA_TYPE);
 
-        if (media.contains(NullSink.MEDIUM_KEY)) {
+        if (media.contains(NotificationPreferences.MUTED_MEDIUM)) {
             return Component.text("Test notifications are muted for you, so nothing was sent. ",
                             NamedTextColor.YELLOW)
                     .append(USE_PREFERENCES);

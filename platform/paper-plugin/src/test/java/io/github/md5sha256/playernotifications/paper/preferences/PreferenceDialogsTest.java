@@ -1,12 +1,12 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
+import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.category.DefaultNotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
-import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoryDefinition;
@@ -40,11 +40,13 @@ class PreferenceDialogsTest {
     }
 
     @Test
-    void selectableMediaExcludesNullSinkAndSortsAlphabetically() {
+    void selectableMediaExcludesTheMutedMediumAndSortsAlphabetically() {
         NotificationSinkRegistry registry = new NotificationSinkRegistry();
         registry.registerSink(stubSink("discord"));
         registry.registerSink(stubSink("chat"));
-        registry.registerSink(new NullSink());
+        // Nothing registers the muted medium today, but if anything ever does it must not become a
+        // checkbox: the mute is expressed by checking nothing.
+        registry.registerSink(stubSink(NotificationPreferences.MUTED_MEDIUM));
 
         List<String> selectable = PreferenceDialogs.selectableMedia(registry);
 

@@ -93,7 +93,7 @@ public final class NotificationProcessorBuilder<T> {
      */
     @NotNull
     public NotificationProcessor<T> deleteOnComplete() {
-        return onComplete(NotificationDisposition.DELETE);
+        return onComplete(NotificationDisposition.MARK_SEEN);
     }
 
     /**

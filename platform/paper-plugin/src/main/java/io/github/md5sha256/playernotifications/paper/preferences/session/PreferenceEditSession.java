@@ -1,6 +1,6 @@
 package io.github.md5sha256.playernotifications.paper.preferences.session;
 
-import io.github.md5sha256.playernotifications.api.render.sink.NullSink;
+import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.Duration;
@@ -94,14 +94,14 @@ public final class PreferenceEditSession {
 
     /**
      * Every dirty data type keyed to the media that should be written wholesale. An empty selection is
-     * encoded as {@link NullSink#MEDIUM_KEY}, so a staged edit always resolves to explicit rows.
+     * encoded as {@link NotificationPreferences#MUTED_MEDIUM}, so a staged edit always resolves to explicit rows.
      */
     @NotNull
     public Map<String, Set<String>> explicitChanges() {
         Map<String, Set<String>> result = new LinkedHashMap<>();
         for (String dataType : this.dirtyDataTypes) {
             Set<String> selected = this.media.getOrDefault(dataType, Set.of());
-            result.put(dataType, selected.isEmpty() ? Set.of(NullSink.MEDIUM_KEY) : Set.copyOf(selected));
+            result.put(dataType, selected.isEmpty() ? Set.of(NotificationPreferences.MUTED_MEDIUM) : Set.copyOf(selected));
         }
         return Map.copyOf(result);
     }
