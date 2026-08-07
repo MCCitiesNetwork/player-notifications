@@ -67,6 +67,7 @@ public interface MariaNotificationMapper extends NotificationMapper {
             FROM Notification n
             INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
             WHERE t.playerUuid = #{playerId}
+            AND t.seenTime IS NULL
             AND n.notifScheduledTime <= #{now}
             AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
             ORDER BY n.notifPriority DESC, n.notifScheduledTime ASC

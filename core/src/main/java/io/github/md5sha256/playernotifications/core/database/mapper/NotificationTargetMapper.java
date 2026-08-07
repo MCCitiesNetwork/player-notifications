@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.core.database.mapper;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -38,6 +39,14 @@ public interface NotificationTargetMapper {
      * @return the number of member rows removed
      */
     int deleteMembers(int notifTargetId, @NotNull Collection<UUID> playerUuids);
+
+    /**
+     * Stamps {@code seenTime} on one member row, if it is not already stamped. The first mark stays
+     * authoritative, so a re-delivery race cannot move the timestamp forward.
+     *
+     * @return the number of rows updated: {@code 1} on the first mark, {@code 0} afterwards
+     */
+    int markSeen(int notifTargetId, @NotNull UUID playerUuid, @NotNull Instant seenTime);
 
     int deleteByTargetId(int notifTargetId);
 

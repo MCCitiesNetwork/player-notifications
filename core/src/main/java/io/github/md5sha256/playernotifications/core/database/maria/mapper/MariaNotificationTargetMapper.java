@@ -5,8 +5,10 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -57,6 +59,15 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
             """)
     int deleteMembers(@Param("notifTargetId") int notifTargetId,
                       @Param("playerUuids") @NotNull Collection<UUID> playerUuids);
+
+    @Override
+    @Update("""
+            UPDATE NotificationTarget SET seenTime = #{seenTime}
+            WHERE notifTargetId = #{notifTargetId} AND playerUuid = #{playerUuid} AND seenTime IS NULL
+            """)
+    int markSeen(@Param("notifTargetId") int notifTargetId,
+                 @Param("playerUuid") @NotNull UUID playerUuid,
+                 @Param("seenTime") @NotNull Instant seenTime);
 
     @Override
     @Delete("""

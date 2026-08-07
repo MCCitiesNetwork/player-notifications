@@ -86,7 +86,9 @@ class NotificationDeliveryPrecedenceTest extends AbstractDatabaseTest {
         delivery.deliver(PLAYER, NOW);
 
         Assertions.assertEquals(1, sink.received.size());
-        Assertions.assertFalse(exists("renderer-only"), "DELIVERED should consume the notification");
+        // 2026-08-07 notification inbox plan: DELIVERED marks seen rather than consuming, so the
+        // notification survives and only stops being due.
+        Assertions.assertTrue(exists("renderer-only"));
     }
 
     @Test

@@ -86,6 +86,16 @@ class RenderedDeliveryTest extends AbstractDatabaseTest {
         }
     }
 
+    /** The keys still due for the player: what a further delivery trigger would pick up. */
+    private static List<String> stillDue(UUID player) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            return wrapper.notificationMapper().selectDueByPlayer(player, NOW).stream()
+                    .map(io.github.md5sha256.playernotifications.core.database.entity
+                            .NotificationEntity::notifKey)
+                    .toList();
+        }
+    }
+
     @Test
     @DisplayName("a renderable payload is rendered and delivered to the preferred medium's sink")
     void rendersAndDelivers() {
@@ -103,8 +113,8 @@ class RenderedDeliveryTest extends AbstractDatabaseTest {
     }
 
     @Test
-    @DisplayName("a delivered notification is consumed, leaving nothing due for that player")
-    void deliveredNotificationIsPruned() {
+    @DisplayName("a delivered notification is marked seen, leaving nothing due for that player")
+    void deliveredNotificationIsMarkedSeen() {
         registerPing();
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         sinks.registerSink(new RecordingSink("recording", DeliveryResult.DELIVERED));
@@ -112,8 +122,10 @@ class RenderedDeliveryTest extends AbstractDatabaseTest {
         enqueuePing("p2", "hello");
         delivery(sinks, Set.of("recording")).deliver(PLAYER, NOW);
 
-        Assertions.assertFalse(exists("p2"),
-                "the last target was removed, so the trigger should have deleted the notification");
+        // Delivery is no longer destructive (2026-08-07 notification inbox plan): the notification
+        // survives for the inbox, and is excluded from the due query because it is now seen.
+        Assertions.assertTrue(exists("p2"));
+        Assertions.assertEquals(List.of(), stillDue(PLAYER));
     }
 
     @Test
@@ -130,8 +142,8 @@ class RenderedDeliveryTest extends AbstractDatabaseTest {
     }
 
     @Test
-    @DisplayName("one medium delivering consumes the notification even when another is unreachable")
-    void deleteWinsAcrossSinks() {
+    @DisplayName("one medium delivering marks the notification seen even when another is unreachable")
+    void markSeenWinsAcrossSinks() {
         registerPing();
         RecordingSink good = new RecordingSink("good", DeliveryResult.DELIVERED);
         RecordingSink bad = new RecordingSink("bad", DeliveryResult.UNREACHABLE);
@@ -144,8 +156,10 @@ class RenderedDeliveryTest extends AbstractDatabaseTest {
 
         Assertions.assertEquals(1, good.received.size());
         Assertions.assertEquals(1, bad.received.size());
-        // Documented DELETE-wins fan-out: partial delivery is silent and the notification is consumed.
-        Assertions.assertFalse(exists("p4"));
+        // Documented MARK_SEEN-wins fan-out: partial delivery is still silent, but no longer lossy —
+        // the notification remains readable in the inbox rather than being consumed.
+        Assertions.assertTrue(exists("p4"));
+        Assertions.assertEquals(List.of(), stillDue(PLAYER));
     }
 
     @Test

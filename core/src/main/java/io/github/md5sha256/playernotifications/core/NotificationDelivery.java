@@ -23,15 +23,17 @@ import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
- * Delivers a player's due notifications through the processors registered in the
- * {@link NotificationDataTypeRegistry}, and prunes each target whose processor flags the
- * notification for {@link NotificationDisposition#DELETE deletion}.
+ * Delivers a player's due, unseen notifications through the processors registered in the
+ * {@link NotificationDataTypeRegistry}, and stamps each target whose processor reports the
+ * notification {@link NotificationDisposition#MARK_SEEN seen}.
  *
  * <p>A notification is processed once per target: {@link #deliver(UUID)} resolves the notifications
- * currently due for one player, looks up the processor for each notification's payload type, invokes
- * it for that single player, and — when the processor returns {@code DELETE} — removes the player
- * from the notification's target group. Removing the last target deletes the notification itself
- * (enforced by a database trigger).
+ * currently due and still unseen for one player, looks up the processor for each notification's
+ * payload type, invokes it for that single player, and — when the processor returns
+ * {@code MARK_SEEN} — writes {@code seenTime} on that player's target row. The notification itself is
+ * <em>not</em> deleted: it stays readable in the player's inbox until they dismiss it or it expires.
+ * Because the due query filters on {@code seenTime IS NULL}, a seen notification is never pushed to
+ * the player a second time.
  *
  * <p>Processors are invoked outside any open database transaction, so their side effects (which may
  * marshal onto another thread) do not hold database resources.
@@ -97,20 +99,20 @@ public class NotificationDelivery {
             due = wrapper.notificationMapper().selectDueByPlayer(target, now);
         }
 
-        List<NotificationEntity> toPrune = new ArrayList<>();
+        List<NotificationEntity> toMark = new ArrayList<>();
         for (NotificationEntity notification : due) {
             if (dispatch(notification, target) == NotificationDisposition.MARK_SEEN) {
-                toPrune.add(notification);
+                toMark.add(notification);
             }
         }
 
-        if (toPrune.isEmpty()) {
+        if (toMark.isEmpty()) {
             return;
         }
         try (SqlSessionWrapper wrapper = database.openSession()) {
             NotificationTargetMapper targetMapper = wrapper.notificationTargetMapper();
-            for (NotificationEntity notification : toPrune) {
-                targetMapper.deleteMembers(notification.notifTargetId(), List.of(target));
+            for (NotificationEntity notification : toMark) {
+                targetMapper.markSeen(notification.notifTargetId(), target, now);
             }
             wrapper.session().commit();
         }
