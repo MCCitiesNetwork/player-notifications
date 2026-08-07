@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.core.database.maria.mapper;
 
+import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import org.apache.ibatis.annotations.Arg;
@@ -83,6 +84,55 @@ public interface MariaNotificationMapper extends NotificationMapper {
     })
     @NotNull List<NotificationEntity> selectDueByPlayer(@Param("playerId") @NotNull UUID playerId,
                                                         @Param("now") @NotNull Instant now);
+
+    @Override
+    @Select("""
+            SELECT n.notifKey, n.notifScheduledTime, n.notifExpiryTime, n.notifPayloadType,
+                   n.notifPayload, n.notifPriority, t.seenTime
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid = #{playerId}
+              AND n.notifScheduledTime <= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+            ORDER BY n.notifScheduledTime DESC, n.notifPriority DESC, n.notifKey DESC
+            LIMIT #{limit} OFFSET #{offset}
+            """)
+    @ConstructorArgs({
+            @Arg(column = "notifKey", javaType = String.class),
+            @Arg(column = "notifScheduledTime", javaType = Instant.class),
+            @Arg(column = "notifExpiryTime", javaType = Instant.class),
+            @Arg(column = "notifPayloadType", javaType = String.class),
+            @Arg(column = "notifPayload", javaType = String.class),
+            @Arg(column = "notifPriority", javaType = int.class),
+            @Arg(column = "seenTime", javaType = Instant.class)
+    })
+    @NotNull List<InboxNotificationEntity> selectInboxPage(@Param("playerId") @NotNull UUID playerId,
+                                                           @Param("now") @NotNull Instant now,
+                                                           @Param("limit") int limit,
+                                                           @Param("offset") int offset);
+
+    @Override
+    @Select("""
+            SELECT COUNT(*)
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid = #{playerId}
+              AND n.notifScheduledTime <= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+            """)
+    int countInbox(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now);
+
+    @Override
+    @Select("""
+            SELECT COUNT(*)
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid = #{playerId}
+              AND t.seenTime IS NULL
+              AND n.notifScheduledTime <= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+            """)
+    int countUnread(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now);
 
     @Override
     @Insert("""

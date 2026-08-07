@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.core.database.mapper;
 
+import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -30,6 +31,21 @@ public interface NotificationMapper {
      * by descending priority then ascending scheduled time.
      */
     @NotNull List<NotificationEntity> selectDueByPlayer(@NotNull UUID playerId, @NotNull Instant now);
+
+    /**
+     * Reads one page of the given player's inbox: every notification targeting them that is scheduled
+     * at or before {@code now} and not yet expired, seen or not, newest first. The ordering carries a
+     * {@code notifKey} tiebreak so it is a total order — without one, two notifications sharing a
+     * timestamp could swap between page reads and appear twice or not at all.
+     */
+    @NotNull List<InboxNotificationEntity> selectInboxPage(@NotNull UUID playerId, @NotNull Instant now,
+                                                           int limit, int offset);
+
+    /** Counts what {@link #selectInboxPage} would return unpaged. */
+    int countInbox(@NotNull UUID playerId, @NotNull Instant now);
+
+    /** Counts the subset of {@link #countInbox} the player has not yet seen. */
+    int countUnread(@NotNull UUID playerId, @NotNull Instant now);
 
     int insert(@NotNull NotificationEntity notification);
 

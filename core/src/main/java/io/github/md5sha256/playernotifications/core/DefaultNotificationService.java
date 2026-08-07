@@ -1,6 +1,8 @@
 package io.github.md5sha256.playernotifications.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.md5sha256.playernotifications.api.InboxEntry;
+import io.github.md5sha256.playernotifications.api.InboxPage;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
@@ -14,6 +16,7 @@ import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializatio
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
+import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
@@ -149,6 +152,43 @@ public class DefaultNotificationService implements NotificationService {
                 ));
             }
             return resolved;
+        }
+    }
+
+    /** The largest page a caller can ask for, whatever they pass. Mirrored by {@code paper.ui.PageBounds}. */
+    private static final int MAX_PAGE_SIZE = 20;
+
+    @Override
+    public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize) {
+        int size = Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
+        Instant now = Instant.now();
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            NotificationMapper mapper = wrapper.notificationMapper();
+            int totalEntries = mapper.countInbox(playerId, now);
+            int totalPages = Math.max(1, (totalEntries + size - 1) / size);
+            int clampedPage = Math.clamp(page, 1, totalPages);
+            int unread = mapper.countUnread(playerId, now);
+            List<InboxNotificationEntity> rows =
+                    mapper.selectInboxPage(playerId, now, size, (clampedPage - 1) * size);
+            List<InboxEntry> entries = new ArrayList<>(rows.size());
+            for (InboxNotificationEntity row : rows) {
+                entries.add(new InboxEntry(
+                        row.notifKey(),
+                        row.notifScheduledTime(),
+                        row.notifExpiryTime(),
+                        row.notifPayloadType(),
+                        row.notifPayload(),
+                        row.notifPriority(),
+                        row.seenTime()));
+            }
+            return new InboxPage(entries, clampedPage, size, totalEntries, unread);
+        }
+    }
+
+    @Override
+    public int unreadCount(@NotNull UUID playerId) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            return wrapper.notificationMapper().countUnread(playerId, Instant.now());
         }
     }
 

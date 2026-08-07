@@ -56,6 +56,19 @@ public interface NotificationService {
     @NotNull
     List<ResolvedNotification> resolveNotifications(@NotNull UUID playerId);
 
+    /**
+     * Reads one page of the given player's inbox: every notification currently targeting them that is
+     * due and not yet expired, seen or not, newest first.
+     *
+     * <p>{@code page} is 1-based and clamped into {@code 1..totalPages}; {@code pageSize} is clamped
+     * into {@code 1..20}. Clamping rather than throwing means a stale UI button asking for page 9 of a
+     * now-4-page inbox gets page 4 instead of an error screen.
+     */
+    @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize);
+
+    /** The number of due, unexpired notifications the player has not yet seen. */
+    int unreadCount(@NotNull UUID playerId);
+
     void clearNotification(@NotNull String notificationKey);
 
     /**
