@@ -52,9 +52,10 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
   - `NotificationDataTypeRegistry` — maps a string `dataType` → payload `Class<?>`, and payload class → `NotificationProcessor`, `PayloadSerializer`, and `NotificationRenderer`. The extension point: callers register their own payload types, processors/renderers, and serializers.
   - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"essentials-mail"`, `"discord-dm"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`. `"discord-channel-ping"` is **reserved but unimplemented** (see "Discord adapter").
   - `Notification` / `ResolvedNotification` — records for the persisted vs. target-resolved forms. `ResolvedNotification` holds a `NotificationTarget` (list of player UUIDs) and carries `notifPayloadType` (the registry data-type string) plus the `String` payload.
-  - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or flagged for `DELETE`. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with DELETE-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
-  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink`, `DialogSink`, and `NullSink` (the `"none"` medium backing an explicit mute — see "Player commands").
+  - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or marked `MARK_SEEN` for that target. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with MARK_SEEN-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
+  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `essentials-mail` → "Essentials Mail"). `api.render.sink` holds `ChatSink` and `DialogSink`. The `"none"` medium backing an explicit mute is **not** a sink: it is the constant `NotificationPreferences.MUTED_MEDIUM`, which `RenderingProcessor` filters out of the resolved media set — see "Player commands".
   - **`api.category`** package — `NotificationCategoryRegistry` (`DefaultNotificationCategoryRegistry` the in-memory impl) lets module authors declare categories and claim `dataType`s under them in code, exactly like payload types/processors/renderers/sinks are registered. Exposed via `NotificationService#categoryRegistry()`. Merged at read time with `categories.yml` by `core.category.NotificationCategories` — see "Notification categories".
+  - `InboxEntry` / `InboxPage` — one notification as it appears in a player's inbox (stored payload plus that viewer's `seenTime`, with `unread()`), and one page of them (`entries`, `page`, `pageSize`, `totalEntries`, `unreadCount`, `totalPages()` at least 1). See "Notification inbox".
   - **`api.link`** package — `AccountLinkProvider` (`providerKey`, a `default` title-casing `displayName()`
     plus the static `defaultDisplayName(key)` the host uses to name an *unregistered* key, and
     `begin`/`status`/`unlink` returning the player-facing `Component` rather than sending it) and
@@ -64,7 +65,7 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
     "Player commands".
   - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
-- **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink`, `DialogSink`, and `NullSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands, a `PreferenceQuitListener` and a `JoinDeliveryListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
+- **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink` and `DialogSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands, an `InboxRouter` with its `InboxQuitListener`, a `PreferenceQuitListener` and a `JoinDeliveryListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
 - **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type, via `registerJsonPayload` against its own `EssentialsMailPayload` record. It deliberately does **not** map to `String.class`: the registry keys handlers by payload class, so a shared class means a shared processor/serializer/renderer, and `unregisterPayloadMapping`'s cascade would tear out the host's shared `String` serializer on module unload. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
 - **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. It also **owns its own schema**: the `discord.schema` subpackage holds its migrator, migration script, entity and mappers, and `core` knows nothing of Discord. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
 
@@ -157,15 +158,20 @@ through `RenderingProcessor`, built with the notification's `notifPayloadType` a
 otherwise the notification is logged and retained. `NotificationDelivery` has a 3-arg constructor (no
 rendering path) and a 5-arg one (rendering) — categories play no role in delivery.
 
-**Fan-out is DELETE-wins:** if any sink returns `DELIVERED`, the notification is consumed. Consequences,
-deliberate and documented in the design doc's "Known limitations":
-- **Partial delivery is silent and unrecoverable.** If a player prefers `chat + discord-dm`, chat succeeds
-  and Discord transiently fails, the notification is consumed and Discord never receives it. Fixing this
-  needs per-medium delivery tracking, which was deliberately deferred. Retaining instead is *not* a
-  workaround — chat is not idempotent, so the player would be messaged twice.
+**Fan-out is MARK_SEEN-wins:** if any sink returns `DELIVERED`, the notification is marked seen for that
+target — **not** deleted. It stays readable in the player's inbox until dismissed or expired; see
+"Notification inbox". `selectDueByPlayer` carries `AND t.seenTime IS NULL`, so a seen notification is
+never pushed again. Consequences:
+- **Partial delivery is still silent, but no longer lossy.** If a player prefers `chat + discord-dm`,
+  chat succeeds and Discord transiently fails, the notification is marked seen and Discord never receives
+  it — but it remains readable in the inbox. Per-medium delivery tracking is still deferred; retrying is
+  *not* a workaround, since chat is not idempotent.
 - When **nothing** was delivered and at least one medium returned `UNSUPPORTED`, a `warning` is logged
-  (a player whose only preferred medium is permanently unreachable would otherwise accumulate
-  notifications silently until expiry).
+  (a player whose only preferred medium is permanently unreachable would otherwise sit on unread
+  notifications until expiry with no operator-visible signal).
+- **`RenderingProcessor` drops `MUTED_MEDIUM` from the resolved set** and returns `RETAIN` if nothing
+  deliverable remains, leaving the notification **unread** in the inbox. A mute means "do not interrupt
+  me", not "do not tell me".
 - A sink throwing a `RuntimeException` is caught, logged, and treated as `UNREACHABLE`, so one broken
   sink cannot abort delivery to the others.
 
@@ -179,8 +185,11 @@ read-and-dismiss.
 
 Design doc: `docs/superpowers/specs/2026-07-30-join-delivery-trigger-design.md`.
 
-`paper.JoinDeliveryListener` delivers a joining player's due notifications, gated by
-`deliver-on-join` and delayed by `join-delivery-delay-seconds` (see "Configuration"). It is a
+`paper.JoinDeliveryListener` delivers a joining player's due, **unseen** notifications, gated by
+`deliver-on-join` and delayed by `join-delivery-delay-seconds` (see "Configuration"). It also sends one
+line naming the player's unread count and pointing at `/notifications`, **outside** the
+`deliver-on-join` gate and its delay — a player who turned push off still needs to know something
+arrived, which is the whole point of separating mute from the inbox. A zero count sends nothing. It is a
 **trigger** for the existing delivery loop, the same kind of thing as the async prune task — not a
 registry extension, which is why it lives in the Paper bootstrap and not behind
 `NotificationSinkRegistry`. A toggle inside `NotificationDelivery` was rejected: `core` has no Bukkit
@@ -196,8 +205,8 @@ regardless.
   `runTaskLaterAsynchronously` with `delaySeconds * 20` ticks): the mappers and preference lookups do
   blocking JDBC, and `DiscordDmSink` refuses the main thread outright.
 - **The scheduled body re-checks `isOnline()` and the toggle.** An offline `Audience` still makes
-  `ChatSink` report `DELIVERED`, so under the DELETE-wins fan-out delivering to a player who quit
-  mid-delay would consume the notification into nothing. Re-reading the toggle means a reload that turns
+  `ChatSink` report `DELIVERED`, so under the MARK_SEEN-wins fan-out delivering to a player who quit
+  mid-delay would mark the notification seen without anyone reading it. Re-reading the toggle means a reload that turns
   the trigger off cancels a delivery already waiting out its delay.
 - A `RuntimeException` from `deliver` is logged at `WARNING` and swallowed — an uncaught throw in a
   scheduled task is reported by Bukkit with no useful attribution, and nothing is sent to the player,
@@ -351,6 +360,58 @@ single preference row.
   `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`. Everything else in the module is unit
   tested — including `DiscordLinkFlow`, which is where the link logic deliberately lives for that reason.
 
+## Notification inbox
+
+Design doc: `docs/superpowers/specs/2026-08-07-notification-inbox-design.md`.
+Plan: `docs/superpowers/plans/2026-08-07-notification-inbox.md`.
+
+Every notification targeting a player stays readable until they dismiss it or it passes
+`notifExpiryTime`. **Delivery marks seen; it does not consume.**
+
+Three states, all carried by one nullable column, `NotificationTarget.seenTime`:
+
+| State | Storage | In the inbox |
+|---|---|---|
+| unread | row exists, `seenTime IS NULL` | listed, marked, counted on join, pushed through preferred media |
+| seen | row exists, `seenTime` set | listed, not counted, never pushed again |
+| dismissed | target row deleted | absent |
+
+Dismissal **deletes the target row** rather than setting a third timestamp: an absent row makes
+"never reappear" true without any query knowing the rule, and it reuses the existing
+`trg_delete_targetless_notification` trigger to dispose of the notification once the last member goes.
+
+- **Read API** (on `NotificationService`): `inbox(playerId, page, pageSize)` → `InboxPage`,
+  `unreadCount(playerId)`, `markSeen(key, playerId)`, `markAllSeen(playerId)`, `dismissSeen(playerId)`,
+  `pruneOrphanedTargets()`. Dismissing **one** notification needs no new method —
+  `deleteNotificationTarget(key, playerId)` already does exactly that. `page` is 1-based and clamped
+  into `1..totalPages`, `pageSize` into `1..20`, so a stale dialog button cannot produce an error
+  screen. The page query's `ORDER BY n.notifScheduledTime DESC, n.notifPriority DESC, n.notifKey DESC`
+  is a **total** order; without the key tiebreak two notifications sharing a timestamp could swap
+  between page reads and appear twice or not at all.
+- **`resolveNotifications` is deliberately unchanged** and still unfiltered: it means "every
+  notification currently targeting the player", and the inbox has its own query rather than redefining
+  an existing method.
+- **Rendering happens on read, not on write.** `paper.inbox.InboxEntryRenderer` resolves payload class →
+  `PayloadSerializer` → `NotificationRenderer`, the same three lookups `NotificationDelivery.dispatch`
+  does, extracted so the two cannot drift and so this one is unit-testable without a server. Any lookup
+  missing, or a decode or render throwing, yields a **placeholder** naming the data type — hiding the
+  entry would leave it counted in `totalEntries` and read as a bug. This is why `essentials-mail` now
+  registers a renderer alongside its processor: dispatch precedence is unaffected (the explicit
+  processor still wins, so delivery is unchanged), but without it an Essentials mail entry has no title
+  or body to show.
+- **Paper UI:** `paper.inbox.InboxRouter` owns both screens, the per-player page cursor (dropped by
+  `InboxQuitListener` on quit) and the async marshalling — the same shape as `PreferenceDialogRouter`,
+  for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Dismiss all
+  read*, *Preferences*, Previous/Next); `InboxDetailDialog` shows one entry with *Dismiss* and *Back*,
+  Back-doesn't-commit as in the preference editors. Opening a row marks it seen.
+- **`inbox-page-size` is clamped twice**, by `PluginSettings`/`paper.ui.PageBounds` and again by
+  `DefaultNotificationService.inbox`. Deliberate: one is a UI helper, the other a public-API trust
+  boundary, and neither should assume the other ran.
+- **Marking seen is not transactional with delivery.** The processor runs outside the transaction, so a
+  crash between a sink delivering and the `seenTime` write leaves the notification unread and it is
+  pushed again. Chat is not idempotent, so that can duplicate a message. Accepted: the window is
+  milliseconds and the alternative holds a transaction across a Discord round trip.
+
 ## Notification categories
 
 Design doc: `docs/superpowers/specs/2026-07-28-categorised-notification-preferences-design.md`.
@@ -388,12 +449,13 @@ The single-argument `preferredMedia(player)` is the same lookup against `"*"`.
 Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Brigadier API
 (`LifecycleEvents.COMMANDS`) — **not** a `commands:` block, which `paper-plugin.yml` does not support.
 
-- `/notifications` (alias `/notifs`) — **reserved for a notification management UI that does not exist
-  yet**; prints a notice saying so and pointing at `/notifications preferences`. It deliberately does
-  **not** open the preferences dialog. The preference subcommands were nested under `preferences` at the
-  same time, to keep the top level clear for that UI's own verbs — which would otherwise collide with
-  a name like `mute`. A player-facing inbox is still a deferred item (see "Current state");
-  reserving the name is not implementing it.
+- `/notifications` (alias `/notifs`) — **opens the player's inbox** (`paper.inbox.InboxDialog`). The name
+  was reserved for exactly this; the preference subcommands sit under `preferences` so the top level
+  stays clear for the inbox's own verbs, which would otherwise collide with a name like `mute`.
+- `/notifications list [page]` / `/notifications read <n>` / `/notifications dismiss <n>` — the **chat
+  fallback** for clients where the dialog does not render. `<n>` indexes the page most recently listed
+  for that player, held in `InboxRouter`. All three are player-only, under the same
+  `playernotifications.command.preferences` permission, and dispatch off the main thread.
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
@@ -526,15 +588,20 @@ out) via the category editor:
 | Explicit selection | one row per medium for that `dataType` | that set |
 | Explicit mute | a single `medium = 'none'` row for that `dataType` | `{none}` |
 
+A muted notification is **retained unread in the inbox**, not consumed: `RenderingProcessor` drops
+`NotificationPreferences.MUTED_MEDIUM` and returns `RETAIN`.
+
 **Unconfigured is now a one-way state**: it is where a `dataType` starts, and nothing in the UI returns
 a `dataType` to it since the "server default" affordances were removed. The row remains because
 `preferredMedia` still resolves it — for a `dataType` the player has never touched, and for one
 registered by a module installed after they last edited their preferences.
 
-`NullSink` is registered for `"none"` and returns `DELIVERED`, so a muted `dataType`'s notifications are
-**consumed** rather than accumulating until expiry — a mute means "do not tell me", not "queue this for
-later". `NullSink` is excluded from every checkbox list, since checking nothing already says the same
-thing. `/notifications mute` and the root dialog's "Mute everything" both write one `{none}` row per
+`"none"` is **not a registered sink** — `NullSink` was deleted with the inbox work, because reporting
+`DELIVERED` would have marked a muted notification seen and hidden it from the unread list, precisely
+backwards for a player who muted a type in order to read it later. It survives as the constant
+`NotificationPreferences.MUTED_MEDIUM`, stored as a row rather than as zero rows because zero rows
+already means "has expressed no preference". It is excluded from every checkbox list, since checking
+nothing already says the same thing. `/notifications mute` and the root dialog's "Mute everything" both write one `{none}` row per
 currently-known `dataType` **and** a blanket `ALL_DATA_TYPES_KEY` (`"*"`) `{none}` row, so a mute also
 covers any `dataType` registered by a module installed later, and never silently no-ops on a server with
 zero registered payload mappings.
@@ -548,6 +615,15 @@ Implementation notes:
   only takes effect on Apply.
 - `DatabaseNotificationPreferences` does blocking JDBC while `Player#showDialog` must run on the main
   thread, so dialog loads/writes marshal onto the async scheduler and back (`PreferenceDialogs.withSession`).
+- **`paper.ui`** (`PageBounds`, `PagedDialogs`, `DialogSupport`) holds the paging arithmetic, the
+  Previous/Next buttons and page indicator, and the callback options / main-thread marshalling /
+  `message` helpers that used to live in the package-private `PreferenceDialogs`, which now delegates.
+  **The package imports nothing from `io.github.md5sha256.playernotifications`** — only Paper, Bukkit and
+  Adventure — so lifting it into `plugin-infrastructure` would be a package rename. It stays in-tree
+  until a second consumer exists; a change that would only ever make sense for the inbox belongs in
+  `paper.inbox` instead. Verify the rule with
+  `grep -rn "playernotifications" platform/paper-plugin/src/main/java/.../paper/ui/` — only `package`
+  lines should match.
 - Dialog input keys are **positional** (`medium_0`, `category_0`, …) with a key→value map, because
   medium/category keys are arbitrary strings and any sanitizing transform risks two colliding onto one
   input.
@@ -579,7 +655,7 @@ Implementation notes:
 
 All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getConfig()`. On enable the plugin copies bundled defaults into the data folder, merges in any new keys, and deserializes into `@ConfigSerializable` records:
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
-- `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`). Both join keys are primitives and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
+- `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`); `inbox-page-size` (`int`, default 7) — how many inbox entries `/notifications` shows per page, clamped to `1..20` in the compact constructor, with `0` (the value an absent key deserializes to) falling back to the default. The three primitive keys and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
 - `categories.yml` → `NotificationCategoriesConfig` (in `core`, package `category`): `uncategorized-label` — the label for the catch-all category; `categories` — a map of category key → `{label, description, types}`, each `types` entry a registered `dataType` string. See "Notification categories".
 
 Conventions when editing config:
@@ -594,10 +670,10 @@ MyBatis over MariaDB, structured like a smaller version of the sibling `realty` 
 - `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`).
 - `database.maria` — `MariaDatabase` (builds the `SqlSessionFactory`, registers mappers + the `UUIDAsBin16Handler` UUID↔`BINARY(16)` type handler), `MariaSqlSession`, `MariaSchemaMigrator`.
 - `database.maria.mapper` — MariaDB mappers with `@Select`/`@Insert`/`@Delete` (and `<script>`/`<foreach>` for batch ops), extending the neutral interfaces.
-- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Currently a single step, `V1__maria_initial_schema.sql` — the project is still in prototyping with no data to preserve across schema versions, so earlier migrations were collapsed into it rather than layered. `SchemaUpgradeTest` covers the already-at-V1 path, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call. **A feature module can own its own migrations** without joining this list — see "Module system".
+- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Two steps today: `V1__maria_initial_schema.sql` and `V2__notification_inbox.sql` (`seenTime` plus its index). Migrations that predate V1 were collapsed into it, back when the project had no data to preserve; **that is no longer the rule** — V2 was layered precisely because there is now deployed data, and further changes must be layered too. `SchemaUpgradeTest` covers the already-at-V1 path, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call, and asserts `seenTime` exists and `MAX(version) = 2`. **A feature module can own its own migrations** without joining this list — see "Module system".
 
 Schema (`V1__maria_initial_schema.sql`), three tables:
-- `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
+- `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), seenTime DATETIME NULL, PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. `seenTime` (added by V2, indexed with `playerUuid`) is that member's read marker: `NULL` is unread, set is seen, and a deleted row is dismissed. See "Notification inbox". New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
 - `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord-dm` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
@@ -611,7 +687,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **77 tests in `:core:test`, 32 in `:api:test`, 46 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 277 in total, all passing. (`:platform:essentials-adapter` has no tests.)
+Current baseline: **96 tests in `:core:test`, 30 in `:api:test`, 58 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 306 in total, all passing. (`:platform:essentials-adapter` has no tests.)
 
 ## Current state
 
@@ -619,8 +695,9 @@ The project builds end-to-end; `:core:test`, `:api:test`, and `:platform:paper-p
 enqueue → deliver path is complete: `enqueueNotification` persists the notification's `notifPayloadType`;
 `NotificationDelivery.deliver(UUID[, Instant])` resolves a player's due notifications, decodes each
 payload through its registered `PayloadSerializer`, dispatches by the precedence rule above (directly on
-`dataType`, no category resolution), and prunes targets whose processor returns
-`NotificationDisposition.DELETE` (the trigger then removes notifications with no remaining targets).
+`dataType`, no category resolution), and stamps `seenTime` on targets whose processor returns
+`NotificationDisposition.MARK_SEEN` — delivery no longer destroys its own input, so the notification
+stays readable in the player's inbox (see "Notification inbox").
 Preferences are stored and resolved per `dataType` end-to-end: storage, dispatch, and the player-facing
 dialogs (root, by-medium, by-category) all agree on the same `dataType` axis, with categories layered on
 top purely as a player-facing display/grouping concept (a `NotificationCategoryRegistry` for code-driven
@@ -665,7 +742,21 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
     enforced in the schema.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON. A payload mapped to `String.class` is therefore JSON-encoded on write and arrives at its processor still quoted — the reason every in-tree payload now owns a record instead. `DefaultNotificationService` still pre-registers a `String` serializer and nothing forbids `String.class`, so the trap is still reachable; no registration guard was added (considered and deferred — see the test-notification design doc).
 - **Persisted `essentials-mail` rows predating the `EssentialsMailPayload` change will not deserialize** (they hold `"text"`, the type now expects `{"message":"text"}`). `decodePayload` logs a warning and retains them until expiry prunes them. Acceptable only because the project has no deployed data to preserve; a deployed server would have needed a payload-rewriting migration.
-- **Partial delivery is silent** under the DELETE-wins fan-out — see "Rendering & delivery media".
+- **Partial delivery is silent** under the MARK_SEEN-wins fan-out, though no longer lossy — see
+  "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
 - **Rows for a category removed from `categories.yml` are kept, not pruned** — they resurface if the category is re-added, and are invisible in the dialogs meanwhile. No admin command prunes them.
-- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and a **player-facing inbox** (the command tree covers preferences and linking only — there is no listing or player-initiated clear, and no admin commands or admin view of another player's preferences). The bare `/notifications` is now **reserved** for that inbox, but nothing implements it; note that the current model makes it non-trivial, because delivery is destructive under DELETE-wins fan-out, so `resolveNotifications` returns only what failed to deliver plus what is not yet due — not a mailbox. The design sketched (and not built) was an `inbox` medium: a `NotificationSink` that persists the rendered notification into its own table and returns `DELIVERED`, keeping the change additive on the sink registry instead of inverting delivery semantics.
+- **The inbox exists, but its player-facing surface is unverified.** `InboxRouter`, `InboxDialog`,
+  `InboxDetailDialog`, the `list`/`read`/`dismiss` Brigadier subcommands, the bare `/notifications`
+  opening the dialog, and the join unread line all need a live server. **Task 8's manual checklist in
+  `docs/superpowers/plans/2026-08-07-notification-inbox.md` has not been run.** Everything underneath is
+  covered: `InboxDeliveryTest`, `InboxReadTest`, `InboxEntryRendererTest` and `PageBoundsTest`.
+- **Inbox size is unbounded** and **seen is per player, not per medium** — both accepted; see the design
+  doc's "Known limitations".
+- **The orphaned-target leak is fixed.** `deleteExpired`/`deleteByKey`/`deleteByPayloadType`/
+  `deleteByPlayer` still delete `Notification` rows without touching `NotificationTarget` (the trigger
+  only fires the other way round), but `pruneOrphanedTargets()` now runs on the periodic prune task. It
+  is a select plus per-group deletes, **not** one `DELETE … LEFT JOIN Notification`: MariaDB refuses a
+  statement that reads `Notification` when the delete fires `trg_delete_targetless_notification`, which
+  writes it.
+- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and **admin commands** (no admin view of another player's inbox or preferences, and no player-initiated bulk clear beyond "Dismiss all read").
