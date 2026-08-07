@@ -70,6 +70,30 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
                  @Param("seenTime") @NotNull Instant seenTime);
 
     @Override
+    @Update("""
+            UPDATE NotificationTarget SET seenTime = #{seenTime}
+            WHERE playerUuid = #{playerUuid} AND seenTime IS NULL
+            """)
+    int markAllSeenForPlayer(@Param("playerUuid") @NotNull UUID playerUuid,
+                             @Param("seenTime") @NotNull Instant seenTime);
+
+    @Override
+    @Delete("""
+            DELETE FROM NotificationTarget
+            WHERE playerUuid = #{playerUuid} AND seenTime IS NOT NULL
+            """)
+    int deleteSeenForPlayer(@Param("playerUuid") @NotNull UUID playerUuid);
+
+    @Override
+    @Select("""
+            SELECT DISTINCT t.notifTargetId
+            FROM NotificationTarget t
+            LEFT JOIN Notification n ON n.notifTargetId = t.notifTargetId
+            WHERE n.notifTargetId IS NULL
+            """)
+    @NotNull List<Integer> selectOrphanedTargetIds();
+
+    @Override
     @Delete("""
             DELETE FROM NotificationTarget
             WHERE notifTargetId = #{notifTargetId}

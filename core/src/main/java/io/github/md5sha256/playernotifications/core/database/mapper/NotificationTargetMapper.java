@@ -48,6 +48,35 @@ public interface NotificationTargetMapper {
      */
     int markSeen(int notifTargetId, @NotNull UUID playerUuid, @NotNull Instant seenTime);
 
+    /**
+     * Stamps {@code seenTime} on every still-unread row belonging to the given player.
+     *
+     * @return the number of rows updated
+     */
+    int markAllSeenForPlayer(@NotNull UUID playerUuid, @NotNull Instant seenTime);
+
+    /**
+     * Deletes the given player's already-seen member rows. Removing the last member of a group lets the
+     * existing trigger dispose of the notification, so there is no second cleanup path.
+     *
+     * @return the number of rows removed
+     */
+    int deleteSeenForPlayer(@NotNull UUID playerUuid);
+
+    /**
+     * Returns the target-group ids that have member rows but no surviving notification.
+     * {@code deleteExpired}, {@code deleteByKey}, {@code deleteByPayloadType} and {@code deleteByPlayer}
+     * all remove {@code Notification} rows without touching this table — the trigger only fires the other
+     * way round — so these rows would otherwise accumulate forever.
+     *
+     * <p>This is deliberately a <em>read</em> followed by per-group {@link #deleteByTargetId} calls
+     * rather than one {@code DELETE … LEFT JOIN Notification}: MariaDB refuses a statement that reads
+     * {@code Notification} when the delete then fires {@code trg_delete_targetless_notification}, which
+     * writes it ("Can't update table 'Notification' in stored function/trigger because it is already
+     * used by statement which invoked this stored function/trigger").
+     */
+    @NotNull List<Integer> selectOrphanedTargetIds();
+
     int deleteByTargetId(int notifTargetId);
 
 }

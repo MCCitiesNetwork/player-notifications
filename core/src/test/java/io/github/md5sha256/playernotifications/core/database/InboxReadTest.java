@@ -131,6 +131,99 @@ class InboxReadTest extends AbstractDatabaseTest {
         Assertions.assertEquals(0, page.unreadCount());
     }
 
+    @Test
+    @DisplayName("markAllSeen stamps every unread row for that player only")
+    void markAllSeenIsPerPlayer() {
+        insert("a", NOW.minusSeconds(60), null, PLAYER);
+        insert("b", NOW.minusSeconds(30), null, PLAYER);
+        insert("theirs", NOW.minusSeconds(30), null, OTHER);
+
+        service.markAllSeen(PLAYER);
+
+        Assertions.assertEquals(0, service.unreadCount(PLAYER));
+        Assertions.assertEquals(1, service.unreadCount(OTHER));
+    }
+
+    @Test
+    @DisplayName("markAllSeen does not move an already-set seenTime")
+    void markAllSeenDoesNotOverwrite() {
+        insert("a", NOW.minusSeconds(60), null, PLAYER);
+        markSeenDirectly("a", PLAYER);
+        Instant first = seenTimeOf("a");
+
+        service.markAllSeen(PLAYER);
+
+        Assertions.assertEquals(first, seenTimeOf("a"));
+    }
+
+    @Test
+    @DisplayName("markSeen on an unknown key is a no-op")
+    void markSeenOnUnknownKeyIsANoOp() {
+        insert("a", NOW.minusSeconds(60), null, PLAYER);
+
+        Assertions.assertDoesNotThrow(() -> service.markSeen("nope", PLAYER));
+
+        Assertions.assertEquals(1, service.unreadCount(PLAYER));
+    }
+
+    @Test
+    @DisplayName("dismissSeen removes seen rows, keeps unread ones, and the trigger drops the notification")
+    void dismissSeenRemovesOnlySeenRows() {
+        insert("seen", NOW.minusSeconds(60), null, PLAYER);
+        insert("unread", NOW.minusSeconds(30), null, PLAYER);
+        service.markSeen("seen", PLAYER);
+
+        service.dismissSeen(PLAYER);
+
+        Assertions.assertEquals(List.of("unread"), keys(service.inbox(PLAYER, 1, 10)));
+        // The last target row went, so trg_delete_targetless_notification removed the notification.
+        Assertions.assertFalse(exists("seen"));
+        Assertions.assertTrue(exists("unread"));
+    }
+
+    @Test
+    @DisplayName("pruneOrphanedTargets removes target rows whose notification is gone, and nothing else")
+    void pruneOrphanedTargetsRemovesOnlyOrphans() {
+        insert("expired", NOW.minus(2, ChronoUnit.HOURS), NOW.minus(1, ChronoUnit.HOURS), PLAYER);
+        insert("live", NOW.minusSeconds(60), null, PLAYER);
+
+        // deleteExpired removes the Notification row without touching NotificationTarget: the trigger
+        // only fires the other way round. That is the leak this prunes.
+        service.clearExpiredNotifications();
+        Assertions.assertEquals(2, targetRowCount());
+
+        service.pruneOrphanedTargets();
+
+        Assertions.assertEquals(1, targetRowCount());
+        Assertions.assertTrue(exists("live"));
+    }
+
+    private static int targetRowCount() {
+        try (java.sql.Connection connection = java.sql.DriverManager.getConnection(
+                CONTAINER.getJdbcUrl(), CONTAINER.getUsername(), CONTAINER.getPassword());
+             java.sql.Statement statement = connection.createStatement();
+             java.sql.ResultSet rs = statement.executeQuery("SELECT COUNT(*) FROM NotificationTarget")) {
+            Assertions.assertTrue(rs.next());
+            return rs.getInt(1);
+        } catch (java.sql.SQLException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static Instant seenTimeOf(String key) {
+        return service.inbox(PLAYER, 1, 20).entries().stream()
+                .filter(entry -> entry.notifKey().equals(key))
+                .findFirst()
+                .orElseThrow()
+                .seenTime();
+    }
+
+    private static boolean exists(String key) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            return wrapper.notificationMapper().selectByKey(key) != null;
+        }
+    }
+
     /** Stamps seenTime through the mapper, so the read tests do not depend on the delivery loop. */
     private static void markSeenDirectly(String key, UUID player) {
         try (SqlSessionWrapper wrapper = database.openSession()) {

@@ -320,12 +320,18 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     /**
      * Schedules an async task that prunes expired notifications on the given
      * interval. Runs off the main thread since it performs database I/O.
+     *
+     * <p>Orphaned target rows are pruned in the same pass: deleting a notification does not cascade
+     * into {@code NotificationTarget}, and inbox rows now live long enough for that leak to matter.
      */
     private void schedulePruneTask(long intervalSeconds) {
         long periodTicks = Math.max(1L, intervalSeconds * 20L);
         this.pruneTask = getServer().getScheduler().runTaskTimerAsynchronously(
                 this,
-                () -> this.notificationService.clearExpiredNotifications(),
+                () -> {
+                    this.notificationService.clearExpiredNotifications();
+                    this.notificationService.pruneOrphanedTargets();
+                },
                 periodTicks,
                 periodTicks
         );

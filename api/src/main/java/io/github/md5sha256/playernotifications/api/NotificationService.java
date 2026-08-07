@@ -69,6 +69,30 @@ public interface NotificationService {
     /** The number of due, unexpired notifications the player has not yet seen. */
     int unreadCount(@NotNull UUID playerId);
 
+    /**
+     * Marks one notification seen for one player. An unknown key, or a player the notification does not
+     * target, affects zero rows and is a silent no-op — as {@link #deleteNotificationTarget} already is.
+     * An already-seen notification keeps its original timestamp.
+     */
+    void markSeen(@NotNull String notificationKey, @NotNull UUID playerId);
+
+    /** Marks every unread notification seen for the given player. */
+    void markAllSeen(@NotNull UUID playerId);
+
+    /**
+     * Dismisses the player's already-seen notifications: their target rows are deleted, so a dismissed
+     * notification can never reappear, and a notification left with no targets is disposed of by the
+     * existing trigger. Unread notifications are untouched.
+     */
+    void dismissSeen(@NotNull UUID playerId);
+
+    /**
+     * Deletes target rows whose notification no longer exists. Notification deletes do not cascade into
+     * the target table, so these rows leak; this is intended to run on the same periodic task as
+     * {@link #clearExpiredNotifications()}.
+     */
+    void pruneOrphanedTargets();
+
     void clearNotification(@NotNull String notificationKey);
 
     /**

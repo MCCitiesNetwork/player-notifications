@@ -193,6 +193,44 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
+    public void markSeen(@NotNull String notificationKey, @NotNull UUID playerId) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            NotificationEntity entity = wrapper.notificationMapper().selectByKey(notificationKey);
+            if (entity != null) {
+                wrapper.notificationTargetMapper().markSeen(entity.notifTargetId(), playerId, Instant.now());
+            }
+            wrapper.session().commit();
+        }
+    }
+
+    @Override
+    public void markAllSeen(@NotNull UUID playerId) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            wrapper.notificationTargetMapper().markAllSeenForPlayer(playerId, Instant.now());
+            wrapper.session().commit();
+        }
+    }
+
+    @Override
+    public void dismissSeen(@NotNull UUID playerId) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            wrapper.notificationTargetMapper().deleteSeenForPlayer(playerId);
+            wrapper.session().commit();
+        }
+    }
+
+    @Override
+    public void pruneOrphanedTargets() {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            NotificationTargetMapper targetMapper = wrapper.notificationTargetMapper();
+            for (int targetId : targetMapper.selectOrphanedTargetIds()) {
+                targetMapper.deleteByTargetId(targetId);
+            }
+            wrapper.session().commit();
+        }
+    }
+
+    @Override
     public void clearNotification(@NotNull String notificationKey) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             wrapper.notificationMapper().deleteByKey(notificationKey);
