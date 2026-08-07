@@ -6,7 +6,9 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
@@ -23,8 +25,9 @@ import java.util.function.Supplier;
 /**
  * The player-facing {@code /notifications} command.
  *
- * <p>The <strong>bare root is reserved</strong> for a notification management UI and only prints a notice
-* saying so. Everything preference-related hangs off {@code preferences}: that literal opens the
+ * <p>The <strong>bare root opens the player's inbox</strong>; {@code list}/{@code read}/{@code dismiss}
+ * are its chat fallback, for clients where the dialog does not render. Everything preference-related
+ * hangs off {@code preferences}: that literal opens the
  * staged root dialog, its {@code media}/{@code types} children jump straight to the corresponding picker
  * on the same session, and its {@code mute} child writes immediately and discards any open session,
  * unlike its staged root-screen equivalent. Nesting them keeps the top level clear for the management
@@ -71,35 +74,35 @@ public final class NotificationsCommand {
     private static final Component PLAYERS_ONLY =
             Component.text("Only players have notification preferences.", NamedTextColor.RED);
 
-    /**
-     * The bare root's reply. {@code /notifications} is held for a notification management UI that does not
-     * exist yet, so the root does not open the preferences dialog — it says what the name is for and points
-     * at the subcommand that does.
-     */
-    private static final Component RESERVED = Component.text()
-            .append(Component.text("/notifications is reserved for a notification management UI, "
-                    + "which is not available yet.", NamedTextColor.YELLOW))
-            .append(Component.newline())
-            .append(Component.text("Use ", NamedTextColor.GRAY))
-            .append(Component.text("/notifications preferences", NamedTextColor.WHITE))
-            .append(Component.text(" to choose how you receive notifications.", NamedTextColor.GRAY))
-            .build();
+    private static final String PAGE_ARGUMENT = "page";
+    private static final String INDEX_ARGUMENT = "n";
 
     private NotificationsCommand() {
     }
 
     @NotNull
     public static LiteralCommandNode<CommandSourceStack> create(@NotNull PreferenceDialogRouter router,
+                                                                @NotNull InboxRouter inboxRouter,
                                                                 @NotNull Consumer<CommandSender> reloadAction,
                                                                 @NotNull TestNotificationSender testSender,
                                                                 @NotNull AccountLinkDispatcher linkDispatcher,
                                                                 @NotNull Executor asyncExecutor) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
-                .executes(context -> {
-                    context.getSource().getSender().sendMessage(RESERVED);
-                    return Command.SINGLE_SUCCESS;
-                })
+                .executes(context -> run(context, player -> inboxRouter.openInbox(player, 1)))
+                .then(Commands.literal("list")
+                        .executes(context -> run(context, player -> inboxRouter.listInChat(player, 1)))
+                        .then(Commands.argument(PAGE_ARGUMENT, IntegerArgumentType.integer(1))
+                                .executes(context -> run(context, player -> inboxRouter.listInChat(
+                                        player, IntegerArgumentType.getInteger(context, PAGE_ARGUMENT))))))
+                .then(Commands.literal("read")
+                        .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
+                                .executes(context -> run(context, player -> inboxRouter.readInChat(
+                                        player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
+                .then(Commands.literal("dismiss")
+                        .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
+                                .executes(context -> run(context, player -> inboxRouter.dismissInChat(
+                                        player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
                 .then(Commands.literal("preferences")
                         .executes(context -> run(context, router::openRoot))
                         .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))

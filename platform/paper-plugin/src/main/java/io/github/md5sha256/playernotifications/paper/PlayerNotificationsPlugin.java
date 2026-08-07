@@ -12,6 +12,9 @@ import io.github.md5sha256.playernotifications.paper.command.NotificationsComman
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceQuitListener;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
@@ -161,7 +164,6 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.sinkRegistry = new NotificationSinkRegistry();
         this.sinkRegistry.registerSink(new ChatSink(this));
         this.sinkRegistry.registerSink(new DialogSink(this));
-        // Backs an explicit mute; not offered as a choice in the preferences dialog.
         this.preferences =
                 new DatabaseNotificationPreferences(mariaDatabase, pluginSettings.defaultMedia());
         this.notificationDelivery = new NotificationDelivery(
@@ -179,13 +181,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 TestNotificationPayload.class,
                 TestNotificationRenderer.usingServerNames());
 
-        registerCommands();
+        registerCommands(pluginSettings.inboxPageSize());
 
         // Always registered, gated internally: /notifications reload can then flip deliver-on-join
         // without re-registering the listener. A supplier, not the instance — reload() replaces
         // notificationDelivery with a new object.
         this.joinDeliveryListener = new JoinDeliveryListener(
-                this, () -> this.notificationDelivery,
+                this, () -> this.notificationDelivery, this.notificationService,
                 pluginSettings.deliverOnJoin(), pluginSettings.joinDeliveryDelaySeconds());
         getServer().getPluginManager().registerEvents(this.joinDeliveryListener, this);
 
@@ -213,6 +215,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * theirs. A standing misconfiguration an operator should fix, not a startup-order race — modules
      * that register later than this check will simply be caught on the next server restart.
      */
+    private InboxRouter inboxRouter;
+
     private void warnAboutUnmappedCategoryTypes() {
         var unmapped = this.categories.typesWithNoPayloadMapping(this.notificationService.dataTypeRegistry());
         if (!unmapped.isEmpty()) {
@@ -227,12 +231,17 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * registration path available.
      */
     @SuppressWarnings("UnstableApiUsage")
-    private void registerCommands() {
+    private void registerCommands(int inboxPageSize) {
         this.preferenceDialogRouter = new PreferenceDialogRouter(
                 this, this.sinkRegistry, this.categories, this.notificationService.dataTypeRegistry(),
                 this.preferences);
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
+        this.inboxRouter = new InboxRouter(
+                this, this.notificationService,
+                new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger()),
+                inboxPageSize, player -> this.preferenceDialogRouter.openRoot(player));
+        getServer().getPluginManager().registerEvents(new InboxQuitListener(this.inboxRouter), this);
         // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
         TestNotificationSender testSender = new TestNotificationSender(
                 this, this.notificationService, this.preferences, this.sinkRegistry,
@@ -244,7 +253,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(
-                        NotificationsCommand.create(this.preferenceDialogRouter, this::reload, testSender,
+                        NotificationsCommand.create(this.preferenceDialogRouter, this.inboxRouter,
+                                this::reload, testSender,
                                 linkDispatcher, asyncExecutor),
                         NotificationsCommand.DESCRIPTION,
                         List.of("notifs")
@@ -286,6 +296,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.preferences.reloadDefaultMedia(newSettings.defaultMedia());
         this.joinDeliveryListener.reloadSettings(
                 newSettings.deliverOnJoin(), newSettings.joinDeliveryDelaySeconds());
+        this.inboxRouter.reloadPageSize(newSettings.inboxPageSize());
         reschedulePruneTask(newSettings.pruneIntervalSeconds());
         warnAboutUnmappedCategoryTypes();
 

@@ -19,6 +19,8 @@ import java.util.List;
  * @param joinDeliveryDelaySeconds how long after the join event delivery runs, in seconds; a negative
  *                             value is clamped to {@code 0}, which means "immediately, on the next
  *                             async tick" rather than falling back to a default
+ * @param inboxPageSize        how many inbox entries {@code /notifications} shows per page, clamped to
+ *                             {@code 1..20}
  */
 @ConfigSerializable
 public record PluginSettings(
@@ -36,10 +38,17 @@ public record PluginSettings(
         boolean deliverOnJoin,
 
         @Setting("join-delivery-delay-seconds")
-        long joinDeliveryDelaySeconds
+        long joinDeliveryDelaySeconds,
+
+        @Setting("inbox-page-size")
+        int inboxPageSize
 ) {
 
     private static final long DEFAULT_PRUNE_INTERVAL_SECONDS = 3600L;
+
+    /** Matches {@code paper.ui.PageBounds.MAX_PAGE_SIZE}; a dialog cannot usefully show more rows. */
+    public static final int MAX_INBOX_PAGE_SIZE = 20;
+    private static final int DEFAULT_INBOX_PAGE_SIZE = 7;
 
     public PluginSettings {
         if (pruneIntervalSeconds <= 0) {
@@ -48,5 +57,10 @@ public record PluginSettings(
         if (joinDeliveryDelaySeconds < 0) {
             joinDeliveryDelaySeconds = 0;
         }
+        // An absent key deserializes a primitive to 0, which is not a usable page size; anything else
+        // is clamped rather than rejected.
+        inboxPageSize = inboxPageSize <= 0
+                ? DEFAULT_INBOX_PAGE_SIZE
+                : Math.min(inboxPageSize, MAX_INBOX_PAGE_SIZE);
     }
 }

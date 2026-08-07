@@ -1,6 +1,9 @@
 package io.github.md5sha256.playernotifications.paper;
 
+import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -27,6 +30,7 @@ public final class JoinDeliveryListener implements Listener {
 
     private final Plugin plugin;
     private final Supplier<NotificationDelivery> delivery;
+    private final NotificationService service;
 
     // Mutable rather than final, and volatile, so a reload applies to the already-registered listener
     // — the same idiom as DatabaseNotificationPreferences.reloadDefaultMedia and
@@ -41,10 +45,12 @@ public final class JoinDeliveryListener implements Listener {
      */
     public JoinDeliveryListener(@NotNull Plugin plugin,
                                 @NotNull Supplier<NotificationDelivery> delivery,
+                                @NotNull NotificationService service,
                                 boolean enabled,
                                 long delaySeconds) {
         this.plugin = plugin;
         this.delivery = delivery;
+        this.service = service;
         this.enabled = enabled;
         this.delaySeconds = Math.max(0L, delaySeconds);
     }
@@ -61,16 +67,20 @@ public final class JoinDeliveryListener implements Listener {
 
     @EventHandler
     public void onJoin(@NotNull PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        // Outside the deliver-on-join gate on purpose: a player who turned push off still needs to be
+        // told something arrived, and the inbox is where they read it.
+        this.plugin.getServer().getScheduler().runTaskAsynchronously(
+                this.plugin, () -> announceUnread(player));
         if (!this.enabled) {
             return;
         }
-        Player player = event.getPlayer();
         // Async: the mappers and preference lookups do blocking JDBC, and DiscordDmSink refuses to run
         // on the main thread outright.
         Runnable task = () -> {
-            // The player may have left during the delay. Delivering anyway would consume the
-            // notification into nothing: ChatSink reports DELIVERED against an offline Audience, and
-            // the DELETE-wins fan-out would then drop it permanently.
+            // The player may have left during the delay. Delivering anyway would mark the notification
+            // seen for nothing: ChatSink reports DELIVERED against an offline Audience, and the
+            // MARK_SEEN-wins fan-out would then hide it from their unread list.
             if (player.isOnline()) {
                 deliver(player.getUniqueId());
             }
@@ -102,6 +112,26 @@ public final class JoinDeliveryListener implements Listener {
             // diagnostic they asked for.
             this.plugin.getLogger().log(Level.WARNING,
                     "Join delivery failed for " + target, ex);
+        }
+    }
+
+    /**
+     * Sends the joining player one line naming their unread count, or nothing when they have none.
+     * A failure is logged and swallowed for the same reason {@link #deliver(UUID)} does so.
+     */
+    private void announceUnread(@NotNull Player player) {
+        try {
+            int unread = this.service.unreadCount(player.getUniqueId());
+            if (unread == 0 || !player.isOnline()) {
+                return;
+            }
+            player.sendMessage(Component.text("You have " + unread
+                            + (unread == 1 ? " unread notification. " : " unread notifications. "),
+                            NamedTextColor.YELLOW)
+                    .append(Component.text("Use /notifications to read them.", NamedTextColor.GRAY)));
+        } catch (RuntimeException ex) {
+            this.plugin.getLogger().log(Level.WARNING,
+                    "Failed to read the unread count for " + player.getUniqueId(), ex);
         }
     }
 

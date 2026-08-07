@@ -18,3 +18,7 @@ deliver-on-join: true
 # A short delay keeps notifications from being buried under the join and MOTD messages.
 # 0 delivers as soon as the join event has been handled.
 join-delivery-delay-seconds: 3
+
+# How many inbox entries are shown per page in /notifications.
+# Clamped to 1..20; the dialog cannot usefully show more.
+inbox-page-size: 7

@@ -31,14 +31,14 @@ class JoinDeliveryListenerTest {
 
     @Test
     void reportsConstructedSettings() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, true, 3L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 3L);
         assertTrue(listener.enabled());
         assertEquals(3L, listener.delaySeconds());
     }
 
     @Test
     void reloadSettingsReplacesBoth() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, true, 3L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 3L);
         listener.reloadSettings(false, 30L);
         assertFalse(listener.enabled());
         assertEquals(30L, listener.delaySeconds());
@@ -46,21 +46,21 @@ class JoinDeliveryListenerTest {
 
     @Test
     void reloadSettingsClampsNegativeDelay() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, true, 3L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 3L);
         listener.reloadSettings(true, -5L);
         assertEquals(0L, listener.delaySeconds());
     }
 
     @Test
     void deliverDoesNothingWhenDisabled() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, false, 0L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, false, 0L);
         listener.deliver(UUID.randomUUID());
         assertEquals(0, this.supplierCalls.get());
     }
 
     @Test
     void deliverIsSkippedAfterAReloadTurnsItOff() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, true, 30L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 30L);
         listener.reloadSettings(false, 30L);
         listener.deliver(UUID.randomUUID());
         assertEquals(0, this.supplierCalls.get());
