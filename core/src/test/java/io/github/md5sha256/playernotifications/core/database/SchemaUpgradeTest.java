@@ -48,20 +48,39 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
     }
 
     @Test
-    @DisplayName("a database already at V1 needs no further core migration")
-    void aDatabaseAtV1IsUpToDate() throws Exception {
+    @DisplayName("a database already at V1 is upgraded by the rest of the chain, not re-run from scratch")
+    void aDatabaseAtV1IsUpgraded() throws Exception {
         // Bring the schema to V1 only, as an existing database would already be.
         MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS, List.of(V1), LOGGER);
         Assertions.assertEquals(List.of(1), appliedVersions());
 
-        // The full chain must then be a no-op rather than re-running V1.
+        // The full chain must then apply only what follows V1, rather than re-running V1.
         MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS,
                 MariaSchemaMigrator.defaultMigrations(), LOGGER);
 
-        Assertions.assertEquals(List.of(1), appliedVersions());
+        Assertions.assertEquals(List.of(1, 2), appliedVersions());
         // Core owns no Discord schema: that table belongs to the Discord adapter's own migrator, tracked
         // in its own discord_schema_version chain. If this ever passes, core has grown a module's table.
         Assertions.assertFalse(tableExists("DiscordAccountLink"));
+    }
+
+    @Test
+    @DisplayName("migrating an empty schema lands on V2 with NotificationTarget.seenTime present")
+    void migratesEmptySchemaToVersionTwoWithSeenTime() throws Exception {
+        MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS,
+                MariaSchemaMigrator.defaultMigrations(), LOGGER);
+
+        try (Connection connection = adminConnection(this.schema);
+             Statement statement = connection.createStatement();
+             ResultSet cols = statement.executeQuery("""
+                     SELECT COUNT(*) FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'NotificationTarget'
+                       AND COLUMN_NAME = 'seenTime'
+                     """)) {
+            Assertions.assertTrue(cols.next());
+            Assertions.assertEquals(1, cols.getInt(1));
+        }
+        Assertions.assertEquals(List.of(1, 2), appliedVersions());
     }
 
     @Test
@@ -74,7 +93,7 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
 
         // A second application would violate schema_version's primary key long before this assertion, so
         // this also guards the "already applied" skip itself.
-        Assertions.assertEquals(List.of(1), appliedVersions());
+        Assertions.assertEquals(List.of(1, 2), appliedVersions());
     }
 
     @Test

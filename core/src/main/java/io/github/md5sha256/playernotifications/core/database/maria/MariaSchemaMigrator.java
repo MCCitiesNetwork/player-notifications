@@ -44,7 +44,8 @@ public final class MariaSchemaMigrator {
             """;
 
     private static final List<MigrationStep> DEFAULT_MIGRATIONS = List.of(
-            new MigrationStep(1, "initial schema", "V1__maria_initial_schema.sql")
+            new MigrationStep(1, "initial schema", "V1__maria_initial_schema.sql"),
+            new MigrationStep(2, "notification inbox", "V2__notification_inbox.sql")
     );
 
     private MariaSchemaMigrator() {
