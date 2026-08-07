@@ -6,6 +6,7 @@ import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
+import io.github.md5sha256.playernotifications.paper.ui.DialogSupport;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
 import io.papermc.paper.dialog.DialogResponseView;
 import io.papermc.paper.registry.data.dialog.ActionButton;
@@ -18,7 +19,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,21 +35,12 @@ import java.util.function.Consumer;
  */
 final class PreferenceDialogs {
 
-    /**
-     * How long a dialog button stays clickable after the dialog is shown. A dialog left open past this
-     * makes its buttons inert; the player simply reopens it.
-     */
-    static final Duration CALLBACK_LIFETIME = Duration.ofHours(1);
-
     private PreferenceDialogs() {
     }
 
     @NotNull
     static ClickCallback.Options callbackOptions() {
-        return ClickCallback.Options.builder()
-                .uses(1)
-                .lifetime(CALLBACK_LIFETIME)
-                .build();
+        return DialogSupport.callbackOptions();
     }
 
     /**
@@ -72,19 +63,11 @@ final class PreferenceDialogs {
     }
 
     static void message(@NotNull Plugin plugin, @NotNull Player player, @NotNull Component component) {
-        onMainThread(plugin, player, () -> player.sendMessage(component));
+        DialogSupport.message(plugin, player, component);
     }
 
-    /**
-     * Runs {@code action} on the server main thread, skipping it if the player has since logged out.
-     * Showing a dialog is main-thread-only, and the write that precedes it is not.
-     */
     static void onMainThread(@NotNull Plugin plugin, @NotNull Player player, @NotNull Runnable action) {
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            if (player.isOnline()) {
-                action.run();
-            }
-        });
+        DialogSupport.onMainThread(plugin, player, action);
     }
 
     /**
@@ -159,7 +142,7 @@ final class PreferenceDialogs {
     }
 
     /**
-     * The media offered as checkboxes/buttons: every registered medium except {@link NullSink}, whose
+     * The media offered as checkboxes/buttons: every registered medium except the muted medium, whose
      * meaning is already carried by an empty selection. Sorted so dialog row order is stable between
      * openings.
      */
