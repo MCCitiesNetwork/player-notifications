@@ -26,7 +26,8 @@ import java.util.function.Supplier;
  * The player-facing {@code /notifications} command.
  *
  * <p>The <strong>bare root opens the player's inbox</strong>; {@code list}/{@code read}/{@code dismiss}
- * are its chat fallback, for clients where the dialog does not render. Everything preference-related
+ * are its chat fallback, for clients where the dialog does not render, and {@code clear} is the
+ * shorthand for emptying it outright. Everything preference-related
  * hangs off {@code preferences}: that literal opens the
  * staged root dialog, its {@code media}/{@code types} children jump straight to the corresponding picker
  * on the same session, and its {@code mute} child writes immediately and discards any open session,
@@ -103,6 +104,8 @@ public final class NotificationsCommand {
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
                                 .executes(context -> run(context, player -> inboxRouter.dismissInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
+                .then(Commands.literal("clear")
+                        .executes(context -> run(context, inboxRouter::clearInChat)))
                 .then(Commands.literal("preferences")
                         .executes(context -> run(context, router::openRoot))
                         .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))

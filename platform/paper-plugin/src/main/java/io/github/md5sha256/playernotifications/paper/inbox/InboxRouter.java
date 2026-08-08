@@ -121,6 +121,32 @@ public final class InboxRouter {
         });
     }
 
+    /**
+     * {@code /notifications clear}: empties the inbox outright, unread entries included — the shorthand
+     * for what the list screen otherwise needs "Mark all read" then "Dismiss all read" to do. It is
+     * composed from exactly those two service calls rather than a new one, so it dismisses by deleting
+     * target rows like every other dismissal and needs no extra query.
+     *
+     * <p>The cursor is dropped afterwards, so a stale {@code read <n>}/{@code dismiss <n>} cannot resolve
+     * against entries that no longer exist.
+     */
+    public void clearInChat(@NotNull Player player) {
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
+            UUID id = player.getUniqueId();
+            int total = this.service.inbox(id, 1, 1).totalEntries();
+            if (total == 0) {
+                player.sendMessage(Component.text("Your inbox is already empty.", NamedTextColor.GRAY));
+                return;
+            }
+            this.service.markAllSeen(id);
+            this.service.dismissSeen(id);
+            drop(id);
+            player.sendMessage(Component.text(
+                    total == 1 ? "Cleared 1 notification." : "Cleared " + total + " notifications.",
+                    NamedTextColor.GREEN));
+        });
+    }
+
     /** The chat fallback's listing: {@code /notifications list [page]}. */
     public void listInChat(@NotNull Player player, int page) {
         withPage(player, page, read -> {

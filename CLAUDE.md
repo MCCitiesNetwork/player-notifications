@@ -456,6 +456,10 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   fallback** for clients where the dialog does not render. `<n>` indexes the page most recently listed
   for that player, held in `InboxRouter`. All three are player-only, under the same
   `playernotifications.command.preferences` permission, and dispatch off the main thread.
+- `/notifications clear` — empties the inbox outright, **unread entries included**, as a shorthand for
+  the list screen's "Mark all read" then "Dismiss all read". Composed from `markAllSeen` +
+  `dismissSeen` rather than a new service method, and drops the player's page cursor so a stale
+  `read <n>`/`dismiss <n>` cannot resolve. Same permission, player-only, async.
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
@@ -531,7 +535,9 @@ only. Both branches are player-only and dispatched off the main thread, since pr
 shared `PreferenceSessionManager` (`paper.preferences.session`):
 
 - `PreferenceRootDialog` — pick a pivot ("Delivery methods" / "Notification types"), or stage
-  "Mute everything".
+  "Mute everything". Its Apply/Discard show **unconditionally**, via `addEditorCommitButtons` like the
+  two editors, rather than being dirty-gated: a mute is an edit like any other, and an Apply that
+  appeared only after the mute was staged read as muting having grown an extra button.
 - `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
   (grouped/labeled by its primary category for readability, and title-cased rather than shown as the
   raw registry key — see `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`), e.g. "which
@@ -549,8 +555,8 @@ that existed **only** on the root screen, which players reported as the main con
 away and nothing on the screen they landed on said anything was unsaved.
 
 - **The editors have no Save.** `addEditorCommitButtons` shows Apply and Discard *unconditionally*;
-  `addStagedButtons` (root and pickers, which have no inputs) shows them only while the session is
-  dirty. The distinction matters: an editor's checkbox state lives in the dialog response until a
+  `addStagedButtons` (the two pickers, which have no inputs) shows them only while the session is
+  dirty. The root screen uses the unconditional form too, for the mute button's sake. The distinction matters: an editor's checkbox state lives in the dialog response until a
   button is pressed, so a first edit on a clean session has nothing staged yet and a dirty-gated Apply
   would be missing exactly when it is needed. A Save that staged without persisting, sitting next to
   an Apply that did both, was a third option whose difference from Apply nobody could state.
