@@ -1,7 +1,8 @@
 # PlayerNotifications — User Guide
 
 PlayerNotifications stores notifications for players and delivers them through whichever **delivery
-method** each player prefers: in-game chat, a dialog screen, Essentials mail, or a Discord DM. This
+method** each player prefers: in-game chat, a dialog screen, Essentials mail, or a Discord DM. Every
+notification also stays in the player's **inbox** until they dismiss it, so nothing is missed. This
 guide covers using the plugin — see `CLAUDE.md` for the developer/API side.
 
 Requires Paper **1.21.8**, Java **21**, and a MariaDB database.
@@ -17,7 +18,11 @@ is `/notifications reload`, noted below.
 
 | Command | What it does |
 |---|---|
-| `/notifications` | Nothing yet. The name is **reserved** for a notification management screen that has not been built — running it tells you so and points you at `/notifications preferences`. |
+| `/notifications` | Opens your **inbox** — every notification waiting for you, unread ones highlighted. |
+| `/notifications list [page]` | The same inbox as chat text, for clients where the dialog does not render. |
+| `/notifications read <n>` | Reads entry `n` of the page you last listed, and marks it read. |
+| `/notifications dismiss <n>` | Removes entry `n` of the page you last listed. |
+| `/notifications clear` | **Empties your inbox outright**, unread entries included. The shorthand for *Mark all read* followed by *Dismiss all read*. |
 | `/notifications preferences` | Opens the preferences screen. |
 | `/notifications preferences media` | Jumps straight to "Delivery methods" — pick a method, then tick which notifications reach you there. |
 | `/notifications preferences types` | Jumps straight to "Notification types" — pick a category, then tick which methods it uses. |
@@ -29,8 +34,8 @@ is `/notifications reload`, noted below.
 | `/notifications unlink <service>` | Removes the link. |
 
 > The preference subcommands used to sit directly under `/notifications` (`/notifications media`, and
-> so on). They moved under `preferences` to keep the top level free for the management screen, whose
-> own verbs would otherwise clash with a name like `mute`.
+> so on). They moved under `preferences` so the top level belongs to the inbox, whose own verbs would
+> otherwise clash with a name like `mute`.
 
 Permission: `playernotifications.command.preferences`, granted to everyone by default.
 
@@ -49,6 +54,34 @@ Admin-only extras (op by default):
 |---|---|---|
 | `/notifications test [message]` | `playernotifications.command.test` | Sends yourself a test notification right now, through your current preferences. The reply names the methods it *attempted*, by the same names the preferences screen uses — it cannot confirm each one landed. It says so plainly instead if you have test notifications muted, if you have no methods chosen, or if a method you prefer has no sink installed on this server. The notification itself is titled `[Test]` and explains what it is, since it arrives in the same inbox as real ones. |
 | `/notifications reload` | `playernotifications.command.reload` | Reloads `categories.yml` and `settings.yml`. Usable from console. Does **not** reload `database.yml`. |
+
+### Your inbox
+
+Every notification sent to you stays readable until you dismiss it or it expires. Being *delivered* —
+appearing in chat, arriving as a Discord DM — marks it **read**; it does not throw it away.
+
+`/notifications` opens the inbox. Each row is one notification, unread ones in bold. Opening a row
+shows it in full and marks it read; from there you can *Dismiss* it or go *Back*. The list itself has:
+
+- **Mark all read** — clears the unread count without removing anything.
+- **Dismiss all read** — removes everything you have already read, leaving unread entries alone.
+- **Preferences** — jumps to the preferences screen.
+- **Previous / Next** — paging, when there is more than one page.
+
+`/notifications clear` is the blunt version: it empties the inbox completely, unread entries included.
+There is no confirmation, so treat it as final.
+
+Three states, and it is worth knowing which is which:
+
+| State | What it means |
+|---|---|
+| **Unread** | Not yet delivered or opened. Counted when you log in, and still eligible to be pushed to you. |
+| **Read** | Delivered or opened. Still listed, no longer counted, never pushed again. |
+| **Dismissed** | Gone for good. |
+
+When you log in you get a line naming your unread count and pointing at `/notifications` — you get
+that line even if you have muted everything, because muting means "do not interrupt me", not "do not
+tell me".
 
 ### Setting your preferences
 
@@ -69,8 +102,10 @@ The root screen also has **Mute everything**.
 have ticked, together with anything staged on other screens, and **Discard** throws all of it away.
 There is no separate *Save* — Apply is the one that writes.
 
-The two are on every screen, not just the editors. On the root and picker screens they appear as soon
-as you have unsaved changes, alongside a line saying how many are waiting. You never have to navigate
+The two are on every screen, not just the editors. The root screen carries them **always** — *Mute
+everything* stages an edit like any other, and an Apply that only turned up afterwards read as muting
+having grown an extra step. The two picker screens show them as soon as you have unsaved changes.
+Wherever you are, a line tells you how many changes are waiting, so you never have to navigate
 somewhere else to save.
 
 *Back* leaves an editor **without saving, and resets what you ticked there** — it is the way out when
@@ -87,14 +122,14 @@ changes converts those types from unconfigured to an explicit setting matching w
 |---|---|---|
 | **Server default** | You have never configured that type | You receive it on whatever the server's `default-media` says (chat, out of the box) |
 | **Explicit selection** | You ticked one or more methods | You receive it on exactly those methods |
-| **Muted** | You unticked everything, or used mute | You do not receive it at all, and it is discarded rather than queued |
+| **Muted** | You unticked everything, or used mute | Nothing is pushed to you — but it still lands in your inbox, unread, to read whenever you like |
 
 **The first state is a starting point, not a choice you can make.** There is no "reset to server
 default" — once you have configured a type, your setting stands until you change it to something
 else. Pick different methods, or mute it.
 
-A mute means "do not tell me" — muted notifications are consumed, not saved up for later. Unticking
-everything stages a mute; it never silently falls back to the server default.
+A mute means "do not interrupt me", not "do not tell me": muted notifications are kept, unread, in
+your inbox. Unticking everything stages a mute; it never silently falls back to the server default.
 
 Muting also covers notification types added by modules installed *later*.
 
@@ -124,8 +159,10 @@ Notes:
   dead buttons — close and reopen it.
 - **Essentials mail is not affected by your preferences.** It is delivered by its own handler that
   runs ahead of the preference system, so muting does not stop it. This is a known limitation.
-- If you prefer several methods and one of them fails transiently, the notification is still consumed
-  — it will not be retried on the method that failed.
+- If you prefer several methods and one of them fails transiently, the notification is still marked
+  read and is not retried on the method that failed — but it remains in your inbox to read there.
+- Your inbox has no size limit and nothing trims it automatically. Notifications leave it only when
+  you dismiss them or they expire.
 
 ---
 
@@ -161,6 +198,7 @@ default-media:                   # what a player with no saved preference receiv
   - chat
 deliver-on-join: true            # deliver a player's waiting notifications when they log in
 join-delivery-delay-seconds: 3   # how long after joining to wait; 0 = immediately
+inbox-page-size: 7               # inbox entries per page; clamped to 1-20
 ```
 
 Valid `default-media` values are whatever delivery methods are registered — `chat`, `dialog`,
@@ -250,13 +288,15 @@ notifications are truncated to Discord's limits.
 
 ### Known limitations
 
-- **Delivery is triggered by logging in, or by `/notifications test`** — nothing else. A notification
-  queued for a player who is **already online** waits until their next login; there is no push to a
-  connected player.
-- **There is no inbox.** The commands cover preferences and account linking only — there is no way to
-  list past notifications, no player-initiated clear, and no admin view of another player's
-  preferences. The bare `/notifications` is reserved for this, but nothing implements it yet.
-- Partial delivery failures are silent (see the player caveat above).
+- **Push delivery is triggered by logging in, or by `/notifications test`** — nothing else. A
+  notification queued for a player who is **already online** is not pushed until their next login,
+  though they can read it in `/notifications` immediately.
+- **No admin commands.** There is no way to view or edit another player's inbox or preferences.
+- **Inboxes are unbounded.** Nothing trims them; entries leave only by dismissal or expiry.
+- **Read is tracked per player, not per delivery method.** A notification read in chat counts as read
+  everywhere.
+- Partial delivery failures are silent (see the player caveat above) — but no longer lossy, since the
+  notification stays in the player's inbox.
 - `discord-channel-ping` is reserved but not implemented; nothing can select it.
 - **No admin tools for account links.** You cannot link, unlink, inspect or list another player's
   Discord link. Clearing a stuck one means a manual `DELETE` against the `DiscordAccountLink` table.
