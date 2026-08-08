@@ -21,8 +21,10 @@ import java.util.Set;
  * The root notification-preferences screen: choose a pivot ("delivery methods" or "notification
  * types"), stage a global mute, or apply/discard whatever is currently staged.
  *
- * <p>Apply and Discard are no longer unique to this screen — every screen carries them (see
- * {@link PreferenceDialogs#addStagedButtons}). Mute everything deliberately stays staged here, unlike
+ * <p>Apply and Discard show <em>unconditionally</em> here, the same as on the delivery-method and
+ * notification-type editors (see {@link PreferenceDialogs#addEditorCommitButtons}) — "Mute everything"
+ * is an edit like any other, and a dirty-gated Apply appearing only after the mute was staged read as
+ * the mute itself having grown an extra button. Mute everything deliberately stays staged here, unlike
  * its immediate {@code /notifications preferences mute} counterpart.
  */
 final class PreferenceRootDialog {
@@ -62,8 +64,8 @@ final class PreferenceRootDialog {
                     show(player, handle);
                 }, PreferenceDialogs.callbackOptions()))
                 .build());
-        PreferenceDialogs.addStagedButtons(this.router, player, session, buttons,
-                () -> this.router.openRoot(player));
+        PreferenceDialogs.addEditorCommitButtons(this.router, player, session, buttons,
+                () -> this.router.openRoot(player), () -> this.router.openRoot(player), response -> {});
         ActionButton close = ActionButton.builder(CLOSE_LABEL).build();
 
         List<DialogBody> body = new ArrayList<>();
