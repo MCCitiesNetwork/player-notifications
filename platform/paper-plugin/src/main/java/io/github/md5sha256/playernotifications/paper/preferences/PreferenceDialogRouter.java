@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Owns the five preference dialog screens and the single {@link PreferenceSessionManager} they share,
+ * Owns the six preference dialog screens and the single {@link PreferenceSessionManager} they share,
  * and is the one object {@code NotificationsCommand} and {@code PreferenceQuitListener} need to hold.
  */
 public final class PreferenceDialogRouter {
@@ -35,6 +35,7 @@ public final class PreferenceDialogRouter {
     private final MediumEditorDialog mediumEditorDialog;
     private final CategoryPickerDialog categoryPickerDialog;
     private final CategoryEditorDialog categoryEditorDialog;
+    private final MuteConfirmDialog muteConfirmDialog;
 
     public PreferenceDialogRouter(@NotNull Plugin plugin,
                                   @NotNull NotificationSinkRegistry sinkRegistry,
@@ -52,6 +53,7 @@ public final class PreferenceDialogRouter {
         this.mediumEditorDialog = new MediumEditorDialog(this);
         this.categoryPickerDialog = new CategoryPickerDialog(this);
         this.categoryEditorDialog = new CategoryEditorDialog(this);
+        this.muteConfirmDialog = new MuteConfirmDialog(this);
     }
 
     @NotNull
@@ -90,7 +92,7 @@ public final class PreferenceDialogRouter {
 
     public void openRoot(@NotNull Player player) {
         PreferenceDialogs.withSession(this.plugin, this.sessions, this.dataTypeRegistry, this.preferences,
-                player, session -> this.rootDialog.show(player, new PreferenceEditSessionHandle(session)));
+                player, session -> this.rootDialog.show(player, session));
     }
 
     public void openMediaPicker(@NotNull Player player) {
@@ -119,7 +121,11 @@ public final class PreferenceDialogRouter {
     }
 
     void showRoot(@NotNull Player player, @NotNull PreferenceEditSession session) {
-        this.rootDialog.show(player, new PreferenceEditSessionHandle(session));
+        this.rootDialog.show(player, session);
+    }
+
+    void showMuteConfirm(@NotNull Player player, @NotNull PreferenceEditSession session) {
+        this.muteConfirmDialog.show(player, session);
     }
 
     void showMediaPicker(@NotNull Player player, @NotNull PreferenceEditSession session) {
@@ -179,7 +185,8 @@ public final class PreferenceDialogRouter {
 
     /**
      * Immediately mutes every known data type for the player and discards any staged, unapplied session
-     * — the one deliberate asymmetry with the root screen's staged "Mute everything" button.
+     * — the one deliberate asymmetry with {@link MuteConfirmDialog}, which stages the same mute and
+     * requires an Apply.
      */
     public void muteImmediately(@NotNull Player player) {
         UUID uuid = player.getUniqueId();

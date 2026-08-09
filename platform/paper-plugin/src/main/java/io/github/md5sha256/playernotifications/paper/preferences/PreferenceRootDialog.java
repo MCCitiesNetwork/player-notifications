@@ -1,6 +1,5 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
-import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.registry.data.dialog.ActionButton;
 import io.papermc.paper.registry.data.dialog.DialogBase;
@@ -8,24 +7,23 @@ import io.papermc.paper.registry.data.dialog.DialogRegistryEntry;
 import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
+import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
- * The root notification-preferences screen: choose a pivot ("delivery methods" or "notification
- * types"), stage a global mute, or apply/discard whatever is currently staged.
+ * The root notification-preferences screen: choose a pivot ("delivery methods" or "notification types"),
+ * or go to the mute confirmation screen.
  *
- * <p>Apply and Discard show <em>unconditionally</em> here, the same as on the delivery-method and
- * notification-type editors (see {@link PreferenceDialogs#addEditorCommitButtons}) — "Mute everything"
- * is an edit like any other, and a dirty-gated Apply appearing only after the mute was staged read as
- * the mute itself having grown an extra button. Mute everything deliberately stays staged here, unlike
- * its immediate {@code /notifications preferences mute} counterpart.
+ * <p>It is purely navigational — it carries <em>no</em> Apply and <em>no</em> Discard. Every edit is made
+ * on a screen of its own ({@link MediumEditorDialog}, {@link CategoryEditorDialog},
+ * {@link MuteConfirmDialog}) and committed there, so a commit button here would belong to no particular
+ * edit. It still shows {@link PreferenceDialogs#stagedSummary} so a player passing through knows edits
+ * made elsewhere are still waiting.
  */
 final class PreferenceRootDialog {
 
@@ -43,8 +41,7 @@ final class PreferenceRootDialog {
         this.router = router;
     }
 
-    void show(@NotNull Player player, @NotNull PreferenceEditSessionHandle handle) {
-        var session = handle.session();
+    void show(@NotNull Player player, @NotNull PreferenceEditSession session) {
         List<ActionButton> buttons = new ArrayList<>();
         buttons.add(ActionButton.builder(BY_MEDIUM_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
@@ -55,17 +52,9 @@ final class PreferenceRootDialog {
                         this.router.showCategoryPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build());
         buttons.add(ActionButton.builder(MUTE_ALL_LABEL)
-                .action(DialogAction.customClick((response, audience) -> {
-                    Instant now = Instant.now();
-                    for (String dataType : this.router.dataTypeRegistry().dataTypes()) {
-                        session.setDataTypeMedia(dataType, Set.of(), now);
-                    }
-                    session.setDataTypeMedia(DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, Set.of(), now);
-                    show(player, handle);
-                }, PreferenceDialogs.callbackOptions()))
+                .action(DialogAction.customClick((response, audience) ->
+                        this.router.showMuteConfirm(player, session), PreferenceDialogs.callbackOptions()))
                 .build());
-        PreferenceDialogs.addEditorCommitButtons(this.router, player, session, buttons,
-                () -> this.router.openRoot(player), () -> this.router.openRoot(player), response -> {});
         ActionButton close = ActionButton.builder(CLOSE_LABEL).build();
 
         List<DialogBody> body = new ArrayList<>();

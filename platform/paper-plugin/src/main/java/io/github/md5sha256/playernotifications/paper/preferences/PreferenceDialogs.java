@@ -30,7 +30,7 @@ import java.util.TreeSet;
 import java.util.function.Consumer;
 
 /**
- * Helpers shared by the five preference dialog screens and their router: session loading, labels, and
+ * Helpers shared by the six preference dialog screens and their router: session loading, labels, and
  * the callback options every button uses.
  */
 final class PreferenceDialogs {
