@@ -39,7 +39,7 @@ import java.util.logging.Logger;
  * marshal onto another thread) do not hold database resources.
  *
  * <p>Dispatch precedence: an explicitly registered {@link NotificationProcessor} always wins (so
- * {@code EssentialsMailProcessor} and other bespoke processors keep working unchanged). Otherwise, if a
+ * bespoke processors keep working unchanged, at the cost of bypassing preferences). Otherwise, if a
  * {@link NotificationRenderer} is registered for the payload class, the notification is dispatched
  * through a framework-supplied {@link RenderingProcessor}, which resolves preferred media for the
  * notification's {@code notifPayloadType} directly and fans it out to the target's preferred media.

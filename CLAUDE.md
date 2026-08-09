@@ -66,7 +66,7 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
   - **`api.serialize`** package — `PayloadSerializer<T>` (JSON string ↔ `T`) and `PayloadSerializationException`. The only serialization type crossing the API boundary; the JSON library stays an implementation detail of whoever supplies the serializer.
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink` and `DialogSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands, an `InboxRouter` with its `InboxQuitListener`, a `PreferenceQuitListener` and a `JoinDeliveryListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
-- **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that renders notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers an `EssentialsMailProcessor` for the `essentials-mail` data type, via `registerJsonPayload` against its own `EssentialsMailPayload` record. It deliberately does **not** map to `String.class`: the registry keys handlers by payload class, so a shared class means a shared processor/serializer/renderer, and `unregisterPayloadMapping`'s cascade would tear out the host's shared `String` serializer on module unload. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
+- **`platform:essentials-adapter`** (`io.github.md5sha256.playernotifications.essentials`) — a **feature module** (see "Module system") that delivers notifications as Essentials mail. `EssentialsMailModule` (the manifest entry class) registers **one `EssentialsMailSink`** under medium key `essentials-mail` and nothing else: it owns **no data type, no payload class, no processor and no renderer**, so mail is a medium a player can choose for any notification type and it participates in preferences and fan-out exactly like `discord-dm`. The former `EssentialsMailProcessor`/`EssentialsMailPayload` pair (its own `essentials-mail` data type, registered via `registerJsonPayload`) is **gone** — it won dispatch precedence and so bypassed preferences entirely, which was the standing "muted player still gets mail" quirk. A future "you have been sent mail" notification would add a payload type and renderer *alongside* the sink. Every EssentialsX-typed reference stays in `EssentialsMailBinding` (see its javadoc: naming one on the entry class loads it during verification and takes the whole host plugin down when EssentialsX is absent), which is also why `shutdown` unregisters the sink **by key** rather than by instance. Applies the `paper-adapter` convention; declares only the EssentialsX API (compile-only).
 - **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so unlike the Essentials adapter it participates in preferences and fan-out. It also **owns its own schema**: the `discord.schema` subpackage holds its migrator, migration script, entity and mappers, and `core` knows nothing of Discord. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
 
 ### Build conventions
@@ -152,8 +152,9 @@ change to any existing payload — the Discord DM sink landed without touching a
   `fine` and skipped.
 
 **Dispatch precedence in `NotificationDelivery`:** an explicitly registered `NotificationProcessor`
-always wins (so `EssentialsMailProcessor` and other bespoke processors keep working unchanged —
-including bypassing preferences entirely); otherwise a registered `NotificationRenderer` dispatches
+always wins (so a bespoke processor keeps working unchanged — including bypassing preferences
+entirely; **nothing in-tree registers one any more**, since the Essentials adapter became a sink);
+otherwise a registered `NotificationRenderer` dispatches
 through `RenderingProcessor`, built with the notification's `notifPayloadType` as its `dataType`;
 otherwise the notification is logged and retained. `NotificationDelivery` has a 3-arg constructor (no
 rendering path) and a 5-arg one (rendering) — categories play no role in delivery.
@@ -395,10 +396,9 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   `PayloadSerializer` → `NotificationRenderer`, the same three lookups `NotificationDelivery.dispatch`
   does, extracted so the two cannot drift and so this one is unit-testable without a server. Any lookup
   missing, or a decode or render throwing, yields a **placeholder** naming the data type — hiding the
-  entry would leave it counted in `totalEntries` and read as a bug. This is why `essentials-mail` now
-  registers a renderer alongside its processor: dispatch precedence is unaffected (the explicit
-  processor still wins, so delivery is unchanged), but without it an Essentials mail entry has no title
-  or body to show.
+  entry would leave it counted in `totalEntries` and read as a bug. (The Essentials adapter used to
+  need a renderer registered alongside its processor for exactly this reason; it now registers only a
+  sink and owns no payload type at all, so the case no longer arises there.)
 - **Paper UI:** `paper.inbox.InboxRouter` owns both screens, the per-player page cursor (dropped by
   `InboxQuitListener` on quit) and the async marshalling — the same shape as `PreferenceDialogRouter`,
   for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Dismiss all
@@ -531,13 +531,17 @@ throwing provider) precisely so it is unit-testable; `NotificationsCommand`'s `l
 only. Both branches are player-only and dispatched off the main thread, since providers block on JDBC.
 
 `paper.command.NotificationsCommand` builds the Brigadier node and delegates every subcommand to a
-`paper.preferences.PreferenceDialogRouter`, the single object owning the five dialog screens and the
+`paper.preferences.PreferenceDialogRouter`, the single object owning the six dialog screens and the
 shared `PreferenceSessionManager` (`paper.preferences.session`):
 
-- `PreferenceRootDialog` — pick a pivot ("Delivery methods" / "Notification types"), or stage
-  "Mute everything". Its Apply/Discard show **unconditionally**, via `addEditorCommitButtons` like the
-  two editors, rather than being dirty-gated: a mute is an edit like any other, and an Apply that
-  appeared only after the mute was staged read as muting having grown an extra button.
+- `PreferenceRootDialog` — pick a pivot ("Delivery methods" / "Notification types"), or go to
+  "Mute everything". It is **purely navigational**: it carries no Apply and no Discard at all, since
+  every edit is made and committed on a screen of its own and a commit button here would belong to no
+  particular edit. It still shows the `stagedSummary` line.
+- `MuteConfirmDialog` — the "Mute everything" confirmation, reached from the root button. Structurally
+  an editor with no inputs: Apply/Discard via `addEditorCommitButtons`, plus a Back that returns to the
+  root. The mute is staged by **Apply's commit callback**, not on the way in, so Back genuinely changes
+  nothing.
 - `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
   (grouped/labeled by its primary category for readability, and title-cased rather than shown as the
   raw registry key — see `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`), e.g. "which
@@ -549,14 +553,15 @@ shared `PreferenceSessionManager` (`paper.preferences.session`):
   button set (Apply / Discard / Back, no Save and no per-row state annotation on the picker), differing
   only in which axis is the row and which is the checkbox.
 
-**Apply and Discard are on every screen**, not just the root — along with a
-`PreferenceDialogs.stagedSummary` line naming the pending count. This replaced an Apply/Discard pair
-that existed **only** on the root screen, which players reported as the main confusion: Save navigated
-away and nothing on the screen they landed on said anything was unsaved.
+**Apply and Discard are on every screen that can edit something** — the two editors, the mute
+confirmation, and the two pickers once the session is dirty — along with a
+`PreferenceDialogs.stagedSummary` line naming the pending count, which the root screen shows too. This
+replaced an Apply/Discard pair that existed **only** on the root screen, which players reported as the
+main confusion: Save navigated away and nothing on the screen they landed on said anything was unsaved.
 
 - **The editors have no Save.** `addEditorCommitButtons` shows Apply and Discard *unconditionally*;
   `addStagedButtons` (the two pickers, which have no inputs) shows them only while the session is
-  dirty. The root screen uses the unconditional form too, for the mute button's sake. The distinction matters: an editor's checkbox state lives in the dialog response until a
+  dirty. The distinction matters: an editor's checkbox state lives in the dialog response until a
   button is pressed, so a first edit on a clean session has nothing staged yet and a dirty-gated Apply
   would be missing exactly when it is needed. A Save that staged without persisting, sitting next to
   an Apply that did both, was a third option whose difference from Apply nobody could state.
@@ -607,7 +612,7 @@ registered by a module installed after they last edited their preferences.
 backwards for a player who muted a type in order to read it later. It survives as the constant
 `NotificationPreferences.MUTED_MEDIUM`, stored as a row rather than as zero rows because zero rows
 already means "has expressed no preference". It is excluded from every checkbox list, since checking
-nothing already says the same thing. `/notifications mute` and the root dialog's "Mute everything" both write one `{none}` row per
+nothing already says the same thing. `/notifications mute` and `MuteConfirmDialog` both write one `{none}` row per
 currently-known `dataType` **and** a blanket `ALL_DATA_TYPES_KEY` (`"*"`) `{none}` row, so a mute also
 covers any `dataType` registered by a module installed later, and never silently no-ops on a server with
 zero registered payload mappings.
@@ -617,7 +622,7 @@ Implementation notes:
   `PreferenceQuitListener` drops it on `PlayerQuitEvent`; reopening after either starts fresh from the
   database.
 - `/notifications preferences mute` writes **immediately** and discards any open staged session with a
-  chat notice — the one deliberate asymmetry with the root screen's staged "Mute everything", which
+  chat notice — the one deliberate asymmetry with `MuteConfirmDialog`'s staged "Mute everything", which
   only takes effect on Apply.
 - `DatabaseNotificationPreferences` does blocking JDBC while `Player#showDialog` must run on the main
   thread, so dialog loads/writes marshal onto the async scheduler and back (`PreferenceDialogs.withSession`).
@@ -637,9 +642,10 @@ Implementation notes:
   open past that has inert buttons and must be reopened.
 - **Known quirk:** an explicitly registered `NotificationProcessor` wins the dispatch-precedence rule and
   bypasses preferences entirely (categories were never part of the dispatch path, even before this quirk
-  existed), so a muted player still receives `EssentialsMailProcessor` mail. Pre-existing; fixing it
-  means converting those processors into sinks.
-- The five dialog classes and the router are **unverified by automated tests** — they need a live
+  existed), so a muted player would still receive its notifications. The one in-tree instance — the
+  Essentials mail processor — was converted into a sink, which is the general fix; the quirk remains
+  reachable by any third-party processor.
+- The six dialog classes and the router are **unverified by automated tests** — they need a live
   server. Check them by hand with `:platform:paper-plugin:runServer`.
 - `PlayerNotificationsPlugin.onEnable()` builds `NotificationCategories` twice: once from config only
   (to unblock `registerCommands()`, which constructs `PreferenceDialogRouter` before feature modules have
@@ -708,8 +714,9 @@ Preferences are stored and resolved per `dataType` end-to-end: storage, dispatch
 dialogs (root, by-medium, by-category) all agree on the same `dataType` axis, with categories layered on
 top purely as a player-facing display/grouping concept (a `NotificationCategoryRegistry` for code-driven
 claims, merged with `categories.yml` by `NotificationCategories`, many-to-many). Known gaps / notes:
-- **`NotificationCategoryRegistry` has no in-tree consumer yet.** `platform:essentials-adapter` does not
-  call `claimDataType`/`registerCategory` for `essentials-mail`, so the code-registry half of the
+- **`NotificationCategoryRegistry` has no in-tree consumer yet.** No feature module calls
+  `claimDataType`/`registerCategory` (`platform:essentials-adapter` owns no data type at all now, and
+  `platform:discord-adapter` owns a medium), so the code-registry half of the
   category system (and the two-pass rebuild-after-`startModules()` ordering in
   `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
   never end-to-end by a real module through the real module class loader.
@@ -718,7 +725,7 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   notification enqueued for an **already-online** player still waits until their next join — there is no
   push path, because that would need the enqueue call to reach the Paper layer, which
   `NotificationService` in `core` deliberately does not do. See "Join delivery" above.
-- **`ChatSink`, `DialogSink`, and the five preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
+- **`ChatSink`, `DialogSink`, and the six preference dialog screens are unverified by automated tests** — they need a live server. Check them by hand with `:platform:paper-plugin:runServer`.
 - **The Discord adapter's end-to-end path has never been run.** `DiscordBot`, `JdaDiscordMessenger`,
   `DiscordSrvAccountProvider` and `DiscordModule` compile and are wired, but JDA login, the DiscordSRV
   lookup, module class loading through the shaded jar, and an actual DM landing have not been verified —
@@ -747,7 +754,7 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   - **Codes do not survive a restart** (in memory by design), and **one Discord account per player** is
     enforced in the schema.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON. A payload mapped to `String.class` is therefore JSON-encoded on write and arrives at its processor still quoted — the reason every in-tree payload now owns a record instead. `DefaultNotificationService` still pre-registers a `String` serializer and nothing forbids `String.class`, so the trap is still reachable; no registration guard was added (considered and deferred — see the test-notification design doc).
-- **Persisted `essentials-mail` rows predating the `EssentialsMailPayload` change will not deserialize** (they hold `"text"`, the type now expects `{"message":"text"}`). `decodePayload` logs a warning and retains them until expiry prunes them. Acceptable only because the project has no deployed data to preserve; a deployed server would have needed a payload-rewriting migration.
+- **Persisted `essentials-mail` rows will not deliver at all.** The Essentials adapter no longer registers that data type (it registers a *medium* of the same name), so nothing maps the payload: `NotificationDelivery` logs the notification and retains it until expiry prunes it, and the inbox shows the data-type placeholder. Acceptable only because the project has no deployed data to preserve. Player preference rows keyed on the old `essentials-mail` *data type* are likewise inert, and are not pruned.
 - **Partial delivery is silent** under the MARK_SEEN-wins fan-out, though no longer lossy — see
   "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).

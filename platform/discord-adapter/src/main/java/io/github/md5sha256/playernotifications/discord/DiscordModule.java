@@ -21,8 +21,8 @@ import java.util.logging.Logger;
  * Plugin module that delivers notifications as Discord direct messages.
  *
  * <p>Registers a {@link DiscordDmSink} under {@link DiscordMedia#DM} in the host's
- * {@link io.github.md5sha256.playernotifications.api.NotificationSinkRegistry}. Unlike the Essentials
- * adapter — which registers a <em>processor</em> and so bypasses preferences — a sink participates in
+ * {@link io.github.md5sha256.playernotifications.api.NotificationSinkRegistry}. Unlike a bespoke
+ * <em>processor</em>, which wins dispatch precedence and so bypasses preferences, a sink participates in
  * the player's stored preferences and in the fan-out, and appears automatically in the
  * {@code /notifications} dialogs, which enumerate the registered media.
  */

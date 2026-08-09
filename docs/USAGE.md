@@ -96,17 +96,17 @@ disagree:
 
 The two work identically — same buttons, same rules. They differ only in which axis you pick first.
 
-The root screen also has **Mute everything**.
+The root screen also has **Mute everything**, which opens a screen of its own explaining what muting
+does. Nothing is muted until you press *Apply* there; *Back* leaves your preferences untouched.
 
 **Apply and Discard.** Each editor has exactly two buttons besides *Back*: **Apply** saves what you
 have ticked, together with anything staged on other screens, and **Discard** throws all of it away.
 There is no separate *Save* — Apply is the one that writes.
 
-The two are on every screen, not just the editors. The root screen carries them **always** — *Mute
-everything* stages an edit like any other, and an Apply that only turned up afterwards read as muting
-having grown an extra step. The two picker screens show them as soon as you have unsaved changes.
-Wherever you are, a line tells you how many changes are waiting, so you never have to navigate
-somewhere else to save.
+They are on every screen where something can be edited — the two editors and the mute screen always,
+the two picker screens as soon as you have unsaved changes. The root screen has neither: it only
+navigates. Wherever you are, a line tells you how many changes are waiting, so you never have to
+navigate somewhere else to save.
 
 *Back* leaves an editor **without saving, and resets what you ticked there** — it is the way out when
 you have changed your mind. It only affects the screen you are on; anything you already applied, or
@@ -157,8 +157,8 @@ Notes:
   Reopening starts fresh from what is saved.
 - Dialog buttons are single-use and expire after an hour. A dialog left open a long time will have
   dead buttons — close and reopen it.
-- **Essentials mail is not affected by your preferences.** It is delivered by its own handler that
-  runs ahead of the preference system, so muting does not stop it. This is a known limitation.
+- Essentials mail can only carry plain text, so a notification delivered there loses anything a chat
+  message or dialog could show beyond its title and body.
 - If you prefer several methods and one of them fails transiently, the notification is still marked
   read and is not retried on the method that failed — but it remains in your inbox to read there.
 - Your inbox has no size limit and nothing trims it automatically. Notifications leave it only when
@@ -218,11 +218,6 @@ organised. They have no effect on how notifications are actually delivered.
 uncategorized-label: "Other"
 
 categories:
-  mail:
-    label: "Mail"
-    description: "Essentials mail and other direct messages"
-    types:
-      - essentials-mail
   diagnostics:
     label: "Diagnostics"
     description: "Test notifications sent with /notifications test"

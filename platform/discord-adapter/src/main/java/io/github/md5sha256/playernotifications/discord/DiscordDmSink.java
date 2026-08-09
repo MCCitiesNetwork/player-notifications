@@ -20,8 +20,8 @@ import java.util.logging.Logger;
  * <p>Being a {@link NotificationSink} rather than a
  * {@link io.github.md5sha256.playernotifications.api.processor.NotificationProcessor} is deliberate:
  * a sink participates in the player's stored preferences and in the fan-out, which is what a medium
- * should do. (The Essentials adapter registers a processor and therefore bypasses preferences — a
- * known quirk this module does not repeat.)
+ * should do. (A bespoke processor wins dispatch precedence and therefore bypasses preferences — a
+ * known quirk this module does not repeat, and one the Essentials adapter was converted off.)
  *
  * <p>Result mapping: no linked account is {@link DeliveryResult#UNSUPPORTED} — the exact case
  * {@code UNSUPPORTED}'s javadoc names — while anything transient is {@link DeliveryResult#UNREACHABLE}

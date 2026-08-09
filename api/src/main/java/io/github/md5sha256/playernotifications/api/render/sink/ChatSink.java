@@ -15,7 +15,7 @@ import java.util.UUID;
  * as a chat component. Only reaches players who are currently online.
  *
  * <p>Sending is marshalled onto the server main thread when this sink is invoked off it, as
- * {@code EssentialsMailProcessor} already does — delivery runs on the async prune/join path.
+ * every other sink does — delivery runs on the async prune/join path.
  */
 public final class ChatSink implements NotificationSink {
 

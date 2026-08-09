@@ -48,7 +48,7 @@ plain `jar` output contains no Discord library at all:
 | `api` | Public API surface consumers program against (`NotificationService`, processors) |
 | `core` | MyBatis/MariaDB persistence, `DefaultNotificationService`, and the delivery loop |
 | `platform:paper-plugin` | The Paper plugin bootstrap |
-| `platform:essentials-adapter` | Optional feature module: renders notifications as Essentials mail |
+| `platform:essentials-adapter` | Optional feature module: delivers notifications as Essentials mail (a delivery medium) |
 | `platform:discord-adapter` | Optional feature module: delivers notifications as Discord DMs, and owns its own account-link schema |
 
 ## Configuration
@@ -102,14 +102,14 @@ Other plugins obtain the service from Bukkit's `ServicesManager` (no hard depend
 NotificationService notifications = getServer().getServicesManager()
         .load(NotificationService.class);
 
-// Deliver "welcome" text to a player as Essentials mail.
+// Enqueue a "welcome" notification; it reaches the player over whichever media they prefer.
 notifications.enqueueNotification(new ResolvedNotification(
         "welcome:" + playerId,          // unique key
         Instant.now(),                   // scheduled time
         null,                            // no expiry
         new NotificationTarget(List.of(playerId)),
-        "essentials-mail",               // data type
-        "\"Welcome to the server!\"",   // JSON payload
+        "welcome",                       // data type, registered with a renderer
+        "{\"message\":\"Welcome to the server!\"}", // JSON payload
         0),                              // priority
         true);                           // overwrite an existing key
 ```
