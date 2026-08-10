@@ -8,6 +8,39 @@ everything else reads through; Tasks 2–3 are the payload, its renderer and the
 never-deliver rule; Task 4 is the command surface and the arrival notice; Task 5 removes
 the adapter; Task 6 updates the docs.
 
+## Status: all six tasks complete
+
+| Task | Commit | Notes |
+|---|---|---|
+| 1 — filtered inbox queries | `e7d5676` | test moved to package `core.database`, see below |
+| 2 — `MailPayload` + `MailRenderer` | `fb1f515` | as planned |
+| 3 — `MailSender` + never-deliver rule | `53ef552` | as planned |
+| 4 — `/mail` tree + arrival notice | `351fb55` | new `mailReminder` seam, notice body pinned |
+| 5 — delete the Essentials adapter | `47691c1` | also removed `runServer`'s EssentialsX download entry |
+| 6 — update `CLAUDE.md` | `6f8ff80` | also fixed a pre-existing coordinate drift |
+
+Plus `e4ba13c`, outside this plan: the *Preferences* button was removed from both inbox screens.
+
+Verified: `./gradlew build` and `./gradlew test` green — **328 tests, 0 failures** (`core` 100,
+`api` 30, `platform:paper-plugin` 76, `platform:discord-adapter` 122), counted by globbing `*.xml`.
+
+**Task 4's 14-item manual checklist has NOT been run.** It needs a live server
+(`./gradlew :platform:paper-plugin:runServer`) and is the only remaining verification for this
+feature. Until it is run, no part of `/mail`'s player-facing surface has been observed working.
+
+### Where the implementation departed from this plan
+
+1. **Task 1's test is at `core/src/test/java/.../core/database/FilteredInboxTest.java`**, not the
+   `core` package this plan named. `AbstractDatabaseTest` is package-private and cannot be extended
+   from another package; the test sits beside its sibling `InboxReadTest`.
+2. **Task 4 added a package-private `JoinDeliveryListener.mailReminder(UUID)` seam.** This plan said
+   to drive the reminder test through "the same package-private seam the existing unread-count test
+   uses" — no such seam existed, because `announceUnread` needs a live `Player` and was untested.
+   The new seam follows the pattern `deliver(UUID)` established.
+3. **The notice body was pinned to "Use `/mail` to read it."** `RenderableNotification` needs a title
+   and a body, and an empty body risks a JDA embed rejection. `MailNotifierTest` asserts no sender,
+   count or message text appears.
+
 ---
 
 ## Task 1: Data-type-filtered inbox queries
@@ -19,7 +52,7 @@ the adapter; Task 6 updates the docs.
 - modify `core/src/main/java/io/github/md5sha256/playernotifications/core/database/maria/mapper/MariaNotificationMapper.java`
 - modify `core/src/main/java/io/github/md5sha256/playernotifications/core/database/maria/mapper/MariaNotificationTargetMapper.java`
 - modify `core/src/main/java/io/github/md5sha256/playernotifications/core/DefaultNotificationService.java`
-- test `core/src/test/java/io/github/md5sha256/playernotifications/core/FilteredInboxTest.java` (new)
+- test `core/src/test/java/io/github/md5sha256/playernotifications/core/database/FilteredInboxTest.java` (new — the `core.database` package, not `core`; see "Where the implementation departed")
 
 **Interfaces produced:**
 
@@ -40,7 +73,7 @@ int markAllSeen(UUID playerId, Instant seenTime, @Nullable String dataType);
 @NotNull List<String> selectSeenKeys(UUID playerId, @Nullable String dataType);
 ```
 
-- [ ] Write the failing test `core/src/test/java/.../FilteredInboxTest.java`, extending
+- [x] Write the failing test `core/src/test/java/.../FilteredInboxTest.java`, extending
       `AbstractDatabaseTest` as `InboxReadTest` does. Register two data types (`mail` and
       `test`), enqueue two `mail` notifications and one `test` notification targeting the
       same player, then assert:
@@ -55,17 +88,17 @@ int markAllSeen(UUID playerId, Instant seenTime, @Nullable String dataType);
         `inbox(player, 1, 10, null).totalEntries() == 1` and the survivor is the `test` one;
       - paging respects the filter: with `pageSize` 1, `inbox(player, 2, 1, "mail")` returns
         the second mail and `totalPages() == 2`.
-- [ ] Run `./gradlew :core:test --tests "*FilteredInboxTest"` — expect FAIL: the four-argument
+- [x] Run `./gradlew :core:test --tests "*FilteredInboxTest"` — expect FAIL: the four-argument
       `inbox` and the two-argument `unreadCount`/`markAllSeen`/`dismissSeen` do not exist, so
       it will not compile.
-- [ ] Implement the read filter. On `NotificationMapper`, add `@Nullable String dataType` as the
+- [x] Implement the read filter. On `NotificationMapper`, add `@Nullable String dataType` as the
       last parameter of `selectInboxPage`, `countInbox` and `countUnread`. In
       `MariaNotificationMapper`, convert those three `@Select`s to `<script>` form, adding to
       each `WHERE`: `<if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>`,
       with `@Param("dataType")` on the new parameter. Leave the
       `ORDER BY n.notifScheduledTime DESC, n.notifPriority DESC, n.notifKey DESC` total order
       intact — it is what stops two notifications sharing a timestamp swapping between page reads.
-- [ ] Implement the target-side filter. `markAllSeen` gains
+- [x] Implement the target-side filter. `markAllSeen` gains
       `<if test="dataType != null">AND EXISTS (SELECT 1 FROM Notification n WHERE n.notifTargetId =
       NotificationTarget.notifTargetId AND n.notifPayloadType = #{dataType})</if>`.
       Replace the filtered path of `dismissSeen` with select-then-delete: add
@@ -76,15 +109,15 @@ int markAllSeen(UUID playerId, Instant seenTime, @Nullable String dataType);
       playerId)` per key. A `DELETE` whose subquery reads `Notification` is refused by MariaDB
       while `trg_delete_targetless_notification` writes it — the same constraint
       `pruneOrphanedTargets` already works around.
-- [ ] Implement the `NotificationService` overloads and make the existing `inbox(UUID,int,int)`,
+- [x] Implement the `NotificationService` overloads and make the existing `inbox(UUID,int,int)`,
       `unreadCount(UUID)`, `markAllSeen(UUID)` and `dismissSeen(UUID)` `default` methods
       delegating with `null`. In `DefaultNotificationService`, thread `dataType` through, keeping
       the `pageSize` clamp to `1..20` and the `page` clamp against the *filtered* total.
-- [ ] Run `./gradlew :core:test --tests "*FilteredInboxTest"` — expect PASS.
-- [ ] Run `./gradlew :core:test` — the existing 96 tests plus the new ones, all passing
+- [x] Run `./gradlew :core:test --tests "*FilteredInboxTest"` — expect PASS.
+- [x] Run `./gradlew :core:test` — the existing 96 tests plus the new ones, all passing
       (`InboxReadTest` and `InboxDeliveryTest` exercise the unfiltered defaults).
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ---
 
@@ -109,25 +142,25 @@ public final class MailRenderer implements NotificationRenderer<MailPayload> {
 }
 ```
 
-- [ ] Write the failing test `MailRendererTest`, asserting with
+- [x] Write the failing test `MailRendererTest`, asserting with
       `PlainTextComponentSerializer.plainText()` that
       `new MailRenderer().render(new MailPayload(senderId, "Steve", "hello there"), targetId)`
       has title `"Mail from Steve"` and body `"hello there"`; that a message containing a
       section sign or an `&c` code renders those characters literally rather than as colour; and
       that two different `target` UUIDs render identically (the renderer ignores the target).
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailRendererTest"` — expect FAIL:
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailRendererTest"` — expect FAIL:
       neither class exists.
-- [ ] Implement `MailPayload` as the record above, with a compact constructor rejecting a blank
+- [x] Implement `MailPayload` as the record above, with a compact constructor rejecting a blank
       `senderName` or `message`, and javadoc recording why `senderName` is stored rather than
       looked up at render time (a renderer runs on read, and `getOfflinePlayer` is a blocking
       lookup returning null for an unseen player).
-- [ ] Implement `MailRenderer` with the **two-argument** `render(payload, target)` signature —
+- [x] Implement `MailRenderer` with the **two-argument** `render(payload, target)` signature —
       `NotificationRenderer` already passes the recipient. Build both components with
       `Component.text(...)`, never MiniMessage or `LegacyComponentSerializer`, since the message
       is player-supplied.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailRendererTest"` — expect PASS.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailRendererTest"` — expect PASS.
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ---
 
@@ -149,20 +182,20 @@ public final class MailSender {
 }
 ```
 
-- [ ] Write the failing test `MailSenderTest` against a fake `NotificationService` capturing the
+- [x] Write the failing test `MailSenderTest` against a fake `NotificationService` capturing the
       `TypedNotification` passed to `enqueueNotification`, asserting: `notifPayloadType()` equals
       `MailPayload.DATA_TYPE`; `notifExpiryTime()` is `null`; `notifTarget()` holds exactly the
       recipient; `notifKey()` starts with `"mail-"`; `overwriteAllowed` is `false`; the payload's
       three fields round-trip; and that two successive `send` calls produce different keys.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailSenderTest"` — expect FAIL:
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailSenderTest"` — expect FAIL:
       `MailSender` does not exist.
-- [ ] Implement `MailSender.send` exactly as spec §3 describes: key `"mail-" + UUID.randomUUID()`,
+- [x] Implement `MailSender.send` exactly as spec §3 describes: key `"mail-" + UUID.randomUUID()`,
       `notifScheduledTime` `Instant.now()`, `notifExpiryTime` `null`, single-element
       `NotificationTarget`, priority `0`, `enqueueNotification(n, false)`. No validation here —
       that belongs to the command, so a module calling this does not get an exception thrown
       across a module boundary.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailSenderTest"` — expect PASS.
-- [ ] Write the failing test `core/src/test/java/.../MailNotDeliveredTest.java`, extending
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailSenderTest"` — expect PASS.
+- [x] Write the failing test `core/src/test/java/.../MailNotDeliveredTest.java`, extending
       `AbstractDatabaseTest` and modelled on `RenderedDeliveryTest`. Register a recording
       `NotificationSink` under medium `chat`; register a `mail` data type whose payload class has
       a renderer **and** a `(payload, target) -> RETAIN` processor; register a second, ordinary
@@ -173,9 +206,9 @@ public final class MailSender {
       - `service.inbox(player, 1, 10, "mail").entries()` still has size 1 with `unread()` true.
       This is the design's central claim, and the regression most easily reintroduced by
       "tidying up" the RETAIN processor.
-- [ ] Run `./gradlew :core:test --tests "*MailNotDeliveredTest"` — expect FAIL until the
+- [x] Run `./gradlew :core:test --tests "*MailNotDeliveredTest"` — expect FAIL until the
       processor registration exists in the test's setup; implement it there, then expect PASS.
-- [ ] Register in `PlayerNotificationsPlugin.onEnable`, next to the existing
+- [x] Register in `PlayerNotificationsPlugin.onEnable`, next to the existing
       `TestNotificationRenderer` registration:
       ```java
       service.registerJsonRenderable(MailPayload.DATA_TYPE, MailPayload.class, new MailRenderer());
@@ -186,13 +219,13 @@ public final class MailSender {
       service.dataTypeRegistry().registerProcessor(MailPayload.class,
               (payload, target) -> NotificationDisposition.RETAIN);
       ```
-- [ ] Add the `mail` category to `platform/paper-plugin/src/main/resources/categories.yml`
+- [x] Add the `mail` category to `platform/paper-plugin/src/main/resources/categories.yml`
       (`label: "Mail"`, `description: "Where you are told that new mail has arrived. The mail
       itself is always read with /mail."`, `types: [mail]`). The checkboxes are meaningful: a
       processor bypasses preferences for the *mail*, but `MailNotifier` (Task 4) routes the
       *arrival notice* by exactly these rows.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ---
 
@@ -236,52 +269,52 @@ public final class MailNotifier {
 }
 ```
 
-- [ ] Write the failing test `MailRecipientsTest` against a map-backed resolver (`name -> UUID`,
+- [x] Write the failing test `MailRecipientsTest` against a map-backed resolver (`name -> UUID`,
       `null` for unknown), asserting: a known name and a normal message give `Ok` with that UUID
       and the trimmed message; an unknown name gives `UnknownPlayer` naming it; a blank or
       whitespace-only message gives `InvalidMessage`; a message of exactly
       `MailPayload.MAX_MESSAGE_LENGTH` characters is `Ok`; one character longer is
       `InvalidMessage` and is **not** truncated.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailRecipientsTest"` — expect FAIL:
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailRecipientsTest"` — expect FAIL:
       `MailRecipients` does not exist.
-- [ ] Implement `MailRecipients.resolve` with exactly those rules. The `Function<String, UUID>`
+- [x] Implement `MailRecipients.resolve` with exactly those rules. The `Function<String, UUID>`
       seam keeps them testable without a server, the same device
       `TestNotificationRenderer.usingServerNames()` uses.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailRecipientsTest"` — expect PASS.
-- [ ] Add `dataTypeFilter` and `title` to `InboxRouter`, passing the filter to every
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailRecipientsTest"` — expect PASS.
+- [x] Add `dataTypeFilter` and `title` to `InboxRouter`, passing the filter to every
       `service.inbox` / `unreadCount` / `markAllSeen` / `dismissSeen` call it makes, and the
       title to `InboxDialog`. Existing construction in `PlayerNotificationsPlugin` passes `null`
       and `Component.text("Notifications")`, so its behaviour is unchanged.
-- [ ] Change `InboxQuitListener` to hold a `List<InboxRouter>` and drop the quitting player from
+- [x] Change `InboxQuitListener` to hold a `List<InboxRouter>` and drop the quitting player from
       each, then construct a second `InboxRouter` in `PlayerNotificationsPlugin` with filter
       `MailPayload.DATA_TYPE` and title `Component.text("Mail")`, registering the listener with
       both. Separate instances rather than one shared router: the cursor and last-listed maps are
       per-screen state, and `/mail list 2` must not make `/notifications read 1` resolve against
       the mail page.
-- [ ] Write the failing test `MailNotifierTest` against a fake `NotificationSinkRegistry` and fake
+- [x] Write the failing test `MailNotifierTest` against a fake `NotificationSinkRegistry` and fake
       `NotificationPreferences`, asserting: a player preferring `chat + discord-dm` has the notice
       delivered to both recording sinks; a player whose only medium is
       `NotificationPreferences.MUTED_MEDIUM` gets nothing; a preferred medium with no registered
       sink is skipped without throwing; a sink that throws a `RuntimeException` does not prevent
       the other sink receiving it; and the delivered `RenderableNotification`'s plain text is the
       verbatim notice, containing no sender name, count or message text.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailNotifierTest"` — expect FAIL:
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailNotifierTest"` — expect FAIL:
       `MailNotifier` does not exist.
-- [ ] Implement `MailNotifier` as spec "The arrival notice" describes: resolve
+- [x] Implement `MailNotifier` as spec "The arrival notice" describes: resolve
       `preferences.preferredMedia(recipient, MailPayload.DATA_TYPE)`, drop `MUTED_MEDIUM`, deliver
       a constant `RenderableNotification` to each medium's sink, catching and logging a throwing
       sink. Do not reuse `RenderingProcessor` — it exists to render a stored payload and report a
       `NotificationDisposition`, and the notice has neither.
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailNotifierTest"` — expect PASS.
-- [ ] Extend `JoinDeliveryListenerTest` with a case asserting that a player with unread mail gets
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailNotifierTest"` — expect PASS.
+- [x] Extend `JoinDeliveryListenerTest` with a case asserting that a player with unread mail gets
       the mail reminder line and a player with none gets nothing, driving the same package-private
       seam the existing unread-count test uses. Run
       `./gradlew :platform:paper-plugin:test --tests "*JoinDeliveryListenerTest"` — expect FAIL.
-- [ ] Add the mail reminder line to `JoinDeliveryListener`, alongside the existing unread-count
+- [x] Add the mail reminder line to `JoinDeliveryListener`, alongside the existing unread-count
       line and **outside** the `deliver-on-join` gate and its delay, driven by
       `service.unreadCount(playerId, MailPayload.DATA_TYPE)` and sending nothing when the count is
       zero. Run the same command — expect PASS.
-- [ ] Implement `MailCommand`, mirroring `NotificationsCommand`'s structure: a Brigadier node for
+- [x] Implement `MailCommand`, mirroring `NotificationsCommand`'s structure: a Brigadier node for
       `mail` whose bare execute opens the mail router's dialog, plus `send`, `list [page]`,
       `read <n>`, `dismiss <n>` and `clear`. Every branch is player-only and dispatches off the
       main thread via `runTaskAsynchronously`. `send` resolves its recipient on that async thread
@@ -290,14 +323,14 @@ public final class MailNotifier {
       sender, and calls `MailNotifier.notifyArrival(recipient)` unconditionally (not only when the
       recipient is online: Discord DM reaches them either way, and the notifier already resolves
       what can reach them). Suggest online player names on the recipient argument.
-- [ ] Register the node from the existing `LifecycleEvents.COMMANDS` handler in
+- [x] Register the node from the existing `LifecycleEvents.COMMANDS` handler in
       `PlayerNotificationsPlugin.registerCommands()`.
-- [ ] Declare `playernotifications.command.mail` (`default: true`) and
+- [x] Declare `playernotifications.command.mail` (`default: true`) and
       `playernotifications.command.mail.send` (`default: true`) in `paper-plugin.yml`, gating the
       `send` node with the latter on top of the root's `requires`.
-- [ ] Run `./gradlew :platform:paper-plugin:test` — expect PASS.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew :platform:paper-plugin:test` — expect PASS.
+- [x] Run `./gradlew build`
+- [x] Commit
 
 **Manual verification** (needs a live server — `./gradlew :platform:paper-plugin:runServer`; this
 task's Brigadier wiring, dialogs and permission gates cannot be unit tested, the same exception
@@ -333,21 +366,21 @@ task's Brigadier wiring, dialogs and permission gates cannot be unit tested, the
 - modify `platform/paper-plugin/build.gradle.kts`
 - modify `platform/paper-plugin/src/main/resources/paper-plugin.yml`
 
-- [ ] Delete the directory: `git rm -r platform/essentials-adapter`
-- [ ] Remove `include("platform:essentials-adapter")` from `settings.gradle.kts`.
-- [ ] Remove the
+- [x] Delete the directory: `git rm -r platform/essentials-adapter`
+- [x] Remove `include("platform:essentials-adapter")` from `settings.gradle.kts`.
+- [x] Remove the
       `featureModules(project(path = ":platform:essentials-adapter", configuration = "moduleJar"))`
       line from `platform/paper-plugin/build.gradle.kts`.
-- [ ] Remove the soft `Essentials` entry from `paper-plugin.yml`'s `dependencies: server:` block —
+- [x] Remove the soft `Essentials` entry from `paper-plugin.yml`'s `dependencies: server:` block —
       it exists only for the adapter, and carries the same `join-classpath: true` classloader
       exposure `CLAUDE.md` documents for DiscordSRV.
-- [ ] Run `./gradlew build` — expect BUILD SUCCESSFUL with no `essentials-adapter` task in the
+- [x] Run `./gradlew build` — expect BUILD SUCCESSFUL with no `essentials-adapter` task in the
       output.
-- [ ] Run `./gradlew test` — expect the full suite passing.
-- [ ] Confirm nothing references it:
+- [x] Run `./gradlew test` — expect the full suite passing.
+- [x] Confirm nothing references it:
       `grep -ri "essentials" --include=*.java --include=*.kts --include=*.yml . | grep -v build/`
       returns nothing outside `docs/`.
-- [ ] Commit
+- [x] Commit
 
 ---
 
@@ -357,13 +390,13 @@ task's Brigadier wiring, dialogs and permission gates cannot be unit tested, the
 
 Every one of these is a claim the code now contradicts:
 
-- [ ] Remove `platform:essentials-adapter` from the *Overview*, *Module architecture*, the build
+- [x] Remove `platform:essentials-adapter` from the *Overview*, *Module architecture*, the build
       commands (`:platform:essentials-adapter:jar`), *Testing gotchas* ("`platform:essentials-adapter`
       has no tests"), and every mention of the `essentials-mail` medium in *Rendering & delivery
       media*, *Player commands* and *Current state*.
-- [ ] Drop the *Current state* bullet "Persisted `essentials-mail` rows will not deliver at all"
+- [x] Drop the *Current state* bullet "Persisted `essentials-mail` rows will not deliver at all"
       and replace it with one noting that stored `essentials-mail` **preference** rows are inert.
-- [ ] Add a *Mail* section covering: mail as a `dataType` rather than a medium; that it is stored
+- [x] Add a *Mail* section covering: mail as a `dataType` rather than a medium; that it is stored
       but **never delivered**, via a RETAIN processor exploiting the dispatch-precedence rule, and
       why (`RETAIN` also leaves `seenTime` unset, so unread counts stay honest); that the verbatim
       "You have new mail!" notice is routed through sinks by the player's `mail` preference rows
@@ -372,15 +405,15 @@ Every one of these is a claim the code now contradicts:
       `MailNotifier`, and why `MailNotifier` does not reuse `RenderingProcessor`; null expiry and
       why; the second `InboxRouter` instance and why two rather than one; the `/mail` command table
       and the two-permission split.
-- [ ] Update the *known quirk* bullet under *Player commands* — an explicitly registered processor
+- [x] Update the *known quirk* bullet under *Player commands* — an explicitly registered processor
       bypassing preferences now has an in-tree instance again (mail), where it is deliberate rather
       than a wart, and where the preference rows it bypasses are reused to route the notice.
-- [ ] Update *Notification inbox* for the data-type-filtered `inbox` / `unreadCount` /
+- [x] Update *Notification inbox* for the data-type-filtered `inbox` / `unreadCount` /
       `markAllSeen` / `dismissSeen` overloads and the select-then-delete shape of filtered
       `dismissSeen`.
-- [ ] Update the test baseline counts in *Testing gotchas* with the real numbers from
+- [x] Update the test baseline counts in *Testing gotchas* with the real numbers from
       `./gradlew test` (glob `*.xml`, not `TEST-*.xml`).
-- [ ] Add the unrun manual checklist (Task 4 above) to *Current state*, alongside the existing
+- [x] Add the unrun manual checklist (Task 4 above) to *Current state*, alongside the existing
       unrun checklists.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew build`
+- [x] Commit

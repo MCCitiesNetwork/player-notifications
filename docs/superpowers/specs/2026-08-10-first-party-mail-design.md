@@ -1,7 +1,11 @@
 # First-party mail — design
 
 **Date:** 2026-08-10
-**Status:** proposed
+**Status:** implemented — see *As built* below. Not yet verified on a live server.
+
+Implemented across `e7d5676` (filtered inbox queries), `fb1f515` (payload + renderer), `53ef552`
+(sender + the never-deliver rule), `351fb55` (`/mail` tree + arrival notice), `47691c1` (Essentials
+adapter deleted), `6f8ff80` (`CLAUDE.md`), `e4ba13c` (inbox Preferences button removed).
 
 ## Goal
 
@@ -90,13 +94,19 @@ inbox, unread, waiting.
 
 ## The arrival notice
 
-Receiving mail produces exactly one line, verbatim:
+Receiving mail produces exactly one notice, verbatim:
 
 > **You have new mail!**
+> Use `/mail` to read it.
 
 No sender, no count, no preview. The point of the notice is to send the player to `/mail`, and any
 detail it carries is detail that has leaked out of the inbox — which is the thing this design exists
 to prevent.
+
+The second line exists because `RenderableNotification` is a title *and* a body, so the notice
+cannot be a single string, and an empty body risks a JDA embed builder rejecting the message
+outright. It is an affordance — how to read the mail — not a detail about the mail, and
+`MailNotifierTest` asserts that no sender name, count or message text appears in either component.
 
 The notice is **not** a notification: it is never enqueued and never stored. A stored notice would
 sit in the inbox as a second row announcing the first. But it *is* delivered through the ordinary
@@ -371,6 +381,60 @@ Needs a live server, so a manual checklist instead (this repo's standing excepti
 
 - `/mail send`, the dialog, the chat fallback, tab completion, the permission split, the send-time
   notice, and the join notice.
+
+**That checklist has not been run.** It is the 14-item list in Task 4 of
+`docs/superpowers/plans/2026-08-10-first-party-mail.md`, driven by
+`./gradlew :platform:paper-plugin:runServer`. Nothing in this feature's player-facing surface —
+`/mail` and its subcommands, either dialog, tab completion, the permission gates, or a notice
+actually landing in chat or a Discord DM — has been observed working. Everything underneath it is
+covered by the automated tests above.
+
+## As built
+
+The design above is what was built. Six places where the implementation departed from it, or where
+a decision was settled after it was written:
+
+1. **`FilteredInboxTest` lives in package `core.database`, not `core`.** `AbstractDatabaseTest`,
+   which it must extend, is package-private, and a package-private class cannot be extended from
+   another package. It sits beside its sibling `InboxReadTest`.
+2. **`JoinDeliveryListener` gained a new package-private `mailReminder(UUID)` seam.** The plan
+   assumed the existing unread-count line was already testable through such a seam; it was not —
+   `announceUnread` needs a live `Player` and was untested. `mailReminder` follows the pattern
+   `deliver(UUID)` had already established, so the reminder's gate is verified even though the
+   handler around it is not.
+3. **The notice body was pinned to "Use `/mail` to read it."** after the fact — see *The arrival
+   notice*. An empty body was the alternative and was rejected as a JDA embed risk.
+4. **The inbox lost its *Preferences* button** (`e4ba13c`), on both the notification and mail
+   screens, along with the `openPreferences` consumer threaded from `PlayerNotificationsPlugin`
+   through `InboxRouter` to reach it. Not part of this design, but it is shared inbox UI that this
+   work put a second caller on, so it is recorded here: the inbox is for reading, and a jump into
+   the preference screens left the player with no way back to what they were reading.
+5. **Deleting the adapter also removed the EssentialsX `github(…)` entry** from `runServer`'s
+   `downloadPlugins` block in `platform/paper-plugin/build.gradle.kts`, which the design did not
+   name. It existed only to feed the test server a plugin the adapter needed. The block itself
+   stays — its DiscordSRV entry is still required by the Discord adapter.
+6. **A pre-existing `CLAUDE.md` drift was corrected on the way past:** the infrastructure coordinate
+   is `com.minecraftcitiesnetwork:plugin-infrastructure`, not `net.democracrycraft:…`. The Maven
+   host remains `maven.democracycraft.net`, so group id and host genuinely disagree upstream.
+
+Test baseline after the work: **328 tests, 0 failures** — `core` 100, `api` 30,
+`platform:paper-plugin` 76, `platform:discord-adapter` 122.
+
+### Open question, deliberately not settled here
+
+**Whether mail should be a feature module rather than host code.** It is a self-contained feature
+and `platform/` exists for exactly that, so the instinct is right. The obstacle is that a feature
+module cannot register a command: `registerCommands()` runs on `LifecycleEvents.COMMANDS`, which
+fires before `startModules()`, so the Brigadier tree is frozen before any module exists. That is why
+the Discord adapter's `/discordlink` was retired in favour of a host-owned `/notifications link`
+node reading a live `AccountLinkRegistry`, and `/mail` would hit the same wall.
+
+The shape that would work is the same bridge: a `platform/mail-adapter` owning the renderer, the
+RETAIN processor, `MailSender`, `MailNotifier` and `MailRecipients`, with the host declaring the
+`/mail` node and mail `InboxRouter` and resolving a mail service from a registry at execution time.
+Worth knowing before committing to it: the payoff is smaller than for the Essentials and Discord
+adapters, because those own a *medium* and nothing user-facing, whereas mail needs a command tree,
+permissions and an inbox screen that must stay in the host either way.
 
 ## Known limitations
 
