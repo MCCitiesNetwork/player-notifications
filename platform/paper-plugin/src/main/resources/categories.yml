@@ -12,3 +12,8 @@ categories:
     description: "Test notifications sent with /notifications test"
     types:
       - test
+  mail:
+    label: "Mail"
+    description: "Where you are told that new mail has arrived. The mail itself is always read with /mail."
+    types:
+      - mail

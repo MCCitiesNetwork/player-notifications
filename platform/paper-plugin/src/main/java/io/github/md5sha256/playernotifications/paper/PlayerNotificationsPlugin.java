@@ -5,6 +5,8 @@ import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLoader;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.link.AccountLinkRegistry;
+import io.github.md5sha256.playernotifications.api.mail.MailPayload;
+import io.github.md5sha256.playernotifications.api.processor.NotificationDisposition;
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
 import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
@@ -15,6 +17,7 @@ import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotification
 import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.mail.MailRenderer;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceQuitListener;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
@@ -180,6 +183,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 TestNotificationPayload.TEST_DATA_TYPE,
                 TestNotificationPayload.class,
                 TestNotificationRenderer.usingServerNames());
+
+        // Mail is stored but never delivered: an explicit processor wins dispatch precedence and
+        // bypasses preferences and sinks. RETAIN also leaves seenTime unset, so mail stays unread
+        // until the player opens it in /mail. See the design doc, "Mail is stored, but never
+        // delivered" — do not "simplify" this away.
+        this.notificationService.registerJsonRenderable(
+                MailPayload.DATA_TYPE, MailPayload.class, new MailRenderer());
+        this.notificationService.dataTypeRegistry().registerProcessor(MailPayload.class,
+                (payload, target) -> NotificationDisposition.RETAIN);
 
         registerCommands(pluginSettings.inboxPageSize());
 
