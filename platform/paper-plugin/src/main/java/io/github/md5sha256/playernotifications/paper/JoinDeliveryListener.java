@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.paper;
 
 import io.github.md5sha256.playernotifications.api.NotificationService;
+import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -10,6 +11,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -116,23 +118,47 @@ public final class JoinDeliveryListener implements Listener {
     }
 
     /**
-     * Sends the joining player one line naming their unread count, or nothing when they have none.
-     * A failure is logged and swallowed for the same reason {@link #deliver(UUID)} does so.
+     * Sends the joining player one line naming their unread count, and a separate mail reminder line if
+     * they have unread mail — or nothing for either when there is none. A failure is logged and swallowed
+     * for the same reason {@link #deliver(UUID)} does so.
+     *
+     * <p>The mail line is a <em>reminder</em>, not the arrival notice: a player who read a Discord DM
+     * about new mail last week and has not logged in since should still be told on arrival that mail is
+     * waiting. It sits alongside the unread-count line, outside the {@code deliver-on-join} gate and its
+     * delay, for the same reason that line already does — a player who turned push off still needs to be
+     * told something arrived.
      */
     private void announceUnread(@NotNull Player player) {
         try {
             int unread = this.service.unreadCount(player.getUniqueId());
-            if (unread == 0 || !player.isOnline()) {
-                return;
+            if (unread != 0 && player.isOnline()) {
+                player.sendMessage(Component.text("You have " + unread
+                                + (unread == 1 ? " unread notification. " : " unread notifications. "),
+                                NamedTextColor.YELLOW)
+                        .append(Component.text("Use /notifications to read them.", NamedTextColor.GRAY)));
             }
-            player.sendMessage(Component.text("You have " + unread
-                            + (unread == 1 ? " unread notification. " : " unread notifications. "),
-                            NamedTextColor.YELLOW)
-                    .append(Component.text("Use /notifications to read them.", NamedTextColor.GRAY)));
+            Component mailReminder = mailReminder(player.getUniqueId());
+            if (mailReminder != null && player.isOnline()) {
+                player.sendMessage(mailReminder);
+            }
         } catch (RuntimeException ex) {
             this.plugin.getLogger().log(Level.WARNING,
                     "Failed to read the unread count for " + player.getUniqueId(), ex);
         }
+    }
+
+    /**
+     * The mail reminder line for the given player, or {@code null} when they have no unread mail. A
+     * package-private seam so the message logic is testable without a live {@code Player}.
+     */
+    @Nullable
+    Component mailReminder(@NotNull UUID playerId) {
+        int unreadMail = this.service.unreadCount(playerId, MailPayload.DATA_TYPE);
+        if (unreadMail == 0) {
+            return null;
+        }
+        return Component.text("You have unread mail. ", NamedTextColor.YELLOW)
+                .append(Component.text("Use /mail to read it.", NamedTextColor.GRAY));
     }
 
     /** Test seam: the currently effective {@code deliver-on-join} value. */

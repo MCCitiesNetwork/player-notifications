@@ -31,7 +31,6 @@ import java.util.function.Consumer;
  */
 final class InboxDialog {
 
-    private static final Component TITLE = Component.text("Notifications");
     private static final Component EMPTY = Component.text("Your inbox is empty.", NamedTextColor.GRAY);
     private static final Component MARK_ALL_LABEL = Component.text("Mark all read");
     private static final Component DISMISS_SEEN_LABEL = Component.text("Dismiss all read");
@@ -39,10 +38,12 @@ final class InboxDialog {
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     private final InboxRouter router;
+    private final Component title;
     private final Consumer<Player> openPreferences;
 
-    InboxDialog(@NotNull InboxRouter router, @NotNull Consumer<Player> openPreferences) {
+    InboxDialog(@NotNull InboxRouter router, @NotNull Component title, @NotNull Consumer<Player> openPreferences) {
         this.router = router;
+        this.title = title;
         this.openPreferences = openPreferences;
     }
 
@@ -86,7 +87,7 @@ final class InboxDialog {
                         this.openPreferences.accept(player), DialogSupport.callbackOptions()))
                 .build());
 
-        DialogBase base = DialogBase.builder(TITLE)
+        DialogBase base = DialogBase.builder(this.title)
                 .body(body)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();

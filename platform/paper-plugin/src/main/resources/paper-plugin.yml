@@ -39,3 +39,11 @@ permissions:
   playernotifications.command.test:
     description: Send yourself a test notification with /notifications test.
     default: op
+  playernotifications.command.mail:
+    description: Read your mail with /mail.
+    default: true
+  # Additive on top of playernotifications.command.mail: a server can make mail read-only for a rank
+  # without hiding the inbox. Brigadier requires nest, so revoking the root above hides send too.
+  playernotifications.command.mail.send:
+    description: Send mail with /mail send.
+    default: true

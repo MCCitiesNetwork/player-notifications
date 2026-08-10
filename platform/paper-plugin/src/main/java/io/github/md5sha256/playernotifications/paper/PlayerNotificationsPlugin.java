@@ -10,6 +10,7 @@ import io.github.md5sha256.playernotifications.api.processor.NotificationDisposi
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
 import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
+import io.github.md5sha256.playernotifications.paper.command.MailCommand;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
@@ -17,7 +18,9 @@ import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotification
 import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailRenderer;
+import io.github.md5sha256.playernotifications.paper.mail.MailSender;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceQuitListener;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
@@ -228,6 +231,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * that register later than this check will simply be caught on the next server restart.
      */
     private InboxRouter inboxRouter;
+    private InboxRouter mailRouter;
+    private MailNotifier mailNotifier;
 
     private void warnAboutUnmappedCategoryTypes() {
         var unmapped = this.categories.typesWithNoPayloadMapping(this.notificationService.dataTypeRegistry());
@@ -249,11 +254,20 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.preferences);
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
+        InboxEntryRenderer inboxRenderer = new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger());
         this.inboxRouter = new InboxRouter(
-                this, this.notificationService,
-                new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger()),
-                inboxPageSize, player -> this.preferenceDialogRouter.openRoot(player));
-        getServer().getPluginManager().registerEvents(new InboxQuitListener(this.inboxRouter), this);
+                this, this.notificationService, inboxRenderer, inboxPageSize,
+                null, Component.text("Notifications"), player -> this.preferenceDialogRouter.openRoot(player));
+        // A second, mail-filtered InboxRouter instance rather than one shared router with a per-call
+        // filter: the cursor and last-listed maps are per-screen state, and /mail list 2 must not make
+        // /notifications read 1 resolve against the mail page.
+        this.mailRouter = new InboxRouter(
+                this, this.notificationService, inboxRenderer, inboxPageSize,
+                MailPayload.DATA_TYPE, Component.text("Mail"), player -> this.preferenceDialogRouter.openRoot(player));
+        getServer().getPluginManager().registerEvents(
+                new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
+        this.mailNotifier = new MailNotifier(this.sinkRegistry, this.preferences, getLogger());
+        MailSender mailSender = new MailSender(this.notificationService);
         // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
         TestNotificationSender testSender = new TestNotificationSender(
                 this, this.notificationService, this.preferences, this.sinkRegistry,
@@ -263,14 +277,19 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         AccountLinkDispatcher linkDispatcher =
                 new AccountLinkDispatcher(this.accountLinkRegistry, getLogger());
         Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
-        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
-                event.registrar().register(
-                        NotificationsCommand.create(this.preferenceDialogRouter, this.inboxRouter,
-                                this::reload, testSender,
-                                linkDispatcher, asyncExecutor),
-                        NotificationsCommand.DESCRIPTION,
-                        List.of("notifs")
-                ));
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
+            event.registrar().register(
+                    NotificationsCommand.create(this.preferenceDialogRouter, this.inboxRouter,
+                            this::reload, testSender,
+                            linkDispatcher, asyncExecutor),
+                    NotificationsCommand.DESCRIPTION,
+                    List.of("notifs")
+            );
+            event.registrar().register(
+                    MailCommand.create(this, this.mailRouter, mailSender, this.mailNotifier),
+                    MailCommand.DESCRIPTION
+            );
+        });
     }
 
     /**
@@ -309,6 +328,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.joinDeliveryListener.reloadSettings(
                 newSettings.deliverOnJoin(), newSettings.joinDeliveryDelaySeconds());
         this.inboxRouter.reloadPageSize(newSettings.inboxPageSize());
+        this.mailRouter.reloadPageSize(newSettings.inboxPageSize());
         reschedulePruneTask(newSettings.pruneIntervalSeconds());
         warnAboutUnmappedCategoryTypes();
 
@@ -392,6 +412,9 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationDelivery = null;
         this.categories = null;
         this.preferenceDialogRouter = null;
+        this.inboxRouter = null;
+        this.mailRouter = null;
+        this.mailNotifier = null;
         if (this.database != null) {
             try {
                 this.database.close();

@@ -12,6 +12,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,13 @@ public final class InboxRouter {
     private final InboxDialog listDialog;
     private final InboxDetailDialog detailDialog;
 
+    /**
+     * The data type this screen is restricted to, or {@code null} for unfiltered. Threaded into every
+     * {@link NotificationService} call this router makes, so {@code /mail}'s paging and counts agree with
+     * its own filtered view rather than the whole inbox.
+     */
+    private final String dataTypeFilter;
+
     /** The last page each player looked at. Dropped on quit by {@code InboxQuitListener}. */
     private final Map<UUID, PageBounds> cursors = new ConcurrentHashMap<>();
     /** The entries of that page, so a chat {@code read <n>}/{@code dismiss <n>} can resolve n. */
@@ -46,12 +54,15 @@ public final class InboxRouter {
                        @NotNull NotificationService service,
                        @NotNull InboxEntryRenderer renderer,
                        int pageSize,
+                       @Nullable String dataTypeFilter,
+                       @NotNull Component title,
                        @NotNull Consumer<Player> openPreferences) {
         this.plugin = plugin;
         this.service = service;
         this.renderer = renderer;
         this.pageSize = pageSize;
-        this.listDialog = new InboxDialog(this, openPreferences);
+        this.dataTypeFilter = dataTypeFilter;
+        this.listDialog = new InboxDialog(this, title, openPreferences);
         this.detailDialog = new InboxDetailDialog(this);
     }
 
@@ -109,14 +120,14 @@ public final class InboxRouter {
 
     public void markAllSeen(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            this.service.markAllSeen(player.getUniqueId());
+            this.service.markAllSeen(player.getUniqueId(), this.dataTypeFilter);
             openInbox(player, currentPage(player.getUniqueId()));
         });
     }
 
     public void dismissSeen(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            this.service.dismissSeen(player.getUniqueId());
+            this.service.dismissSeen(player.getUniqueId(), this.dataTypeFilter);
             openInbox(player, 1);
         });
     }
@@ -133,13 +144,13 @@ public final class InboxRouter {
     public void clearInChat(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             UUID id = player.getUniqueId();
-            int total = this.service.inbox(id, 1, 1).totalEntries();
+            int total = this.service.inbox(id, 1, 1, this.dataTypeFilter).totalEntries();
             if (total == 0) {
                 player.sendMessage(Component.text("Your inbox is already empty.", NamedTextColor.GRAY));
                 return;
             }
-            this.service.markAllSeen(id);
-            this.service.dismissSeen(id);
+            this.service.markAllSeen(id, this.dataTypeFilter);
+            this.service.dismissSeen(id, this.dataTypeFilter);
             drop(id);
             player.sendMessage(Component.text(
                     total == 1 ? "Cleared 1 notification." : "Cleared " + total + " notifications.",
@@ -251,7 +262,7 @@ public final class InboxRouter {
     private void withPage(@NotNull Player player, int page, @NotNull Consumer<InboxPage> consumer) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             UUID id = player.getUniqueId();
-            InboxPage read = this.service.inbox(id, page, this.pageSize);
+            InboxPage read = this.service.inbox(id, page, this.pageSize, this.dataTypeFilter);
             // Clamped twice on the way in, here and in the service. One is a UI helper and the other a
             // public-API trust boundary; neither should assume the other ran.
             this.cursors.put(id, new PageBounds(read.page(), read.pageSize(), read.totalEntries()));
