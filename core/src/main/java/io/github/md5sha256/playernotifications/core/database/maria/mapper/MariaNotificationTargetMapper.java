@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -71,11 +72,34 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
 
     @Override
     @Update("""
+            <script>
             UPDATE NotificationTarget SET seenTime = #{seenTime}
             WHERE playerUuid = #{playerUuid} AND seenTime IS NULL
+            <if test="dataType != null">
+                AND EXISTS (
+                    SELECT 1 FROM Notification n
+                    WHERE n.notifTargetId = NotificationTarget.notifTargetId
+                      AND n.notifPayloadType = #{dataType}
+                )
+            </if>
+            </script>
             """)
     int markAllSeenForPlayer(@Param("playerUuid") @NotNull UUID playerUuid,
-                             @Param("seenTime") @NotNull Instant seenTime);
+                             @Param("seenTime") @NotNull Instant seenTime,
+                             @Param("dataType") @Nullable String dataType);
+
+    @Override
+    @Select("""
+            <script>
+            SELECT n.notifKey
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid = #{playerUuid} AND t.seenTime IS NOT NULL
+            <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+            </script>
+            """)
+    @NotNull List<String> selectSeenKeys(@Param("playerUuid") @NotNull UUID playerUuid,
+                                         @Param("dataType") @Nullable String dataType);
 
     @Override
     @Delete("""

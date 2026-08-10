@@ -87,15 +87,18 @@ public interface MariaNotificationMapper extends NotificationMapper {
 
     @Override
     @Select("""
+            <script>
             SELECT n.notifKey, n.notifScheduledTime, n.notifExpiryTime, n.notifPayloadType,
                    n.notifPayload, n.notifPriority, t.seenTime
             FROM Notification n
             INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
             WHERE t.playerUuid = #{playerId}
-              AND n.notifScheduledTime <= #{now}
-              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+              AND n.notifScheduledTime &lt;= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
+              <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
             ORDER BY n.notifScheduledTime DESC, n.notifPriority DESC, n.notifKey DESC
             LIMIT #{limit} OFFSET #{offset}
+            </script>
             """)
     @ConstructorArgs({
             @Arg(column = "notifKey", javaType = String.class),
@@ -109,30 +112,39 @@ public interface MariaNotificationMapper extends NotificationMapper {
     @NotNull List<InboxNotificationEntity> selectInboxPage(@Param("playerId") @NotNull UUID playerId,
                                                            @Param("now") @NotNull Instant now,
                                                            @Param("limit") int limit,
-                                                           @Param("offset") int offset);
+                                                           @Param("offset") int offset,
+                                                           @Param("dataType") @Nullable String dataType);
 
     @Override
     @Select("""
+            <script>
             SELECT COUNT(*)
             FROM Notification n
             INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
             WHERE t.playerUuid = #{playerId}
-              AND n.notifScheduledTime <= #{now}
-              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+              AND n.notifScheduledTime &lt;= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
+              <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+            </script>
             """)
-    int countInbox(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now);
+    int countInbox(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now,
+                   @Param("dataType") @Nullable String dataType);
 
     @Override
     @Select("""
+            <script>
             SELECT COUNT(*)
             FROM Notification n
             INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
             WHERE t.playerUuid = #{playerId}
               AND t.seenTime IS NULL
-              AND n.notifScheduledTime <= #{now}
-              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+              AND n.notifScheduledTime &lt;= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
+              <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+            </script>
             """)
-    int countUnread(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now);
+    int countUnread(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now,
+                    @Param("dataType") @Nullable String dataType);
 
     @Override
     @Insert("""

@@ -22,6 +22,7 @@ import io.github.md5sha256.playernotifications.core.database.mapper.Notification
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
 import io.github.md5sha256.playernotifications.core.serialize.JacksonPayloadSerializer;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -159,17 +160,17 @@ public class DefaultNotificationService implements NotificationService {
     private static final int MAX_PAGE_SIZE = 20;
 
     @Override
-    public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize) {
+    public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable String dataType) {
         int size = Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
         Instant now = Instant.now();
         try (SqlSessionWrapper wrapper = database.openSession()) {
             NotificationMapper mapper = wrapper.notificationMapper();
-            int totalEntries = mapper.countInbox(playerId, now);
+            int totalEntries = mapper.countInbox(playerId, now, dataType);
             int totalPages = Math.max(1, (totalEntries + size - 1) / size);
             int clampedPage = Math.clamp(page, 1, totalPages);
-            int unread = mapper.countUnread(playerId, now);
+            int unread = mapper.countUnread(playerId, now, dataType);
             List<InboxNotificationEntity> rows =
-                    mapper.selectInboxPage(playerId, now, size, (clampedPage - 1) * size);
+                    mapper.selectInboxPage(playerId, now, size, (clampedPage - 1) * size, dataType);
             List<InboxEntry> entries = new ArrayList<>(rows.size());
             for (InboxNotificationEntity row : rows) {
                 entries.add(new InboxEntry(
@@ -186,9 +187,9 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
-    public int unreadCount(@NotNull UUID playerId) {
+    public int unreadCount(@NotNull UUID playerId, @Nullable String dataType) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
-            return wrapper.notificationMapper().countUnread(playerId, Instant.now());
+            return wrapper.notificationMapper().countUnread(playerId, Instant.now(), dataType);
         }
     }
 
@@ -204,18 +205,37 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
-    public void markAllSeen(@NotNull UUID playerId) {
+    public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
-            wrapper.notificationTargetMapper().markAllSeenForPlayer(playerId, Instant.now());
+            wrapper.notificationTargetMapper().markAllSeenForPlayer(playerId, Instant.now(), dataType);
             wrapper.session().commit();
         }
     }
 
     @Override
-    public void dismissSeen(@NotNull UUID playerId) {
+    public void dismissSeen(@NotNull UUID playerId, @Nullable String dataType) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
-            wrapper.notificationTargetMapper().deleteSeenForPlayer(playerId);
+            NotificationTargetMapper targetMapper = wrapper.notificationTargetMapper();
+            if (dataType == null) {
+                targetMapper.deleteSeenForPlayer(playerId);
+            } else {
+                // A filtered DELETE would need a subquery reading Notification, which MariaDB refuses
+                // while trg_delete_targetless_notification writes it — the same constraint
+                // pruneOrphanedTargets already works around. Select the keys, then delete per key.
+                for (String key : targetMapper.selectSeenKeys(playerId, dataType)) {
+                    deleteNotificationTargetWithin(wrapper, key, playerId);
+                }
+            }
             wrapper.session().commit();
+        }
+    }
+
+    private void deleteNotificationTargetWithin(@NotNull SqlSessionWrapper wrapper, @NotNull String notificationKey,
+                                                 @NotNull UUID playerId) {
+        NotificationEntity entity = wrapper.notificationMapper().selectByKey(notificationKey);
+        if (entity != null) {
+            // Removing the last member triggers deletion of the notification itself (DB trigger).
+            wrapper.notificationTargetMapper().deleteMembers(entity.notifTargetId(), List.of(playerId));
         }
     }
 

@@ -37,15 +37,17 @@ public interface NotificationMapper {
      * at or before {@code now} and not yet expired, seen or not, newest first. The ordering carries a
      * {@code notifKey} tiebreak so it is a total order — without one, two notifications sharing a
      * timestamp could swap between page reads and appear twice or not at all.
+     *
+     * @param dataType when non-null, restricts the page to notifications of that data type
      */
     @NotNull List<InboxNotificationEntity> selectInboxPage(@NotNull UUID playerId, @NotNull Instant now,
-                                                           int limit, int offset);
+                                                           int limit, int offset, @Nullable String dataType);
 
     /** Counts what {@link #selectInboxPage} would return unpaged. */
-    int countInbox(@NotNull UUID playerId, @NotNull Instant now);
+    int countInbox(@NotNull UUID playerId, @NotNull Instant now, @Nullable String dataType);
 
     /** Counts the subset of {@link #countInbox} the player has not yet seen. */
-    int countUnread(@NotNull UUID playerId, @NotNull Instant now);
+    int countUnread(@NotNull UUID playerId, @NotNull Instant now, @Nullable String dataType);
 
     int insert(@NotNull NotificationEntity notification);
 

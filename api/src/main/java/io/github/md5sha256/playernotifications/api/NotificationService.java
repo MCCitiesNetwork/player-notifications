@@ -4,6 +4,7 @@ import io.github.md5sha256.playernotifications.api.category.NotificationCategory
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
@@ -64,10 +65,25 @@ public interface NotificationService {
      * into {@code 1..20}. Clamping rather than throwing means a stale UI button asking for page 9 of a
      * now-4-page inbox gets page 4 instead of an error screen.
      */
-    @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize);
+    default @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize) {
+        return inbox(playerId, page, pageSize, null);
+    }
+
+    /**
+     * The data-type-filtered form of {@link #inbox(UUID, int, int)}: {@code dataType} of {@code null}
+     * means unfiltered (identical to the three-argument form); a non-null value restricts every
+     * count and row to that data type, so a filtered view such as {@code /mail} agrees with its own
+     * paging rather than paging against the whole inbox.
+     */
+    @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable String dataType);
 
     /** The number of due, unexpired notifications the player has not yet seen. */
-    int unreadCount(@NotNull UUID playerId);
+    default int unreadCount(@NotNull UUID playerId) {
+        return unreadCount(playerId, null);
+    }
+
+    /** The data-type-filtered form of {@link #unreadCount(UUID)}; {@code null} means unfiltered. */
+    int unreadCount(@NotNull UUID playerId, @Nullable String dataType);
 
     /**
      * Marks one notification seen for one player. An unknown key, or a player the notification does not
@@ -77,14 +93,24 @@ public interface NotificationService {
     void markSeen(@NotNull String notificationKey, @NotNull UUID playerId);
 
     /** Marks every unread notification seen for the given player. */
-    void markAllSeen(@NotNull UUID playerId);
+    default void markAllSeen(@NotNull UUID playerId) {
+        markAllSeen(playerId, null);
+    }
+
+    /** The data-type-filtered form of {@link #markAllSeen(UUID)}; {@code null} means unfiltered. */
+    void markAllSeen(@NotNull UUID playerId, @Nullable String dataType);
 
     /**
      * Dismisses the player's already-seen notifications: their target rows are deleted, so a dismissed
      * notification can never reappear, and a notification left with no targets is disposed of by the
      * existing trigger. Unread notifications are untouched.
      */
-    void dismissSeen(@NotNull UUID playerId);
+    default void dismissSeen(@NotNull UUID playerId) {
+        dismissSeen(playerId, null);
+    }
+
+    /** The data-type-filtered form of {@link #dismissSeen(UUID)}; {@code null} means unfiltered. */
+    void dismissSeen(@NotNull UUID playerId, @Nullable String dataType);
 
     /**
      * Deletes target rows whose notification no longer exists. Notification deletes do not cascade into
