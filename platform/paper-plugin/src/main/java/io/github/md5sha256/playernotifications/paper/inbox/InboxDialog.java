@@ -20,7 +20,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * The inbox list screen: one row per notification, newest first, paged.
@@ -34,17 +33,14 @@ final class InboxDialog {
     private static final Component EMPTY = Component.text("Your inbox is empty.", NamedTextColor.GRAY);
     private static final Component MARK_ALL_LABEL = Component.text("Mark all read");
     private static final Component DISMISS_SEEN_LABEL = Component.text("Dismiss all read");
-    private static final Component PREFERENCES_LABEL = Component.text("Preferences");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     private final InboxRouter router;
     private final Component title;
-    private final Consumer<Player> openPreferences;
 
-    InboxDialog(@NotNull InboxRouter router, @NotNull Component title, @NotNull Consumer<Player> openPreferences) {
+    InboxDialog(@NotNull InboxRouter router, @NotNull Component title) {
         this.router = router;
         this.title = title;
-        this.openPreferences = openPreferences;
     }
 
     void show(@NotNull Player player, @NotNull InboxPage page) {
@@ -82,10 +78,9 @@ final class InboxDialog {
                             this.router.dismissSeen(player), DialogSupport.callbackOptions()))
                     .build());
         }
-        buttons.add(ActionButton.builder(PREFERENCES_LABEL)
-                .action(DialogAction.customClick((response, audience) ->
-                        this.openPreferences.accept(player), DialogSupport.callbackOptions()))
-                .build());
+        // Deliberately no Preferences button: the inbox is for reading, and preferences are reached
+        // by their own command. A jump into the preference screens from here left the player with no
+        // way back to what they were reading.
 
         DialogBase base = DialogBase.builder(this.title)
                 .body(body)

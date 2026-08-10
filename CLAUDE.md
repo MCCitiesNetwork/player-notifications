@@ -544,7 +544,10 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
 - **Paper UI:** `paper.inbox.InboxRouter` owns both screens, the per-player page cursor (dropped by
   `InboxQuitListener` on quit) and the async marshalling — the same shape as `PreferenceDialogRouter`,
   for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Dismiss all
-  read*, *Preferences*, Previous/Next); `InboxDetailDialog` shows one entry with *Dismiss* and *Back*,
+  read*, Previous/Next); **no inbox screen carries a *Preferences* button** — the inbox is for
+  reading, and preferences are reached by their own command; jumping into the preference screens from
+  a list left the player with no way back to what they were reading. `InboxDetailDialog` shows one
+  entry with *Dismiss* and *Back*,
   Back-doesn't-commit as in the preference editors. Opening a row marks it seen.
 - **`inbox-page-size` is clamped twice**, by `PluginSettings`/`paper.ui.PageBounds` and again by
   `DefaultNotificationService.inbox`. Deliberate: one is a UI helper, the other a public-API trust

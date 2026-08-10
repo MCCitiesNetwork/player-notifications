@@ -55,14 +55,13 @@ public final class InboxRouter {
                        @NotNull InboxEntryRenderer renderer,
                        int pageSize,
                        @Nullable String dataTypeFilter,
-                       @NotNull Component title,
-                       @NotNull Consumer<Player> openPreferences) {
+                       @NotNull Component title) {
         this.plugin = plugin;
         this.service = service;
         this.renderer = renderer;
         this.pageSize = pageSize;
         this.dataTypeFilter = dataTypeFilter;
-        this.listDialog = new InboxDialog(this, title, openPreferences);
+        this.listDialog = new InboxDialog(this, title);
         this.detailDialog = new InboxDetailDialog(this);
     }
 
