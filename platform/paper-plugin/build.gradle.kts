@@ -26,7 +26,6 @@ val featureModules: Configuration by configurations.creating {
 
 dependencies {
     // One line per adapter. Adding a new feature module means adding it here too.
-    featureModules(project(path = ":platform:essentials-adapter", configuration = "moduleJar"))
     featureModules(project(path = ":platform:discord-adapter", configuration = "moduleJar"))
 
     api(projects.api)
@@ -84,11 +83,6 @@ tasks {
             // through it — but DiscordSrvAccountProvider reports itself unavailable without it, so the
             // adapter cannot be exercised end to end on a server that lacks the plugin.
             github("DiscordSRV", "DiscordSRV", "v1.30.5", "DiscordSRV-Build-1.30.5.jar")
-
-            // EssentialsX, matching the compileOnly coordinate in platform:essentials-adapter.
-            // EssentialsMailProcessor resolves the Essentials plugin at runtime, so without this the
-            // essentials-mail adapter cannot be exercised end to end.
-            github("EssentialsX", "Essentials", "2.21.2", "EssentialsX-2.21.2.jar")
         }
     }
 }

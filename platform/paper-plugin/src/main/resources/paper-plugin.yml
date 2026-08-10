@@ -15,13 +15,6 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
-    # Same reasoning for the Essentials mail adapter module: its class loader is parent-first onto
-    # this plugin's, so without join-classpath the EssentialsX API is invisible to it even when
-    # EssentialsX is installed. Soft: only the essentials-adapter module ever touches it.
-    Essentials:
-      load: BEFORE
-      required: false
-      join-classpath: true
 
 permissions:
   playernotifications.command.preferences:
