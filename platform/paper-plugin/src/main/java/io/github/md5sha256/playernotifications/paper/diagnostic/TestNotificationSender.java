@@ -44,6 +44,13 @@ public final class TestNotificationSender {
             .append(Component.text(" to choose how test notifications reach you.", NamedTextColor.GRAY))
             .build();
 
+    /** What a globally muted player is told, naming the one way out. */
+    private static final Component USE_UNMUTE = Component.text()
+            .append(Component.text("Use ", NamedTextColor.GRAY))
+            .append(Component.text("/notifications unmute", NamedTextColor.WHITE))
+            .append(Component.text(" to receive notifications again.", NamedTextColor.GRAY))
+            .build();
+
     private final Plugin plugin;
     private final NotificationService service;
     private final NotificationPreferences preferences;
@@ -109,6 +116,12 @@ public final class TestNotificationSender {
      * failure rather than as the setting the player chose.
      */
     private @NotNull Component report(@NotNull UUID target) {
+        if (this.preferences.isMuted(target)) {
+            return Component.text("Your notifications are muted, so nothing was sent. ",
+                            NamedTextColor.YELLOW)
+                    .append(USE_UNMUTE);
+        }
+
         Set<String> media = this.preferences.preferredMedia(
                 target, TestNotificationPayload.TEST_DATA_TYPE);
 
