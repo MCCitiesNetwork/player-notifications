@@ -10,6 +10,8 @@ import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import io.github.md5sha256.playernotifications.paper.mail.MailSender;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assertions;
@@ -258,6 +260,34 @@ class EssentialsMailConverterTest {
 
         Assertions.assertEquals(new ConversionReport(1, 0, 0, 0), report);
         Assertions.assertEquals(1, service.enqueued.size());
+    }
+
+    @Test
+    @DisplayName("MiniMessage tags in imported mail are escaped, not left live")
+    void miniMessageTagsAreEscaped() {
+        RecordingService service = new RecordingService();
+
+        converter(service).convert(List.of(mail("<red>hi</red> <click:run_command:'/op me'>x</click>")));
+
+        String stored = ((MailPayload) service.enqueued.get(0).notifPayload()).message();
+        // Stored mail is MiniMessage source, parsed on read by MailRenderer. EssentialsX text was never
+        // gated by MailFormatting's permissions, so it must render as the literal text it always was.
+        Assertions.assertEquals("<red>hi</red> <click:run_command:'/op me'>x</click>",
+                PlainTextComponentSerializer.plainText()
+                        .serialize(MiniMessage.miniMessage().deserialize(stored)));
+    }
+
+    @Test
+    @DisplayName("a message that is nothing but escaped tags is still imported, not skipped as blank")
+    void tagOnlyMessageIsImported() {
+        RecordingService service = new RecordingService();
+
+        ConversionReport report = converter(service).convert(List.of(mail("<red>")));
+
+        Assertions.assertEquals(1, report.imported());
+        Assertions.assertEquals("<red>", PlainTextComponentSerializer.plainText()
+                .serialize(MiniMessage.miniMessage()
+                        .deserialize(((MailPayload) service.enqueued.get(0).notifPayload()).message())));
     }
 
     @Test

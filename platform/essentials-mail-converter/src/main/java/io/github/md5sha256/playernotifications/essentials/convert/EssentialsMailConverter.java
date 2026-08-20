@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.essentials.convert;
 
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.paper.mail.MailSender;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -73,7 +74,7 @@ public final class EssentialsMailConverter {
                 // No length check: MailPayload.MAX_MESSAGE_LENGTH is a /mail send input rule, not a
                 // storage constraint, and truncating archived correspondence would be silent data loss.
                 String key = this.mailSender.send(entry.sender(), entry.senderName(), entry.recipient(),
-                        entry.message(), entry.sentAt());
+                        asStoredMail(entry.message()), entry.sentAt());
                 imported++;
                 if (entry.read()) {
                     markSeen(key, entry);
@@ -85,6 +86,25 @@ public final class EssentialsMailConverter {
             }
         }
         return new ConversionReport(imported, skippedExpired, skippedBlank, failed);
+    }
+
+    /**
+     * Escapes imported text so it is stored as MiniMessage source that renders back to exactly the
+     * characters EssentialsX held.
+     *
+     * <p>Mail is stored as MiniMessage source and parsed on read by {@code MailRenderer}. Live mail
+     * reaches that state through {@code MailFormatting.sanitize}, which escapes every tag the sender
+     * lacked a permission for. Imported mail went through no such gate — it is arbitrary historical text
+     * from another plugin — so storing it raw would let a years-old message reading {@code <red>} or
+     * {@code <click:run_command:...>} become live formatting or a live click event on import. Every
+     * imported mail is therefore plain text by construction, which is also all EssentialsX mail ever
+     * was.
+     *
+     * <p>{@code escapeTags} rather than a sanitize-with-no-tags round trip: escaping cannot drop or
+     * rewrite content, and there is no permission decision here to model.
+     */
+    private static @NotNull String asStoredMail(@NotNull String message) {
+        return MiniMessage.miniMessage().escapeTags(message);
     }
 
     /**

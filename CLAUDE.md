@@ -616,9 +616,17 @@ The mapping rules, each a decision:
 | over `MailPayload.MAX_MESSAGE_LENGTH` | **imported whole**; 256 is a `/mail send` input rule, not a storage constraint, and truncating an archive is silent data loss |
 | `isRead()` | imported, then `markSeen` — otherwise an archive arrives as hundreds of "unread" mails |
 
-Colour codes are **stripped rather than converted**: `MailRenderer` builds bodies with
-`Component.text(...)` precisely so stored text cannot be interpreted as formatting, and converting on
-import would smuggle formatting into a channel designed to reject it.
+**Imported text is escaped, so it can only ever render as the plain text it was.** Mail is stored as
+MiniMessage source and parsed on read (see "Mail formatting"); live mail reaches that state through
+`MailFormatting.sanitize`, which escapes every tag the sender lacked a permission for. Imported mail
+went through no such gate — it is arbitrary historical text from another plugin — so
+`EssentialsMailConverter.asStoredMail` runs it through `MiniMessage#escapeTags` before storing.
+Without that, a years-old EssentialsX mail reading `<red>` or `<click:run_command:...>` would become
+live formatting, or a live click event, the moment it was imported. `escapeTags` rather than a
+sanitize-with-no-tags round trip: escaping cannot drop or rewrite content, and there is no permission
+decision to model here. Legacy `§` codes are stripped for the same reason one step earlier — and note
+`MailRenderer` *throws* on a `§` and falls back to literal text, so leaving them in would also make
+every legacy mail take the fallback path.
 
 **No arrival notice ever fires** — `MailNotifier` is not involved at any point. "You have new mail!"
 for a five-year-old message would be false, and once per imported mail it would flood every Discord DM
@@ -1059,7 +1067,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **PLACEHOLDER_COUNTS**
+Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 384 in total, all passing.
 
 ## Current state
 

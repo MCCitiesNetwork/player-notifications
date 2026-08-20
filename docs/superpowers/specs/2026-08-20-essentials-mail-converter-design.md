@@ -232,10 +232,14 @@ Not testable without a live server, and therefore on a manual checklist in the p
   with no expiry and will never be pruned. First-party mail has no expiry concept, and adding one for
   imported mail only would mean two classes of mail behaving differently in the same inbox. If mail
   expiry is ever added generally, this is the place to revisit.
-- **Colour and formatting are lost.** Legacy mail's `§` codes are stripped rather than converted to a
-  `Component`, because `MailRenderer` builds bodies with `Component.text(...)` specifically so that
-  player-supplied text cannot be interpreted as formatting. Converting on import would smuggle
-  formatting into a channel designed to reject it.
+- **Colour and formatting are lost, and that is now a safety property as well as a stylistic one.**
+  Legacy `§` codes are stripped, and the whole message is then run through `MiniMessage#escapeTags`
+  before storage. Mail is stored as MiniMessage source and parsed on read; live mail is gated by
+  `MailFormatting.sanitize`'s per-tag permissions, but imported mail passed through no such gate, so
+  storing it raw would let a years-old message reading `<red>` or `<click:run_command:...>` become live
+  formatting or a live click event on import. Every imported mail is plain text by construction — which
+  is all EssentialsX mail ever was. This was added when the branch was rebased onto the MiniMessage mail
+  work; before that, `MailRenderer` built bodies with `Component.text(...)` and raw storage was safe.
 - **No reverse direction.** Nothing writes back to EssentialsX, and there is no un-import.
 - **No per-player conversion.** The sweep is all-or-nothing. A `/essmailconvert confirm <player>` form
   is a plausible follow-up but would make the non-idempotency harder to reason about, since an
