@@ -7,6 +7,7 @@ import io.github.md5sha256.playernotifications.core.database.entity.PlayerNotifi
 import io.github.md5sha256.playernotifications.core.database.mapper.PlayerNotificationPreferenceMapper;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -157,6 +158,39 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
     public void resetAll(@NotNull UUID player) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             wrapper.playerNotificationPreferenceMapper().deleteByPlayer(player);
+            wrapper.session().commit();
+        }
+    }
+
+    /**
+     * Whether the player has the player-level mute flag set, backed by the {@code PlayerNotificationMute}
+     * table. Presence of the row is the mute.
+     */
+    @Override
+    public boolean isMuted(@NotNull UUID player) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            return wrapper.playerMuteMapper().countByPlayer(player) > 0;
+        }
+    }
+
+    /**
+     * Sets the player-level mute flag. Idempotent: muting an already-muted player just refreshes the
+     * stored timestamp. Leaves every per-{@code dataType} preference row untouched, so unmuting restores
+     * exactly what the player had.
+     */
+    public void mute(@NotNull UUID player) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            wrapper.playerMuteMapper().insertMute(player, Instant.now());
+            wrapper.session().commit();
+        }
+    }
+
+    /**
+     * Clears the player-level mute flag. A no-op (not an error) if the player was not muted.
+     */
+    public void unmute(@NotNull UUID player) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            wrapper.playerMuteMapper().deleteByPlayer(player);
             wrapper.session().commit();
         }
     }

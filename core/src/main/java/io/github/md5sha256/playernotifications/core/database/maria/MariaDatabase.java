@@ -5,6 +5,7 @@ import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaNotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaNotificationTargetMapper;
+import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaPlayerMuteMapper;
 import io.github.md5sha256.playernotifications.core.database.maria.mapper.MariaPlayerNotificationPreferenceMapper;
 import org.apache.ibatis.datasource.pooled.PooledDataSource;
 import org.apache.ibatis.mapping.Environment;
@@ -60,6 +61,7 @@ public class MariaDatabase implements Database {
         configuration.addMapper(MariaNotificationMapper.class);
         configuration.addMapper(MariaNotificationTargetMapper.class);
         configuration.addMapper(MariaPlayerNotificationPreferenceMapper.class);
+        configuration.addMapper(MariaPlayerMuteMapper.class);
         return new SqlSessionFactoryBuilder().build(configuration);
     }
 
