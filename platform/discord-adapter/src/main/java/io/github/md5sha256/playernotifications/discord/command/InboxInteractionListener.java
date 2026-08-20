@@ -106,7 +106,7 @@ public final class InboxInteractionListener extends ListenerAdapter {
                             this.messages.listing(view.page(player.get(), 1), parsed.surface()),
                             this.logger);
                 }
-                case "dismiss" -> {
+                case "delete" -> {
                     parsed.arg(0).ifPresent(key -> view.dismissByKey(player.get(), key));
                     InteractionSupport.edit(hook,
                             this.messages.listing(view.page(player.get(), 1), parsed.surface()),

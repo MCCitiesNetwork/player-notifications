@@ -102,10 +102,7 @@ public final class InboxMessageFactory {
         return new MessageCreateBuilder()
                 .addEmbeds(embed)
                 .addComponents(ActionRow.of(
-                        // The action in the id stays "dismiss" though the label reads Delete: an id
-                        // travels in messages already posted, and renaming it would answer every button
-                        // on a listing a player still has open with silence.
-                        Button.danger(ComponentIds.encode(surface, "dismiss", row.notifKey()), "Delete"),
+                        Button.danger(ComponentIds.encode(surface, "delete", row.notifKey()), "Delete"),
                         Button.secondary(ComponentIds.encode(surface, "unread", row.notifKey()),
                                 "Mark as unread"),
                         Button.secondary(ComponentIds.encode(surface, "page", "1"), "Back")))

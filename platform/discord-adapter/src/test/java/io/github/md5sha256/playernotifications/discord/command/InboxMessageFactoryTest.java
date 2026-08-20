@@ -130,9 +130,8 @@ class InboxMessageFactoryTest {
         Assertions.assertEquals("Title 1", message.getEmbeds().get(0).getTitle());
         Assertions.assertEquals("Body 1", message.getEmbeds().get(0).getDescription());
         Assertions.assertEquals("mail-1",
-                ComponentIds.parse(button(message, "dismiss").getCustomId()).orElseThrow().arg(0).orElseThrow(),
-                "the id keeps the old action so buttons on already-posted listings still work");
-        Assertions.assertEquals("Delete", button(message, "dismiss").getLabel());
+                ComponentIds.parse(button(message, "delete").getCustomId()).orElseThrow().arg(0).orElseThrow());
+        Assertions.assertEquals("Delete", button(message, "delete").getLabel());
         Assertions.assertEquals("mail-1",
                 ComponentIds.parse(button(message, "unread").getCustomId()).orElseThrow().arg(0).orElseThrow());
         Assertions.assertNotNull(button(message, "page"), "there is a way back to the listing");

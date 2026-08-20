@@ -788,13 +788,12 @@ player’s behalf. It is reached only from the *Mark as unread* button on a Disc
 **Every player-facing surface calls this "delete", not "dismiss".** The button in both in-game
 dialogs, the Discord button, and the `/mail delete` / `/notifications delete` subcommands all read
 Delete — and the button is red on both surfaces (`Button.danger` in Discord, a `NamedTextColor.RED`
-label in game), since it is the one control on those screens that destroys something. The word
+label in game), since it is the one control on those screens that destroys something. The Discord component id carries
+the action `delete` to match; a button on a listing posted before the rename stops working, which was
+judged not worth keeping the old word for a message that expires in fifteen minutes anyway. The word
 "dismiss" survives **below** the UI, in `dismissSeen`, `InboxView#dismissByKey`,
 `InboxRouter#dismissInChat` and the state named in the table above; renaming that vocabulary too would
-have touched the public `NotificationService` API for a wording change. One deliberate exception in the
-other direction: the Discord component id still carries the action `dismiss`, because ids travel in
-messages that are already posted and renaming it would answer every button on a listing a player still
-has open with silence.
+have touched the public `NotificationService` API for a wording change.
 
 Dismissal **deletes the target row** rather than setting a third timestamp: an absent row makes
 "never reappear" true without any query knowing the rule, and it reuses the existing
