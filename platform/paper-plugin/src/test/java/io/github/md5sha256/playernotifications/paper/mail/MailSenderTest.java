@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -155,6 +156,37 @@ class MailSenderTest {
         Assertions.assertEquals(senderId, payload.sender());
         Assertions.assertEquals("Steve", payload.senderName());
         Assertions.assertEquals("hello there", payload.message());
+    }
+
+    @Test
+    @DisplayName("the send-time overload stores that instant as the scheduled time")
+    void storesTheGivenSendTimeAsTheScheduledTime() {
+        RecordingService service = new RecordingService();
+        MailSender sender = new MailSender(service);
+        UUID senderId = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+        Instant sentAt = Instant.parse("2019-04-01T12:00:00Z");
+
+        sender.send(senderId, "Alex", recipient, "hello", sentAt);
+
+        TypedNotification<?> notification = service.enqueued.get(0);
+        Assertions.assertEquals(sentAt, notification.notifScheduledTime());
+        // Imported mail must still never expire, exactly as a live send does not.
+        Assertions.assertNull(notification.notifExpiryTime());
+    }
+
+    @Test
+    @DisplayName("the four-argument send stamps the current time")
+    void defaultSendUsesNow() {
+        RecordingService service = new RecordingService();
+        MailSender sender = new MailSender(service);
+        Instant before = Instant.now();
+
+        sender.send(UUID.randomUUID(), "Steve", UUID.randomUUID(), "hi");
+
+        Instant scheduled = service.enqueued.get(0).notifScheduledTime();
+        Assertions.assertFalse(scheduled.isBefore(before));
+        Assertions.assertFalse(scheduled.isAfter(Instant.now()));
     }
 
     @Test

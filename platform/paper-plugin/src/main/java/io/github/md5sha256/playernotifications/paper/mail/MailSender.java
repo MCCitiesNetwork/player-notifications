@@ -42,10 +42,25 @@ public final class MailSender {
      */
     public @NotNull String send(@NotNull UUID sender, @NotNull String senderName,
                                 @NotNull UUID recipient, @NotNull String message) {
+        return send(sender, senderName, recipient, message, Instant.now());
+    }
+
+    /**
+     * Enqueues one mail that was written at {@code sentAt} rather than now. Returns the notification key.
+     *
+     * <p>Exists for the EssentialsX mail converter, which imports correspondence written long before the
+     * import ran. {@code sentAt} becomes the notification's {@code notifScheduledTime}, which is the
+     * inbox's primary sort key — stamping imported mail with the import's own timestamp would pile a
+     * decade of correspondence on top of genuinely new mail, in whatever order the sweep happened to
+     * visit accounts.
+     */
+    public @NotNull String send(@NotNull UUID sender, @NotNull String senderName,
+                                @NotNull UUID recipient, @NotNull String message,
+                                @NotNull Instant sentAt) {
         String key = "mail-" + UUID.randomUUID();
         this.service.enqueueNotification(new TypedNotification<>(
                 key,
-                Instant.now(),
+                sentAt,
                 null,
                 new NotificationTarget(List.of(recipient)),
                 MailPayload.DATA_TYPE,
