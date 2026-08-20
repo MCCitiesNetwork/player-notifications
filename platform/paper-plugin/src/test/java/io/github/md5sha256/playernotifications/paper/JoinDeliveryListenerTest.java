@@ -7,6 +7,7 @@ import io.github.md5sha256.playernotifications.api.ResolvedNotification;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
+import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.jetbrains.annotations.NotNull;
@@ -14,6 +15,7 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -43,16 +45,38 @@ class JoinDeliveryListenerTest {
         return null;
     };
 
+    /** A {@link NotificationPreferences} whose {@code isMuted} is fixed and whose media do not matter here. */
+    private static NotificationPreferences fixedMute(boolean muted) {
+        return new NotificationPreferences() {
+            @Override
+            public @NotNull java.util.Set<String> preferredMedia(@NotNull UUID player) {
+                return java.util.Set.of();
+            }
+
+            @Override
+            public @NotNull java.util.Set<String> preferredMedia(@NotNull UUID player, @NotNull String dataType) {
+                return java.util.Set.of();
+            }
+
+            @Override
+            public boolean isMuted(@NotNull UUID player) {
+                return muted;
+            }
+        };
+    }
+
     @Test
     void reportsConstructedSettings() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 3L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, null, fixedMute(false), true, 3L);
         assertTrue(listener.enabled());
         assertEquals(3L, listener.delaySeconds());
     }
 
     @Test
     void reloadSettingsReplacesBoth() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 3L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, null, fixedMute(false), true, 3L);
         listener.reloadSettings(false, 30L);
         assertFalse(listener.enabled());
         assertEquals(30L, listener.delaySeconds());
@@ -60,21 +84,24 @@ class JoinDeliveryListenerTest {
 
     @Test
     void reloadSettingsClampsNegativeDelay() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 3L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, null, fixedMute(false), true, 3L);
         listener.reloadSettings(true, -5L);
         assertEquals(0L, listener.delaySeconds());
     }
 
     @Test
     void deliverDoesNothingWhenDisabled() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, false, 0L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, null, fixedMute(false), false, 0L);
         listener.deliver(UUID.randomUUID());
         assertEquals(0, this.supplierCalls.get());
     }
 
     @Test
     void deliverIsSkippedAfterAReloadTurnsItOff() {
-        JoinDeliveryListener listener = new JoinDeliveryListener(null, this.delivery, null, true, 30L);
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, null, fixedMute(false), true, 30L);
         listener.reloadSettings(false, 30L);
         listener.deliver(UUID.randomUUID());
         assertEquals(0, this.supplierCalls.get());
@@ -85,7 +112,7 @@ class JoinDeliveryListenerTest {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
                 null, this.delivery, new FakeUnreadCountService(Map.of(MailPayload.DATA_TYPE, 2)),
-                true, 0L);
+                fixedMute(false), true, 0L);
 
         var reminder = listener.mailReminder(player);
 
@@ -99,9 +126,47 @@ class JoinDeliveryListenerTest {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
                 null, this.delivery, new FakeUnreadCountService(Map.of(MailPayload.DATA_TYPE, 0)),
-                true, 0L);
+                fixedMute(false), true, 0L);
 
         assertNull(listener.mailReminder(player));
+    }
+
+    /** Builds the count map {@link FakeUnreadCountService} expects, since {@code Map.of} rejects a null key. */
+    private static Map<String, Integer> counts(int unfiltered, int mail) {
+        Map<String, Integer> counts = new HashMap<>();
+        counts.put(null, unfiltered);
+        counts.put(MailPayload.DATA_TYPE, mail);
+        return counts;
+    }
+
+    @Test
+    void announcementsAreEmptyWhenMuted() {
+        UUID player = UUID.randomUUID();
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, new FakeUnreadCountService(counts(3, 1)),
+                fixedMute(true), true, 0L);
+
+        assertTrue(listener.announcements(player).isEmpty());
+    }
+
+    @Test
+    void announcementsCarryBothLinesWhenUnmuted() {
+        UUID player = UUID.randomUUID();
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, new FakeUnreadCountService(counts(3, 1)),
+                fixedMute(false), true, 0L);
+
+        assertEquals(2, listener.announcements(player).size());
+    }
+
+    @Test
+    void announcementsAreEmptyWithNothingUnread() {
+        UUID player = UUID.randomUUID();
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                null, this.delivery, new FakeUnreadCountService(counts(0, 0)),
+                fixedMute(false), true, 0L);
+
+        assertTrue(listener.announcements(player).isEmpty());
     }
 
     /** Answers {@link NotificationService#unreadCount(UUID, String)} from a fixed data-type -> count map. */

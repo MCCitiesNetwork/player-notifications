@@ -50,8 +50,16 @@ public final class MailNotifier {
      * {@link NotificationPreferences#MUTED_MEDIUM}, and delivers the fixed notice to each medium's sink.
      * A sink with no registration is skipped; a sink that throws is caught and logged so it cannot
      * suppress the others.
+     *
+     * <p>Returns immediately, before resolving any media, when the recipient has the global mute set
+     * ({@link NotificationPreferences#isMuted(UUID)}) — a global mute means "do not interrupt me at all",
+     * and the mail itself is unaffected: it still lands in the inbox, unread, for {@code /mail} to show.
      */
     public void notifyArrival(@NotNull UUID recipient) {
+        if (this.preferences.isMuted(recipient)) {
+            this.logger.fine(() -> "Recipient " + recipient + " is muted; skipping the mail arrival notice");
+            return;
+        }
         Set<String> media = new LinkedHashSet<>(
                 this.preferences.preferredMedia(recipient, MailPayload.DATA_TYPE));
         media.remove(NotificationPreferences.MUTED_MEDIUM);

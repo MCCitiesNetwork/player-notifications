@@ -52,7 +52,7 @@ Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts`
   - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"discord-dm"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`. `"discord-channel-ping"` is **reserved but unimplemented** (see "Discord adapter").
   - `Notification` / `ResolvedNotification` — records for the persisted vs. target-resolved forms. `ResolvedNotification` holds a `NotificationTarget` (list of player UUIDs) and carries `notifPayloadType` (the registry data-type string) plus the `String` payload.
   - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or marked `MARK_SEEN` for that target. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with MARK_SEEN-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
-  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `discord-dm` → "Discord Dm"). `api.render.sink` holds `ChatSink` and `DialogSink`. The `"none"` medium backing an explicit mute is **not** a sink: it is the constant `NotificationPreferences.MUTED_MEDIUM`, which `RenderingProcessor` filters out of the resolved media set — see "Player commands".
+  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `discord-dm` → "Discord Dm"). `api.render.sink` holds `ChatSink` and `DialogSink`. The `"none"` medium backing an explicit **per-`dataType`** mute is **not** a sink: it is the constant `NotificationPreferences.MUTED_MEDIUM`, which `RenderingProcessor` filters out of the resolved media set. Separately, `NotificationPreferences` carries a `default boolean isMuted(UUID)` — the player-level do-not-disturb flag, orthogonal to the media matrix and enforced in `NotificationDelivery.deliver` rather than here. See "Global mute" and "Player commands".
   - **`api.category`** package — `NotificationCategoryRegistry` (`DefaultNotificationCategoryRegistry` the in-memory impl) lets module authors declare categories and claim `dataType`s under them in code, exactly like payload types/processors/renderers/sinks are registered. Exposed via `NotificationService#categoryRegistry()`. Merged at read time with `categories.yml` by `core.category.NotificationCategories` — see "Notification categories".
   - `InboxEntry` / `InboxPage` — one notification as it appears in a player's inbox (stored payload plus that viewer's `seenTime`, with `unread()`), and one page of them (`entries`, `page`, `pageSize`, `totalEntries`, `unreadCount`, `totalPages()` at least 1). See "Notification inbox".
   - **`api.link`** package — `AccountLinkProvider` (`providerKey`, a `default` title-casing `displayName()`
@@ -169,8 +169,10 @@ never pushed again. Consequences:
   (a player whose only preferred medium is permanently unreachable would otherwise sit on unread
   notifications until expiry with no operator-visible signal).
 - **`RenderingProcessor` drops `MUTED_MEDIUM` from the resolved set** and returns `RETAIN` if nothing
-  deliverable remains, leaving the notification **unread** in the inbox. A mute means "do not interrupt
-  me", not "do not tell me".
+  deliverable remains, leaving the notification **unread** in the inbox. This is the **per-`dataType`**
+  mute only; the player-level mute never reaches here, because `NotificationDelivery.deliver` returns
+  before dispatching (see "Global mute"). Either way a mute means "do not interrupt me", not "do not
+  tell me".
 - A sink throwing a `RuntimeException` is caught, logged, and treated as `UNREACHABLE`, so one broken
   sink cannot abort delivery to the others.
 
@@ -187,8 +189,12 @@ Design doc: `docs/superpowers/specs/2026-07-30-join-delivery-trigger-design.md`.
 `paper.JoinDeliveryListener` delivers a joining player's due, **unseen** notifications, gated by
 `deliver-on-join` and delayed by `join-delivery-delay-seconds` (see "Configuration"). It also sends one
 line naming the player's unread count and pointing at `/notifications`, **outside** the
-`deliver-on-join` gate and its delay — a player who turned push off still needs to know something
-arrived, which is the whole point of separating mute from the inbox. A zero count sends nothing. It is a
+`deliver-on-join` gate and its delay — a player who turned `deliver-on-join` off still needs to know
+something arrived, which is the whole point of separating push from the inbox. A zero count sends
+nothing, and so does a **player-level mute**: the announcement lines live behind a package-private
+`announcements(UUID) : List<Component>` seam that returns an empty list when
+`NotificationPreferences#isMuted` is true, which is also what makes the gate unit-testable without a
+live `Player`. The listener takes a `NotificationPreferences` for exactly that check. It is a
 **trigger** for the existing delivery loop, the same kind of thing as the async prune task — not a
 registry extension, which is why it lives in the Paper bootstrap and not behind
 `NotificationSinkRegistry`. A toggle inside `NotificationDelivery` was rejected: `core` has no Bukkit
@@ -422,7 +428,9 @@ deliver my mail", since mail is never delivered to begin with.
 It is **not** a notification — never enqueued, never stored (a stored notice would sit in the inbox as
 a second row announcing the first) — but it *is* routed through the ordinary sink machinery, so it
 reaches whatever media the recipient prefers for `mail`. `paper.mail.MailNotifier` is the whole of
-this: it resolves `preferences.preferredMedia(recipient, MailPayload.DATA_TYPE)`, drops
+this: it returns immediately when the recipient is **globally muted**
+(`NotificationPreferences#isMuted`), and otherwise resolves
+`preferences.preferredMedia(recipient, MailPayload.DATA_TYPE)`, drops
 `NotificationPreferences.MUTED_MEDIUM`, and delivers a fixed `RenderableNotification` to each medium's
 sink, catching and logging a throwing sink so one broken sink cannot suppress the others. It
 deliberately does **not** reuse `RenderingProcessor` — that class exists to render a *stored*
@@ -615,6 +623,52 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   pushed again. Chat is not idempotent, so that can duplicate a message. Accepted: the window is
   milliseconds and the alternative holds a transaction across a Discord round trip.
 
+## Global mute
+
+Design doc: `docs/superpowers/specs/2026-08-20-global-mute-design.md`.
+Plan: `docs/superpowers/plans/2026-08-20-global-mute.md`.
+
+A player-level do-not-disturb switch, **orthogonal to the per-`dataType` media matrix**. It suppresses
+every unsolicited push; it does not stop anything reaching the inbox. A muted player still accrues
+notifications, still has them stored unread, and still reads them through `/notifications` and `/mail`.
+
+- **API:** `NotificationPreferences#isMuted(UUID)`, a `default` method returning `false` — feature
+  modules are compiled separately against `api`, so a new abstract method would break them. Mutation
+  stays off the read interface: `DatabaseNotificationPreferences#mute(UUID)`/`unmute(UUID)`, the same
+  placement `resetAll` already had.
+- **Storage:** `PlayerNotificationMute(playerUuid BINARY(16) PK, mutedTime DATETIME NOT NULL)`,
+  migration `V3__player_mute.sql`. Presence of the row is the mute; `mutedTime` is read by nothing and
+  exists so an operator can see when a mute was set, and so a future *timed* mute has somewhere to land
+  without another migration. `mute` is idempotent (`ON DUPLICATE KEY UPDATE`); `unmute` on an unmuted
+  player is a no-op, not an error. A separate table rather than a `dataType = '*'`, `medium = 'none'`
+  preference row: that row already means "blanket fallback", so overloading it would make unmuting
+  indistinguishable from clearing a blanket preference — and would put the mute back inside the very set
+  this design pulled it out of.
+- **Enforcement — one gate, three push paths.** The delivery gate sits at the **top of
+  `NotificationDelivery.deliver(UUID, Instant)`**, before the due query: a muted target's notifications
+  are not decoded, not dispatched, and not marked seen. That placement is the whole point — `deliver` is
+  the single funnel every stored notification passes, so the mute applies uniformly to the renderer path
+  **and** to bespoke processors, which the old `MUTED_MEDIUM` filter inside `RenderingProcessor` could
+  never do. The other two are `MailNotifier#notifyArrival` and `JoinDeliveryListener`'s announcement
+  lines. `RenderingProcessor` was **not** changed; its `MUTED_MEDIUM` filter still serves the per-type
+  mute.
+- **Unmuting restores exactly what the player had**, because the flag never touches a preference row.
+  This replaced `muteAll`, which rewrote every known `dataType` to `{none}` and therefore had no
+  meaningful inverse.
+- **Commands and UI:** `/notifications mute` / `/notifications unmute`, both mirrored under
+  `preferences`; `PreferenceEditSession` stages the flag (`muted()`, `setMuted`, `stagedMuteChange()`,
+  counted by `dirtyCount()`), and `DatabaseNotificationPreferences.applyChanges` has a four-argument
+  overload taking that `@Nullable Boolean` so a staged mute and staged matrix edits commit in one
+  transaction. The three-argument form delegates with `null`.
+- **`/notifications test`** enqueues as usual but `deliver` no-ops, so `TestNotificationSender.report`
+  checks `isMuted` first and says so, naming `/notifications unmute`. The notification still lands in
+  the inbox — which is the correct outcome to observe.
+- **Deliberate consequences**, all recorded in the design doc's "Known limitations": a muted player is
+  told *nothing at all* (no arrival notice, no join-time unread count), so the inbox is their only
+  discovery path; the mute has no timer; unmuting does **not** back-deliver what accumulated while
+  muted, since a burst on unmute is precisely the interruption being avoided; and there is no admin
+  surface, so a stuck mute needs a manual `DELETE` against `PlayerNotificationMute`.
+
 ## Notification categories
 
 Design doc: `docs/superpowers/specs/2026-07-28-categorised-notification-preferences-design.md`.
@@ -668,10 +722,12 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
-- `/notifications preferences mute` — mutes every known `dataType` **immediately** (no staging).
-- `/notifications mute` — the one preference subcommand kept **also** at the top level, as a proxy onto
-  the same `PreferenceDialogRouter.muteImmediately` action the nested form calls (not a second
-  implementation), since muting everything is the operation most often wanted in a hurry.
+- `/notifications preferences mute` / `/notifications preferences unmute` — sets or clears the
+  player-level mute flag **immediately** (no staging).
+- `/notifications mute` / `/notifications unmute` — the two preference subcommands kept **also** at the
+  top level, as proxies onto the same `PreferenceDialogRouter.muteImmediately`/`unmuteImmediately`
+  actions the nested forms call (not second implementations), since muting and unmuting everything are
+  the operations most often wanted in a hurry.
 
 There is **no player-facing way back to the server default.** `/notifications preferences reset`, the
 root screen's "Reset all to server default", the category editor's "Use server default" and the
@@ -746,10 +802,11 @@ shared `PreferenceSessionManager` (`paper.preferences.session`):
   "Mute everything". It is **purely navigational**: it carries no Apply and no Discard at all, since
   every edit is made and committed on a screen of its own and a commit button here would belong to no
   particular edit. It still shows the `stagedSummary` line.
-- `MuteConfirmDialog` — the "Mute everything" confirmation, reached from the root button. Structurally
-  an editor with no inputs: Apply/Discard via `addEditorCommitButtons`, plus a Back that returns to the
-  root. The mute is staged by **Apply's commit callback**, not on the way in, so Back genuinely changes
-  nothing.
+- `MuteConfirmDialog` — the "Mute everything" / "Unmute everything" confirmation, reached from the root
+  button. One screen either way: title, intro and direction read `PreferenceEditSession#muted()`, and
+  the root button's own label flips with it. Structurally an editor with no inputs: Apply/Discard via
+  `addEditorCommitButtons`, plus a Back that returns to the root. The flip is staged by **Apply's commit
+  callback**, not on the way in, so Back genuinely changes nothing.
 - `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
   (grouped/labeled by its primary category for readability, and title-cased rather than shown as the
   raw registry key — see `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`), e.g. "which
@@ -807,8 +864,10 @@ out) via the category editor:
 | Explicit selection | one row per medium for that `dataType` | that set |
 | Explicit mute | a single `medium = 'none'` row for that `dataType` | `{none}` |
 
-A muted notification is **retained unread in the inbox**, not consumed: `RenderingProcessor` drops
-`NotificationPreferences.MUTED_MEDIUM` and returns `RETAIN`.
+A per-type-muted notification is **retained unread in the inbox**, not consumed: `RenderingProcessor`
+drops `NotificationPreferences.MUTED_MEDIUM` and returns `RETAIN`. **This table is the per-`dataType`
+axis only** — the player-level mute is a separate switch on top of it, and does not appear in these
+rows; see "Global mute".
 
 **Unconfigured is now a one-way state**: it is where a `dataType` starts, and nothing in the UI returns
 a `dataType` to it since the "server default" affordances were removed. The row remains because
@@ -820,18 +879,19 @@ registered by a module installed after they last edited their preferences.
 backwards for a player who muted a type in order to read it later. It survives as the constant
 `NotificationPreferences.MUTED_MEDIUM`, stored as a row rather than as zero rows because zero rows
 already means "has expressed no preference". It is excluded from every checkbox list, since checking
-nothing already says the same thing. `/notifications mute` and `MuteConfirmDialog` both write one `{none}` row per
-currently-known `dataType` **and** a blanket `ALL_DATA_TYPES_KEY` (`"*"`) `{none}` row, so a mute also
-covers any `dataType` registered by a module installed later, and never silently no-ops on a server with
-zero registered payload mappings.
+nothing already says the same thing. It is reached only through the medium/category editors, by
+emptying a `dataType`'s selection: **`/notifications mute` and `MuteConfirmDialog` no longer write
+`{none}` rows at all**, and `DatabaseNotificationPreferences.muteAll` (which used to write one per
+`dataType` plus a blanket `"*"` row) was deleted with the global mute. That approach destroyed the
+player's real choices, which is why there was no unmute to pair with it.
 
 Implementation notes:
 - `PreferenceSessionManager` expires a session after 15 minutes idle (`IDLE_TIMEOUT`) and
   `PreferenceQuitListener` drops it on `PlayerQuitEvent`; reopening after either starts fresh from the
   database.
-- `/notifications preferences mute` writes **immediately** and discards any open staged session with a
-  chat notice — the one deliberate asymmetry with `MuteConfirmDialog`'s staged "Mute everything", which
-  only takes effect on Apply.
+- `/notifications preferences mute`/`unmute` write **immediately** and discard any open staged session
+  with a chat notice — the one deliberate asymmetry with `MuteConfirmDialog`'s staged flip, which only
+  takes effect on Apply.
 - `DatabaseNotificationPreferences` does blocking JDBC while `Player#showDialog` must run on the main
   thread, so dialog loads/writes marshal onto the async scheduler and back (`PreferenceDialogs.withSession`).
 - **`paper.ui`** (`PageBounds`, `PagedDialogs`, `DialogSupport`) holds the paging arithmetic, the
@@ -849,9 +909,10 @@ Implementation notes:
 - Button callbacks use `ClickCallback.Options` with `uses(1)` and a one-hour lifetime; a dialog left
   open past that has inert buttons and must be reopened.
 - **Known quirk, now also a deliberate feature:** an explicitly registered `NotificationProcessor` wins
-  the dispatch-precedence rule and bypasses preferences entirely (categories were never part of the
-  dispatch path, even before this quirk existed), so a muted player would still receive its
-  notifications. There is again an in-tree instance of this — `mail`'s RETAIN processor (see "Mail") —
+  the dispatch-precedence rule and bypasses **per-`dataType`** preferences entirely (categories were
+  never part of the dispatch path, even before this quirk existed), so a player who muted one type
+  would still receive its notifications. It does **not** escape the player-level mute, which is checked
+  in `NotificationDelivery.deliver` before dispatch — see "Global mute". There is again an in-tree instance of this — `mail`'s RETAIN processor (see "Mail") —
   but there it is intentional: mail is never sent through any medium at all, so there is nothing for a
   mute to bypass, and the `mail`-keyed preference rows the processor skips are reused to route the
   arrival *notice* instead. The quirk remains reachable, and still a footgun, for any other
@@ -893,12 +954,13 @@ MyBatis over MariaDB, structured like a smaller version of the sibling `realty` 
 - `database.mapper` — vendor-neutral mapper interfaces (`NotificationMapper`, `NotificationTargetMapper`, `PlayerNotificationPreferenceMapper`).
 - `database.maria` — `MariaDatabase` (builds the `SqlSessionFactory`, registers mappers + the `UUIDAsBin16Handler` UUID↔`BINARY(16)` type handler), `MariaSqlSession`, `MariaSchemaMigrator`.
 - `database.maria.mapper` — MariaDB mappers with `@Select`/`@Insert`/`@Delete` (and `<script>`/`<foreach>` for batch ops), extending the neutral interfaces.
-- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Two steps today: `V1__maria_initial_schema.sql` and `V2__notification_inbox.sql` (`seenTime` plus its index). Migrations that predate V1 were collapsed into it, back when the project had no data to preserve; **that is no longer the rule** — V2 was layered precisely because there is now deployed data, and further changes must be layered too. `SchemaUpgradeTest` covers the already-at-V1 path, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call, and asserts `seenTime` exists and `MAX(version) = 2`. **A feature module can own its own migrations** without joining this list — see "Module system".
+- `database.migration.MigrationStep` + `core/src/main/resources/sql/migrations/V*.sql` — the migrator tracks applied versions in a `schema_version` table and runs each script once. **Adding a migration means adding both the `V*.sql` file and a `MigrationStep` entry to `MariaSchemaMigrator.DEFAULT_MIGRATIONS`** — that list is hardcoded, not discovered from the classpath. Three steps today: `V1__maria_initial_schema.sql`, `V2__notification_inbox.sql` (`seenTime` plus its index) and `V3__player_mute.sql` (the `PlayerNotificationMute` table). Migrations that predate V1 were collapsed into it, back when the project had no data to preserve; **that is no longer the rule** — V2 was layered precisely because there is now deployed data, and further changes must be layered too. `SchemaUpgradeTest` covers the already-at-V1 path, which `AbstractDatabaseTest` cannot: it migrates an empty schema with the whole chain in one call, and asserts `seenTime` and `PlayerNotificationMute` exist and `MAX(version) = 3`. **A feature module can own its own migrations** without joining this list — see "Module system".
 
 Schema (`V1__maria_initial_schema.sql`), three tables:
 - `NotificationTarget(notifTargetId INT, playerUuid BINARY(16), seenTime DATETIME NULL, PRIMARY KEY(notifTargetId, playerUuid))` — a target group is the set of rows sharing a `notifTargetId`. `seenTime` (added by V2, indexed with `playerUuid`) is that member's read marker: `NULL` is unread, set is seen, and a deleted row is dismissed. See "Notification inbox". New group ids come from `MAX(id)+1` allocated inside the enqueue transaction.
 - `Notification(notifKey PK, notifScheduledTime, notifExpiryTime NULL, notifTargetId, notifPayloadType, notifPayload JSON, notifPriority)` with indexes on `notifTargetId`, `notifPayloadType`, `notifScheduledTime`, `notifExpiryTime`.
 - A trigger `trg_delete_targetless_notification` (`AFTER DELETE ON NotificationTarget`) deletes a notification once its target group has no remaining members. It is a **single-statement trigger body** (no `BEGIN…END`) because `MariaSchemaMigrator` splits scripts on `;`.
+- `PlayerNotificationMute(playerUuid BINARY(16) PRIMARY KEY, mutedTime DATETIME NOT NULL)` — added by V3. One row per muted player; presence is the mute. See "Global mute".
 - `PlayerNotificationPreference(playerUuid BINARY(16), dataType VARCHAR(64), medium VARCHAR(64), PRIMARY KEY(playerUuid, dataType, medium))` — one row per preferred medium **per `dataType`**, so a player's preference is set-valued within each `dataType` (`chat` + `discord-dm` for `mail` is two rows). See "Notification categories" for how `dataType` and the reserved key `*` (`ALL_DATA_TYPES_KEY`) resolve, and how the separate, display-only category concept relates.
 
 `player-notifications.drawio` is the design source for the schema (note it uses conceptual names like `notif_key`; the DDL uses camelCase columns) — it predates the `dataType` column (originally `category`) and has not been updated.
@@ -910,7 +972,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **100 tests in `:core:test`, 30 in `:api:test`, 93 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 345 in total, all passing.
+Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 101 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 361 in total, all passing.
 
 ## Current state
 
@@ -985,6 +1047,15 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   granted, a non-op's `<click>` still arriving literal, an op's arriving live, and a tag-only message
   rejected as blank). Everything underneath is
   unit- or Testcontainers-tested — see "Mail" and "Mail formatting" for the list.
+- **The global mute's player-facing surface is unverified — nothing about it has run on a live
+  server.** `/notifications mute|unmute` (both the top-level and `preferences` forms), the root
+  dialog's state-dependent button label, `MuteConfirmDialog`'s staged flip, the suppressed join and
+  mail-arrival lines, and `/notifications test`'s muted reply all need
+  `:platform:paper-plugin:runServer`. **The 12-item manual checklist in
+  `docs/superpowers/plans/2026-08-20-global-mute.md` has not been run.** Everything underneath is
+  covered: `PlayerMuteTest` and `MutedDeliveryTest` (against a real MariaDB — including a case proving
+  a *bespoke processor* is gated too), plus `MailNotifierTest`, `JoinDeliveryListenerTest` and
+  `PreferenceEditSessionTest`.
 - **Inbox size is unbounded** and **seen is per player, not per medium** — both accepted; see the design
   doc's "Known limitations".
 - **The orphaned-target leak is fixed.** `deleteExpired`/`deleteByKey`/`deleteByPayloadType`/

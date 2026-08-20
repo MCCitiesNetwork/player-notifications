@@ -34,9 +34,10 @@ import java.util.function.Supplier;
  * unlike its staged root-screen equivalent. Nesting them keeps the top level clear for the management
  * UI's own verbs, which would otherwise collide with a name like {@code mute}.
  *
- * <p>{@code /notifications mute} survives at the top level as a proxy onto
- * {@link PreferenceDialogRouter#muteImmediately} — the same action the nested form invokes, not a second
- * implementation — because muting everything is the one preference operation frequently wanted in a hurry.
+ * <p>{@code /notifications mute} and its mirror {@code /notifications unmute} survive at the top level as
+ * proxies onto {@link PreferenceDialogRouter#muteImmediately}/{@link PreferenceDialogRouter#unmuteImmediately}
+ * — the same actions the nested forms invoke, not second implementations — because muting and unmuting
+ * everything are the preference operations most often wanted in a hurry.
  *
  * <p>{@code link}/{@code unlink} address account-link providers registered by feature modules.
  * {@code reload} is admin-only (a separate permission) and works from any sender, console included, since
@@ -110,8 +111,10 @@ public final class NotificationsCommand {
                         .executes(context -> run(context, router::openRoot))
                         .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))
                         .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
-                        .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately))))
+                        .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
+                        .then(Commands.literal("unmute").executes(context -> run(context, router::unmuteImmediately))))
                 .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
+                .then(Commands.literal("unmute").executes(context -> run(context, router::unmuteImmediately)))
                 .then(linkNode(linkDispatcher, asyncExecutor))
                 .then(unlinkNode(linkDispatcher, asyncExecutor))
                 .then(Commands.literal("test")

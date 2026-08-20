@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.paper;
 
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
+import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -13,6 +14,8 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -33,6 +36,7 @@ public final class JoinDeliveryListener implements Listener {
     private final Plugin plugin;
     private final Supplier<NotificationDelivery> delivery;
     private final NotificationService service;
+    private final NotificationPreferences preferences;
 
     // Mutable rather than final, and volatile, so a reload applies to the already-registered listener
     // — the same idiom as DatabaseNotificationPreferences.reloadDefaultMedia and
@@ -48,11 +52,13 @@ public final class JoinDeliveryListener implements Listener {
     public JoinDeliveryListener(@NotNull Plugin plugin,
                                 @NotNull Supplier<NotificationDelivery> delivery,
                                 @NotNull NotificationService service,
+                                @NotNull NotificationPreferences preferences,
                                 boolean enabled,
                                 long delaySeconds) {
         this.plugin = plugin;
         this.delivery = delivery;
         this.service = service;
+        this.preferences = preferences;
         this.enabled = enabled;
         this.delaySeconds = Math.max(0L, delaySeconds);
     }
@@ -118,33 +124,53 @@ public final class JoinDeliveryListener implements Listener {
     }
 
     /**
-     * Sends the joining player one line naming their unread count, and a separate mail reminder line if
-     * they have unread mail — or nothing for either when there is none. A failure is logged and swallowed
-     * for the same reason {@link #deliver(UUID)} does so.
-     *
-     * <p>The mail line is a <em>reminder</em>, not the arrival notice: a player who read a Discord DM
-     * about new mail last week and has not logged in since should still be told on arrival that mail is
-     * waiting. It sits alongside the unread-count line, outside the {@code deliver-on-join} gate and its
-     * delay, for the same reason that line already does — a player who turned push off still needs to be
-     * told something arrived.
+     * Sends the joining player every line {@link #announcements(UUID)} returns. A failure is logged and
+     * swallowed for the same reason {@link #deliver(UUID)} does so.
      */
     private void announceUnread(@NotNull Player player) {
         try {
-            int unread = this.service.unreadCount(player.getUniqueId());
-            if (unread != 0 && player.isOnline()) {
-                player.sendMessage(Component.text("You have " + unread
-                                + (unread == 1 ? " unread notification. " : " unread notifications. "),
-                                NamedTextColor.YELLOW)
-                        .append(Component.text("Use /notifications to read them.", NamedTextColor.GRAY)));
-            }
-            Component mailReminder = mailReminder(player.getUniqueId());
-            if (mailReminder != null && player.isOnline()) {
-                player.sendMessage(mailReminder);
+            for (Component line : announcements(player.getUniqueId())) {
+                if (player.isOnline()) {
+                    player.sendMessage(line);
+                }
             }
         } catch (RuntimeException ex) {
             this.plugin.getLogger().log(Level.WARNING,
                     "Failed to read the unread count for " + player.getUniqueId(), ex);
         }
+    }
+
+    /**
+     * The join-time announcement lines for the given player: the unread-count line and a separate mail
+     * reminder line if they have unread mail — or an empty list when the player is globally muted, or when
+     * there is nothing to say. A package-private seam so the message logic (including the mute gate) is
+     * testable without a live {@code Player}.
+     *
+     * <p>The mail line is a <em>reminder</em>, not the arrival notice: a player who read a Discord DM
+     * about new mail last week and has not logged in since should still be told on arrival that mail is
+     * waiting. Both lines sit outside the {@code deliver-on-join} gate and its delay, for the same reason
+     * they already did — a player who turned push off still needs to be told something arrived. A global
+     * mute means "do not interrupt me at all", so it suppresses both — the player still finds everything
+     * unread in the inbox whenever they choose to look.
+     */
+    @NotNull
+    List<Component> announcements(@NotNull UUID playerId) {
+        if (this.preferences.isMuted(playerId)) {
+            return List.of();
+        }
+        List<Component> lines = new ArrayList<>();
+        int unread = this.service.unreadCount(playerId);
+        if (unread != 0) {
+            lines.add(Component.text("You have " + unread
+                            + (unread == 1 ? " unread notification. " : " unread notifications. "),
+                            NamedTextColor.YELLOW)
+                    .append(Component.text("Use /notifications to read them.", NamedTextColor.GRAY)));
+        }
+        Component mailReminder = mailReminder(playerId);
+        if (mailReminder != null) {
+            lines.add(mailReminder);
+        }
+        return lines;
     }
 
     /**

@@ -53,6 +53,11 @@ class MailNotifierTest {
 
     /** A fixed set of preferred media, ignoring player and data type. */
     private static NotificationPreferences fixedMedia(Set<String> media) {
+        return fixedMedia(media, false);
+    }
+
+    /** A fixed set of preferred media and a fixed global-mute answer, ignoring player and data type. */
+    private static NotificationPreferences fixedMedia(Set<String> media, boolean muted) {
         return new NotificationPreferences() {
             @Override
             public @org.jetbrains.annotations.NotNull Set<String> preferredMedia(@org.jetbrains.annotations.NotNull UUID player) {
@@ -63,6 +68,11 @@ class MailNotifierTest {
             public @org.jetbrains.annotations.NotNull Set<String> preferredMedia(
                     @org.jetbrains.annotations.NotNull UUID player, @org.jetbrains.annotations.NotNull String dataType) {
                 return media;
+            }
+
+            @Override
+            public boolean isMuted(@org.jetbrains.annotations.NotNull UUID player) {
+                return muted;
             }
         };
     }
@@ -104,6 +114,19 @@ class MailNotifierTest {
         sinks.registerSink(chat);
         NotificationPreferences preferences =
                 fixedMedia(Set.of(NotificationPreferences.MUTED_MEDIUM));
+
+        MailNotifier notifier = new MailNotifier(sinks, preferences, LOGGER);
+        notifier.notifyArrival(UUID.randomUUID());
+
+        assertTrue(chat.received.isEmpty());
+    }
+
+    @Test
+    void mutedRecipientGetsNoNotice() {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
+        sinks.registerSink(chat);
+        NotificationPreferences preferences = fixedMedia(Set.of("chat"), true);
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, LOGGER);
         notifier.notifyArrival(UUID.randomUUID());

@@ -37,4 +37,15 @@ public interface NotificationPreferences {
         return preferredMedia(player);
     }
 
+    /**
+     * Whether the player has muted every notification. A muted player is still enqueued to, and still
+     * reads their notifications through the inbox; nothing is pushed to them. Orthogonal to the
+     * per-{@code dataType} media set: unmuting restores exactly the preferences the player had before,
+     * since a global mute never touches a preference row. The default implementation always returns
+     * {@code false}, so existing implementations (including lambdas) keep compiling unchanged.
+     */
+    default boolean isMuted(@NotNull UUID player) {
+        return false;
+    }
+
 }

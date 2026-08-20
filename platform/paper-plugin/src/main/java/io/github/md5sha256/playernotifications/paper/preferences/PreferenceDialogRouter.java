@@ -152,10 +152,11 @@ public final class PreferenceDialogRouter {
      */
     void apply(@NotNull Player player, @NotNull PreferenceEditSession session, @NotNull Runnable onSaved) {
         Map<String, Set<String>> explicit = session.explicitChanges();
+        Boolean mutedChange = session.stagedMuteChange();
         UUID uuid = player.getUniqueId();
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             try {
-                this.preferences.applyChanges(uuid, explicit, Set.of());
+                this.preferences.applyChanges(uuid, explicit, Set.of(), mutedChange);
             } catch (RuntimeException ex) {
                 this.plugin.getLogger().warning(
                         "Failed to apply notification preferences for " + uuid + ": " + ex.getMessage());
@@ -184,25 +185,44 @@ public final class PreferenceDialogRouter {
     }
 
     /**
-     * Immediately mutes every known data type for the player and discards any staged, unapplied session
-     * — the one deliberate asymmetry with {@link MuteConfirmDialog}, which stages the same mute and
-     * requires an Apply.
+     * Immediately sets the player-level mute flag and discards any staged, unapplied session — the one
+     * deliberate asymmetry with {@link MuteConfirmDialog}, which stages the same mute and requires an
+     * Apply. Leaves every per-{@code dataType} preference row untouched, so unmuting restores exactly
+     * what the player had.
      */
     public void muteImmediately(@NotNull Player player) {
+        setMutedImmediately(player, true, "All notifications muted.");
+    }
+
+    /**
+     * Clears the player-level mute flag and discards any staged, unapplied session, the mirror of
+     * {@link #muteImmediately}.
+     */
+    public void unmuteImmediately(@NotNull Player player) {
+        setMutedImmediately(player, false, "Notifications unmuted.");
+    }
+
+    private void setMutedImmediately(@NotNull Player player, boolean muted, @NotNull String successMessage) {
         UUID uuid = player.getUniqueId();
         boolean hadSession = this.sessions.get(uuid).isPresent();
-        Set<String> dataTypes = this.dataTypeRegistry.dataTypes();
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             try {
-                this.preferences.muteAll(uuid, dataTypes);
+                if (muted) {
+                    this.preferences.mute(uuid);
+                } else {
+                    this.preferences.unmute(uuid);
+                }
             } catch (RuntimeException ex) {
-                this.plugin.getLogger().warning("Failed to mute notifications for " + uuid + ": " + ex.getMessage());
+                this.plugin.getLogger().warning(
+                        "Failed to " + (muted ? "mute" : "unmute") + " notifications for " + uuid + ": "
+                                + ex.getMessage());
                 PreferenceDialogs.message(this.plugin, player, Component.text(
-                        "Could not mute your notifications; please try again.", NamedTextColor.RED));
+                        "Could not " + (muted ? "mute" : "unmute")
+                                + " your notifications; please try again.", NamedTextColor.RED));
                 return;
             }
             this.sessions.drop(uuid);
-            Component message = Component.text("All notifications muted.", NamedTextColor.YELLOW);
+            Component message = Component.text(successMessage, NamedTextColor.YELLOW);
             if (hadSession) {
                 message = message.append(Component.text(" Any unsaved preference changes were discarded.",
                         NamedTextColor.GRAY));

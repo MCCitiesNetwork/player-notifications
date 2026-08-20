@@ -15,7 +15,11 @@ class PreferenceEditSessionTest {
     private static final Instant NOW = Instant.now();
 
     private static PreferenceEditSession newSession(Map<String, Set<String>> initial) {
-        return new PreferenceEditSession(PLAYER, initial, NOW);
+        return new PreferenceEditSession(PLAYER, initial, false, NOW);
+    }
+
+    private static PreferenceEditSession newSession(Map<String, Set<String>> initial, boolean initiallyMuted) {
+        return new PreferenceEditSession(PLAYER, initial, initiallyMuted, NOW);
     }
 
     @Test
@@ -87,5 +91,45 @@ class PreferenceEditSessionTest {
         session.setDataTypeMedia("economy", Set.of("discord"), later);
 
         Assertions.assertFalse(session.isExpired(later.plus(Duration.ofMinutes(10)), Duration.ofMinutes(15)));
+    }
+
+    @Test
+    void mutedSeedsFromTheConstructor() {
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")), true);
+
+        Assertions.assertTrue(session.muted());
+        Assertions.assertNull(session.stagedMuteChange());
+        Assertions.assertFalse(session.isDirty());
+    }
+
+    @Test
+    void stagingAMuteMarksTheSessionDirty() {
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")), false);
+
+        session.setMuted(true, NOW);
+
+        Assertions.assertTrue(session.muted());
+        Assertions.assertEquals(Boolean.TRUE, session.stagedMuteChange());
+        Assertions.assertTrue(session.isDirty());
+        Assertions.assertEquals(1, session.dirtyCount());
+    }
+
+    @Test
+    void stagingAMuteLeavesTheMatrixAlone() {
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")), false);
+
+        session.setMuted(true, NOW);
+
+        Assertions.assertEquals(Map.of(), session.explicitChanges());
+        Assertions.assertEquals(Set.of("chat"), session.mediaFor("economy"));
+    }
+
+    @Test
+    void stagingAnUnmuteIsStagedToo() {
+        PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")), true);
+
+        session.setMuted(false, NOW);
+
+        Assertions.assertEquals(Boolean.FALSE, session.stagedMuteChange());
     }
 }

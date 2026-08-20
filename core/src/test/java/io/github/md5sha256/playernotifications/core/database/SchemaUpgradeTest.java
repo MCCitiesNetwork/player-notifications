@@ -58,7 +58,7 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
         MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS,
                 MariaSchemaMigrator.defaultMigrations(), LOGGER);
 
-        Assertions.assertEquals(List.of(1, 2), appliedVersions());
+        Assertions.assertEquals(List.of(1, 2, 3), appliedVersions());
         // Core owns no Discord schema: that table belongs to the Discord adapter's own migrator, tracked
         // in its own discord_schema_version chain. If this ever passes, core has grown a module's table.
         Assertions.assertFalse(tableExists("DiscordAccountLink"));
@@ -80,7 +80,18 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
             Assertions.assertTrue(cols.next());
             Assertions.assertEquals(1, cols.getInt(1));
         }
-        Assertions.assertEquals(List.of(1, 2), appliedVersions());
+        Assertions.assertEquals(List.of(1, 2, 3), appliedVersions());
+    }
+
+    @Test
+    @DisplayName("migrating an empty schema lands on V3 with PlayerNotificationMute present")
+    void migratesEmptySchemaToVersionThreeWithPlayerNotificationMute() throws Exception {
+        MariaSchemaMigrator.migrate(jdbcUrl(), ROOT_USER, ROOT_PASSWORD, MIGRATIONS,
+                MariaSchemaMigrator.defaultMigrations(), LOGGER);
+
+        Assertions.assertTrue(tableExists("PlayerNotificationMute"));
+        Assertions.assertEquals(List.of(1, 2, 3), appliedVersions());
+        Assertions.assertEquals(3, appliedVersions().stream().max(Integer::compareTo).orElseThrow());
     }
 
     @Test
@@ -93,7 +104,7 @@ class SchemaUpgradeTest extends AbstractDatabaseTest {
 
         // A second application would violate schema_version's primary key long before this assertion, so
         // this also guards the "already applied" skip itself.
-        Assertions.assertEquals(List.of(1, 2), appliedVersions());
+        Assertions.assertEquals(List.of(1, 2, 3), appliedVersions());
     }
 
     @Test

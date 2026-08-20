@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.paper.preferences.session;
 
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -26,6 +27,8 @@ public final class PreferenceEditSession {
     private final UUID player;
     private final Map<String, Set<String>> media;
     private final Set<String> dirtyDataTypes = new HashSet<>();
+    private boolean muted;
+    private Boolean stagedMute;
     private Instant lastTouched;
 
     /**
@@ -35,11 +38,25 @@ public final class PreferenceEditSession {
     public PreferenceEditSession(@NotNull UUID player,
                                  @NotNull Map<String, Set<String>> initialEffectiveMedia,
                                  @NotNull Instant now) {
+        this(player, initialEffectiveMedia, false, now);
+    }
+
+    /**
+     * @param initialEffectiveMedia the matrix as it would currently apply, per data type (exact rows,
+     *                              else the {@code *} fallback, else the configured default)
+     * @param initiallyMuted        the player-level mute flag as currently stored, seeded clean (no
+     *                              staged change) — the global mute is orthogonal to the media matrix
+     */
+    public PreferenceEditSession(@NotNull UUID player,
+                                 @NotNull Map<String, Set<String>> initialEffectiveMedia,
+                                 boolean initiallyMuted,
+                                 @NotNull Instant now) {
         this.player = player;
         this.media = new HashMap<>();
         for (Map.Entry<String, Set<String>> entry : initialEffectiveMedia.entrySet()) {
             this.media.put(entry.getKey(), new TreeSet<>(entry.getValue()));
         }
+        this.muted = initiallyMuted;
         this.lastTouched = now;
     }
 
@@ -79,12 +96,39 @@ public final class PreferenceEditSession {
         setDataTypeMedia(dataType, current, now);
     }
 
+    /**
+     * The player-level do-not-disturb flag as it currently stands in this session — the seeded value,
+     * or the staged one once {@link #setMuted} has been called.
+     */
+    public boolean muted() {
+        return this.muted;
+    }
+
+    /**
+     * The staged change to the global mute flag, or {@code null} while nothing has been staged this
+     * session. Orthogonal to {@link #explicitChanges()}: muting does not touch the media matrix, so
+     * unmuting restores exactly what was configured per data type.
+     */
+    public @Nullable Boolean stagedMuteChange() {
+        return this.stagedMute;
+    }
+
+    /**
+     * Stages a change to the global mute flag. Marks the session dirty independently of any data type
+     * edit — {@link #dirtyCount()} counts it as one more pending change.
+     */
+    public void setMuted(boolean muted, @NotNull Instant now) {
+        this.muted = muted;
+        this.stagedMute = muted;
+        this.lastTouched = now;
+    }
+
     public boolean isDirty() {
-        return !this.dirtyDataTypes.isEmpty();
+        return dirtyCount() > 0;
     }
 
     public int dirtyCount() {
-        return this.dirtyDataTypes.size();
+        return this.dirtyDataTypes.size() + (this.stagedMute == null ? 0 : 1);
     }
 
     @NotNull
