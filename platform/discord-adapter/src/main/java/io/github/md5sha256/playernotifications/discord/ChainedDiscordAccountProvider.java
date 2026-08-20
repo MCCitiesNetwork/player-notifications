@@ -99,6 +99,29 @@ public final class ChainedDiscordAccountProvider implements DiscordAccountProvid
     }
 
     @Override
+    public @NotNull Optional<UUID> playerFor(long discordId) {
+        for (DiscordAccountProvider delegate : this.delegates) {
+            if (!delegate.isAvailable()) {
+                continue;
+            }
+            Optional<UUID> player;
+            try {
+                player = delegate.playerFor(discordId);
+            } catch (RuntimeException exception) {
+                this.logger.log(Level.WARNING, "Discord link provider '" + delegate.providerKey()
+                                + "' failed to resolve Discord user " + discordId
+                                + "; trying the next provider",
+                        exception);
+                continue;
+            }
+            if (player.isPresent()) {
+                return player;
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public @NotNull Optional<Long> discordIdFor(@NotNull UUID playerUuid) {
         for (DiscordAccountProvider delegate : this.delegates) {
             if (!delegate.isAvailable()) {

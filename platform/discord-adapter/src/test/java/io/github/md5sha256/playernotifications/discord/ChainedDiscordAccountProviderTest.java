@@ -67,6 +67,15 @@ class ChainedDiscordAccountProviderTest {
             }
             return this.result;
         }
+
+        @Override
+        public Optional<UUID> playerFor(long discordId) {
+            this.queried = true;
+            if (this.failure != null) {
+                throw this.failure;
+            }
+            return this.result.map(id -> PLAYER);
+        }
     }
 
     private static DiscordAccountProviderRegistry registryOf(DiscordAccountProvider... providers) {
@@ -256,5 +265,49 @@ class ChainedDiscordAccountProviderTest {
 
         Assertions.assertEquals(Optional.of(provider), registry.get("discordsrv"));
         Assertions.assertEquals(Optional.empty(), registry.get("other"));
+    }
+
+    @Test
+    void theFirstProviderWithAReverseLinkWins() {
+        FakeProvider first = FakeProvider.linking("embedded", 111L);
+        FakeProvider second = FakeProvider.linking("discordsrv", 222L);
+
+        Assertions.assertEquals(Optional.of(PLAYER), chainOf(first, second).playerFor(111L));
+        Assertions.assertFalse(second.queried, "the chain must stop at the first answer");
+    }
+
+    @Test
+    void anUnavailableProviderIsNotQueriedInReverse() {
+        FakeProvider unavailable = FakeProvider.unavailable("discordsrv");
+        FakeProvider available = FakeProvider.linking("embedded", 111L);
+
+        Assertions.assertEquals(Optional.of(PLAYER), chainOf(unavailable, available).playerFor(111L));
+        Assertions.assertFalse(unavailable.queried,
+                "an absent optional dependency must cost nothing per lookup");
+    }
+
+    @Test
+    void aThrowingProviderCannotMaskAWorkingOneInReverse() {
+        FakeProvider throwing = FakeProvider.throwing("discordsrv");
+        FakeProvider working = FakeProvider.linking("embedded", 111L);
+
+        Assertions.assertEquals(Optional.of(PLAYER), chainOf(throwing, working).playerFor(111L));
+    }
+
+    @Test
+    void anUnlinkedDiscordAccountResolvesToEmpty() {
+        Assertions.assertEquals(Optional.empty(),
+                chainOf(FakeProvider.unlinked("embedded"), FakeProvider.unlinked("discordsrv"))
+                        .playerFor(111L));
+    }
+
+    private static ChainedDiscordAccountProvider chainOf(FakeProvider... providers) {
+        DiscordAccountProviderRegistry registry = new DiscordAccountProviderRegistry();
+        List<String> keys = new ArrayList<>();
+        for (FakeProvider provider : providers) {
+            registry.register(provider);
+            keys.add(provider.providerKey());
+        }
+        return ChainedDiscordAccountProvider.of(keys, registry, LOGGER);
     }
 }
