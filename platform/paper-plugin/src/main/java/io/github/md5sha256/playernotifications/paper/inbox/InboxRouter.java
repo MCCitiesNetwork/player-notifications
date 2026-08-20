@@ -30,6 +30,10 @@ import java.util.function.Consumer;
  */
 public final class InboxRouter {
 
+    /** Shared by the dialog entry point and the chat fallback, so the two cannot word it differently. */
+    private static final Component EMPTY_MESSAGE =
+            Component.text("Your inbox is empty.", NamedTextColor.GRAY);
+
     private final Plugin plugin;
     private final NotificationService service;
     private final InboxEntryRenderer renderer;
@@ -87,10 +91,22 @@ public final class InboxRouter {
         this.lastListed.remove(playerId);
     }
 
-    /** Opens the list screen at the given page, reading off the main thread and showing back on it. */
+    /**
+     * Opens the list screen at the given page, reading off the main thread and showing back on it.
+     *
+     * <p>An empty inbox replies in chat instead of opening a dialog. A list screen with nothing on it
+     * has no rows and no bulk buttons, leaving {@code multi_action} with an empty {@code actions} list
+     * — which the client-bound codec rejects as non-empty, so the dialog never rendered at all. A
+     * one-line reply is also simply the better answer to "show me nothing".
+     */
     public void openInbox(@NotNull Player player, int page) {
-        withPage(player, page, read -> DialogSupport.onMainThread(this.plugin, player,
-                () -> this.listDialog.show(player, read)));
+        withPage(player, page, read -> {
+            if (read.entries().isEmpty()) {
+                player.sendMessage(EMPTY_MESSAGE);
+                return;
+            }
+            DialogSupport.onMainThread(this.plugin, player, () -> this.listDialog.show(player, read));
+        });
     }
 
     /** Opens one entry's detail screen, marking it seen. */
@@ -161,7 +177,7 @@ public final class InboxRouter {
     public void listInChat(@NotNull Player player, int page) {
         withPage(player, page, read -> {
             if (read.entries().isEmpty()) {
-                player.sendMessage(Component.text("Your inbox is empty.", NamedTextColor.GRAY));
+                player.sendMessage(EMPTY_MESSAGE);
                 return;
             }
             player.sendMessage(Component.text("Notifications — page " + read.page() + " of "

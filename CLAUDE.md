@@ -549,6 +549,16 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   a list left the player with no way back to what they were reading. `InboxDetailDialog` shows one
   entry with *Dismiss* and *Back*,
   Back-doesn't-commit as in the preference editors. Opening a row marks it seen.
+- **An empty inbox replies in chat and opens no dialog at all.** `InboxRouter.openInbox` returns early
+  with `EMPTY_MESSAGE` ("Your inbox is empty."), the same constant the chat fallback's `listInChat`
+  uses. This is not cosmetic: with no entries there are no row buttons, no Previous/Next (one page),
+  no *Mark all read* (`unreadCount > 0` is false) and no *Dismiss all read* (`0 > 0` is false), so
+  `DialogType.multiAction` was handed an **empty** list — and vanilla's `MultiActionDialog` codec wraps
+  `actions` in `ExtraCodecs.nonEmptyList`, so the dialog failed to encode and the player saw nothing.
+  `exitAction` is a separate optional field and does not satisfy that constraint. **Any future
+  `multiAction` screen that can reach zero buttons has the same bug**; today none of the others can
+  (`categoryKeys()` always contains `UNCATEGORIZED`, `ChatSink`/`DialogSink` are always registered, and
+  the editors' Apply/Discard/Back are unconditional).
 - **`inbox-page-size` is clamped twice**, by `PluginSettings`/`paper.ui.PageBounds` and again by
   `DefaultNotificationService.inbox`. Deliberate: one is a UI helper, the other a public-API trust
   boundary, and neither should assume the other ran.

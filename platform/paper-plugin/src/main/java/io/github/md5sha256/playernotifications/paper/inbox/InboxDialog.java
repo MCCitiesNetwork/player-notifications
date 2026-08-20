@@ -30,7 +30,6 @@ import java.util.List;
  */
 final class InboxDialog {
 
-    private static final Component EMPTY = Component.text("Your inbox is empty.", NamedTextColor.GRAY);
     private static final Component MARK_ALL_LABEL = Component.text("Mark all read");
     private static final Component DISMISS_SEEN_LABEL = Component.text("Dismiss all read");
     private static final Component CLOSE_LABEL = Component.text("Close");
@@ -43,16 +42,18 @@ final class InboxDialog {
         this.title = title;
     }
 
+    /**
+     * Shows the list screen. The page must carry at least one entry: an empty one yields no action
+     * buttons at all, and {@code multi_action} cannot encode an empty {@code actions} list, so the
+     * client would be shown nothing. {@code InboxRouter.openInbox} handles that case in chat and never
+     * reaches here.
+     */
     void show(@NotNull Player player, @NotNull InboxPage page) {
         PageBounds bounds = new PageBounds(page.page(), page.pageSize(), page.totalEntries());
 
         List<DialogBody> body = new ArrayList<>();
-        if (page.entries().isEmpty()) {
-            body.add(DialogBody.plainMessage(EMPTY));
-        } else {
-            body.add(DialogBody.plainMessage(Component.text(
-                    page.unreadCount() + " unread of " + page.totalEntries(), NamedTextColor.GRAY)));
-        }
+        body.add(DialogBody.plainMessage(Component.text(
+                page.unreadCount() + " unread of " + page.totalEntries(), NamedTextColor.GRAY)));
         body.add(DialogBody.plainMessage(PagedDialogs.pageIndicator(bounds)));
 
         List<ActionButton> buttons = new ArrayList<>();
