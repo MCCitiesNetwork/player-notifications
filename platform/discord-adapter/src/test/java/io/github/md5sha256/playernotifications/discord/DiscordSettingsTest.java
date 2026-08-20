@@ -10,15 +10,15 @@ import java.util.Optional;
 class DiscordSettingsTest {
 
     private static DiscordSettings settings(String format, String color, long timeout) {
-        return new DiscordSettings("token", format, color, timeout, List.of("discordsrv"), 600L);
+        return new DiscordSettings("token", format, color, timeout, List.of("discordsrv"), 600L, null);
     }
 
     private static DiscordSettings settingsWithLinkCodeExpiry(long seconds) {
-        return new DiscordSettings("token", "embed", "#5865F2", 10L, List.of("embedded"), seconds);
+        return new DiscordSettings("token", "embed", "#5865F2", 10L, List.of("embedded"), seconds, null);
     }
 
     private static DiscordSettings settingsWithProviders(List<String> providers) {
-        return new DiscordSettings("token", "embed", "#5865F2", 10L, providers, 600L);
+        return new DiscordSettings("token", "embed", "#5865F2", 10L, providers, 600L, null);
     }
 
     @Test
@@ -69,7 +69,7 @@ class DiscordSettingsTest {
     @Test
     void aBlankTokenIsReportedAsUnconfigured() {
         Assertions.assertTrue(
-                new DiscordSettings("   ", "embed", "#5865F2", 10L, List.of(), 600L).isTokenBlank());
+                new DiscordSettings("   ", "embed", "#5865F2", 10L, List.of(), 600L, null).isTokenBlank());
         Assertions.assertFalse(settings("embed", "#5865F2", 10L).isTokenBlank());
     }
 
@@ -83,6 +83,20 @@ class DiscordSettingsTest {
         Duration expected = Duration.ofSeconds(DiscordSettings.DEFAULT_LINK_CODE_EXPIRY_SECONDS);
         Assertions.assertEquals(expected, settingsWithLinkCodeExpiry(0).resolvedLinkCodeExpiry());
         Assertions.assertEquals(expected, settingsWithLinkCodeExpiry(-30).resolvedLinkCodeExpiry());
+    }
+
+    @Test
+    void commandsAreEnabledWhenTheKeyIsAbsent() {
+        // Boxed, so an absent key is distinguishable from an explicit false; the accessor supplies the
+        // default the way resolvedMessageFormat() does.
+        Assertions.assertTrue(new DiscordSettings("token", "embed", "#5865F2", 10L,
+                List.of("embedded"), 600L, null).resolvedCommandsEnabled());
+    }
+
+    @Test
+    void commandsCanBeDisabledExplicitly() {
+        Assertions.assertFalse(new DiscordSettings("token", "embed", "#5865F2", 10L,
+                List.of("embedded"), 600L, Boolean.FALSE).resolvedCommandsEnabled());
     }
 
     @Test

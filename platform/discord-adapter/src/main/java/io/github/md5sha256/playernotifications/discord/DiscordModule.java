@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.discord;
 
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.PluginModule;
+import io.github.md5sha256.playernotifications.discord.command.SlashCommandRegistrar;
 import io.github.md5sha256.playernotifications.discord.schema.DiscordSchemaMigrator;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
 import org.bukkit.Bukkit;
@@ -14,6 +15,8 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.logging.Logger;
 
@@ -75,15 +78,19 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
         // /notifications link discord is offered.
         Executor asyncExecutor = runnable -> Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable);
         DiscordLinkFlow linkFlow = null;
-        Object[] eventListeners = new Object[0];
+        List<Object> eventListeners = new ArrayList<>();
+        // Registered unconditionally: it owns the single updateCommands() call, and decides from these
+        // two toggles which commands that call carries.
+        eventListeners.add(new SlashCommandRegistrar(
+                settings.resolvedCommandsEnabled(), settings.usesEmbeddedProvider(), logger));
         if (settings.usesEmbeddedProvider()) {
             LinkCodeService codes = new LinkCodeService(settings.resolvedLinkCodeExpiry(), Clock.systemUTC());
             linkFlow = new DiscordLinkFlow(linkStore, codes, logger);
-            eventListeners = new Object[]{new LinkSlashCommandListener(linkFlow, asyncExecutor, logger)};
+            eventListeners.add(new LinkSlashCommandListener(linkFlow, asyncExecutor, logger));
         }
 
         try {
-            this.bot = DiscordBot.start(settings.botToken(), eventListeners);
+            this.bot = DiscordBot.start(settings.botToken(), eventListeners.toArray());
         } catch (RuntimeException exception) {
             // A rejected token surfaces from build(); report it as a module failure rather than an
             // unhandled exception out of the lifecycle manager.
