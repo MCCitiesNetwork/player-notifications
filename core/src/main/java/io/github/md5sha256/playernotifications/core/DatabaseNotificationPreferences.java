@@ -117,7 +117,7 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
      * Applies a batch of staged changes in one transaction. Data types in {@code dataTypesToReset} have
      * their rows deleted, falling back to {@link #ALL_DATA_TYPES_KEY}/the configured default again.
      * Every entry in {@code explicitMedia} wholesale-replaces that data type's rows; an empty set is not
-     * a valid value here — callers encode a mute as {@code {"none"}}.
+     * a valid value here — callers encode a silenced data type as {@code {"none"}}.
      */
     public void applyChanges(@NotNull UUID player,
                              @NotNull Map<String, Set<String>> explicitMedia,

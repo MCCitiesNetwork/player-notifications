@@ -109,7 +109,7 @@ public final class PreferenceInteractionListener extends ListenerAdapter {
                             this.logger);
                 }
                 // The data type is in the select's own id, so an empty selection — which is how a player
-                // mutes one type — still knows which type it applies to.
+                // silences one type — still knows which type it applies to.
                 case "media" -> parsed.get().arg(0).ifPresent(dataType ->
                         InteractionSupport.edit(hook, this.messages.preferences(
                                         this.preferences.setMedia(player, dataType, Set.copyOf(values))),

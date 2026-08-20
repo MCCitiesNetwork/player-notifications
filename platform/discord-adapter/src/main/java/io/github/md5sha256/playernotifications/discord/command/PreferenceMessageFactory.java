@@ -77,7 +77,7 @@ public final class PreferenceMessageFactory {
                                                 state.selectedDataType()))
                                 .setPlaceholder("Where it reaches you")
                                 .addOptions(mediaOptions)
-                                // Zero is a real answer: ticking nothing is how a player mutes one type.
+                                // Zero is a real answer: ticking nothing is how a player silences one type.
                                 .setRequiredRange(0, mediaOptions.size())
                                 .build()),
                         ActionRow.of(

@@ -40,13 +40,13 @@ class PreferenceDialogsTest {
     }
 
     @Test
-    void selectableMediaExcludesTheMutedMediumAndSortsAlphabetically() {
+    void selectableMediaExcludesTheSilencedMediumAndSortsAlphabetically() {
         NotificationSinkRegistry registry = new NotificationSinkRegistry();
         registry.registerSink(stubSink("discord"));
         registry.registerSink(stubSink("chat"));
-        // Nothing registers the muted medium today, but if anything ever does it must not become a
-        // checkbox: the mute is expressed by checking nothing.
-        registry.registerSink(stubSink(NotificationPreferences.MUTED_MEDIUM));
+        // Nothing registers the silenced medium today, but if anything ever does it must not become a
+        // checkbox: a silence is expressed by checking nothing.
+        registry.registerSink(stubSink(NotificationPreferences.SILENCED_MEDIUM));
 
         List<String> selectable = PreferenceDialogs.selectableMedia(registry);
 

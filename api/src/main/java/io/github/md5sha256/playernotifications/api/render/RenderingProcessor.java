@@ -23,9 +23,9 @@ import java.util.logging.Logger;
  * <p>{@link #receiveNotification(Object, UUID)}:
  * <ol>
  *     <li>Resolves the target's {@link NotificationPreferences#preferredMedia(UUID) preferred media},
- *     dropping {@link NotificationPreferences#MUTED_MEDIUM}. If nothing deliverable remains, logs at
+ *     dropping {@link NotificationPreferences#SILENCED_MEDIUM}. If nothing deliverable remains, logs at
  *     {@code fine} and returns {@link NotificationDisposition#RETAIN}, leaving the notification unread
- *     in the player's inbox — a mute means "do not interrupt me", not "throw this away".</li>
+ *     in the player's inbox — a silence means "do not interrupt me", not "throw this away".</li>
  *     <li>Renders the payload once into a {@link RenderableNotification}.</li>
  *     <li>Delivers to the sink registered for each preferred medium. A medium with no registered sink
  *     is logged at {@code fine} and skipped — the sink may simply not be installed yet.</li>
@@ -72,7 +72,7 @@ public final class RenderingProcessor<T> implements NotificationProcessor<T> {
     @Override
     public @NotNull NotificationDisposition receiveNotification(@NotNull T payload, @NotNull UUID target) {
         Set<String> media = new LinkedHashSet<>(this.preferences.preferredMedia(target, this.dataType));
-        media.remove(NotificationPreferences.MUTED_MEDIUM);
+        media.remove(NotificationPreferences.SILENCED_MEDIUM);
         if (media.isEmpty()) {
             this.logger.fine(() -> "No deliverable media for " + target + "; leaving notification unread");
             return NotificationDisposition.RETAIN;

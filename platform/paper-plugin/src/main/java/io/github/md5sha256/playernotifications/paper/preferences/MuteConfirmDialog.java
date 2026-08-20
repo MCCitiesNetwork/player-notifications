@@ -35,11 +35,13 @@ final class MuteConfirmDialog {
     private static final Component MUTE_TITLE = Component.text("Mute everything");
     private static final Component UNMUTE_TITLE = Component.text("Unmute everything");
     private static final Component MUTE_INTRO = Component.text(
-            "Muting stops every notification from being sent to you. They still arrive in your inbox, "
-                    + "so nothing is lost — you just won't be interrupted.");
+            "Muting temporarily stops every notification from being sent to you, until you unmute. They "
+                    + "still arrive in your inbox, so nothing is lost — you just won't be interrupted. "
+                    + "Your per-type choices are untouched: to switch one type off for good, silence it "
+                    + "under Notification types instead.");
     private static final Component UNMUTE_INTRO = Component.text(
             "Unmuting lets notifications reach you again, according to your per-type delivery "
-                    + "preferences.");
+                    + "preferences — exactly as you left them. Types you silenced stay silenced.");
     private static final Component BACK_LABEL = Component.text("Back");
 
     private final PreferenceDialogRouter router;

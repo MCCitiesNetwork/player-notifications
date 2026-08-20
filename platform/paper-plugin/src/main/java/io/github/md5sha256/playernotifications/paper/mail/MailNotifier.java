@@ -24,7 +24,7 @@ import java.util.logging.Logger;
  * <p>Deliberately does not reuse {@link io.github.md5sha256.playernotifications.api.render.RenderingProcessor}:
  * that class renders a stored payload and reports a {@link io.github.md5sha256.playernotifications.api.processor.NotificationDisposition}
  * back to the delivery loop, and the notice has neither a payload nor a disposition to report. The
- * media-resolution and sink-fan-out shape below deliberately mirrors it — drop the mute medium, skip an
+ * media-resolution and sink-fan-out shape below deliberately mirrors it — drop the silenced medium, skip an
  * unregistered sink, catch and log a throwing one — for the same reasons that class does.
  */
 public final class MailNotifier {
@@ -47,7 +47,7 @@ public final class MailNotifier {
 
     /**
      * Resolves {@code recipient}'s preferred media for {@link MailPayload#DATA_TYPE}, drops
-     * {@link NotificationPreferences#MUTED_MEDIUM}, and delivers the fixed notice to each medium's sink.
+     * {@link NotificationPreferences#SILENCED_MEDIUM}, and delivers the fixed notice to each medium's sink.
      * A sink with no registration is skipped; a sink that throws is caught and logged so it cannot
      * suppress the others.
      *
@@ -62,7 +62,7 @@ public final class MailNotifier {
         }
         Set<String> media = new LinkedHashSet<>(
                 this.preferences.preferredMedia(recipient, MailPayload.DATA_TYPE));
-        media.remove(NotificationPreferences.MUTED_MEDIUM);
+        media.remove(NotificationPreferences.SILENCED_MEDIUM);
         for (String medium : media) {
             Optional<NotificationSink> sink = this.sinks.getSink(medium);
             if (sink.isEmpty()) {

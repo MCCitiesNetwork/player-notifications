@@ -13,12 +13,14 @@ import java.util.UUID;
 public interface NotificationPreferences {
 
     /**
-     * The reserved medium encoding an explicit mute. Stored as a row rather than as zero rows,
-     * because zero rows already means "has expressed no preference" and the two must stay
-     * distinguishable. It is not a registered sink: {@link RenderingProcessor} filters it out and
-     * delivers nothing, leaving the notification unread in the player's inbox.
+     * The reserved medium encoding an explicit <em>silence</em> of one {@code dataType} — a standing
+     * "never push this type to me", distinct from the temporary, player-level mute of
+     * {@link #isMuted(UUID)}. Stored as a row rather than as zero rows, because zero rows already
+     * means "has expressed no preference" and the two must stay distinguishable. It is not a
+     * registered sink: {@link RenderingProcessor} filters it out and delivers nothing, leaving the
+     * notification unread in the player's inbox.
      */
-    String MUTED_MEDIUM = "none";
+    String SILENCED_MEDIUM = "none";
 
     /**
      * Returns the media keys the given player currently prefers, with no notification-category context.
@@ -38,10 +40,12 @@ public interface NotificationPreferences {
     }
 
     /**
-     * Whether the player has muted every notification. A muted player is still enqueued to, and still
-     * reads their notifications through the inbox; nothing is pushed to them. Orthogonal to the
-     * per-{@code dataType} media set: unmuting restores exactly the preferences the player had before,
-     * since a global mute never touches a preference row. The default implementation always returns
+     * Whether the player has muted every notification. A mute is a temporary, player-level suspension
+     * of delivery: a muted player is still enqueued to, and still reads their notifications through the
+     * inbox; nothing is pushed to them. Orthogonal to the per-{@code dataType} media set — which is
+     * where a lasting, per-type <em>silence</em> is expressed ({@link #SILENCED_MEDIUM}) — so unmuting
+     * restores exactly the preferences the player had before, since a mute never touches a preference
+     * row. The default implementation always returns
      * {@code false}, so existing implementations (including lambdas) keep compiling unchanged.
      */
     default boolean isMuted(@NotNull UUID player) {

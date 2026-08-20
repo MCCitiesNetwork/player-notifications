@@ -112,8 +112,8 @@ public final class TestNotificationSender {
      *
      * <p>Media are named by {@link NotificationSinkRegistry#displayName(String)} rather than by raw key,
      * matching what the preference dialogs show, and the three states a preference can be in are
-     * distinguished. A mute in particular used to report as "attempted on: none", which reads as a
-     * failure rather than as the setting the player chose.
+     * distinguished. A silenced type in particular used to report as "attempted on: none", which reads
+     * as a failure rather than as the setting the player chose.
      */
     private @NotNull Component report(@NotNull UUID target) {
         if (this.preferences.isMuted(target)) {
@@ -125,8 +125,8 @@ public final class TestNotificationSender {
         Set<String> media = this.preferences.preferredMedia(
                 target, TestNotificationPayload.TEST_DATA_TYPE);
 
-        if (media.contains(NotificationPreferences.MUTED_MEDIUM)) {
-            return Component.text("Test notifications are muted for you, so it was suppressed. ",
+        if (media.contains(NotificationPreferences.SILENCED_MEDIUM)) {
+            return Component.text("Test notifications are silenced for you, so it was suppressed. ",
                             NamedTextColor.YELLOW)
                     .append(USE_PREFERENCES);
         }

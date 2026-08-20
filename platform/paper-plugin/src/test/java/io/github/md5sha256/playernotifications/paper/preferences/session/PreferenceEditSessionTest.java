@@ -54,7 +54,7 @@ class PreferenceEditSessionTest {
     }
 
     @Test
-    void emptyingADataTypeStagesAMute() {
+    void emptyingADataTypeSilencesIt() {
         PreferenceEditSession session = newSession(Map.of("economy", Set.of("chat")));
 
         session.setDataTypeMedia("economy", Set.of(), NOW);

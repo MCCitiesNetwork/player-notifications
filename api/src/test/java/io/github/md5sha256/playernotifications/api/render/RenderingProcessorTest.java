@@ -199,17 +199,17 @@ class RenderingProcessorTest {
     }
 
     @Test
-    @DisplayName("a muted target retains the notification and delivers nothing")
-    void mutedTargetRetainsAndDeliversNothing() {
+    @DisplayName("a silenced target retains the notification and delivers nothing")
+    void silencedTargetRetainsAndDeliversNothing() {
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences(NotificationPreferences.MUTED_MEDIUM), "test-type",
+                RENDERER, sinks, fixedPreferences(NotificationPreferences.SILENCED_MEDIUM), "test-type",
                 Logger.getLogger("test"));
 
-        // A mute means "do not interrupt me", not "throw this away": the notification stays unread in
+        // A silence means "do not interrupt me", not "throw this away": the notification stays unread in
         // the player's inbox rather than being marked seen.
         Assertions.assertEquals(NotificationDisposition.RETAIN,
                 processor.receiveNotification("payload", TARGET));
@@ -217,14 +217,14 @@ class RenderingProcessorTest {
     }
 
     @Test
-    @DisplayName("the muted medium is dropped from a set that also names a real medium")
-    void mutedMediumIsDroppedAlongsideARealMedium() {
+    @DisplayName("the silenced medium is dropped from a set that also names a real medium")
+    void silencedMediumIsDroppedAlongsideARealMedium() {
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
 
         RenderingProcessor<String> processor = new RenderingProcessor<>(
-                RENDERER, sinks, fixedPreferences(NotificationPreferences.MUTED_MEDIUM, "chat"), "test-type",
+                RENDERER, sinks, fixedPreferences(NotificationPreferences.SILENCED_MEDIUM, "chat"), "test-type",
                 Logger.getLogger("test"));
 
         Assertions.assertEquals(NotificationDisposition.MARK_SEEN,

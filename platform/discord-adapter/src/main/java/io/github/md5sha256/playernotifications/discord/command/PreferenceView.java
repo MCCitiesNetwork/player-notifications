@@ -82,13 +82,13 @@ public final class PreferenceView {
 
     /**
      * Stages this data type's media. An empty selection — or one containing
-     * {@link NotificationPreferences#MUTED_MEDIUM} — stages the per-type mute: ticking nothing already
-     * says "do not send me this", and a mute is not one medium among others.
+     * {@link NotificationPreferences#SILENCED_MEDIUM} — silences the type: ticking nothing already
+     * says "do not send me this", and a silence is not one medium among others.
      */
     public @NotNull State setMedia(@NotNull UUID player, @NotNull String dataType,
                                    @NotNull Set<String> media) {
         return withSession(player, session -> {
-            Set<String> staged = media.contains(NotificationPreferences.MUTED_MEDIUM)
+            Set<String> staged = media.contains(NotificationPreferences.SILENCED_MEDIUM)
                     ? Set.of()
                     : Set.copyOf(media);
             session.setDataTypeMedia(dataType, staged, Instant.now());
@@ -187,10 +187,11 @@ public final class PreferenceView {
                     PlainTextComponentSerializer.plainText().serialize(this.sinks.displayName(medium)),
                     selectedMedia.contains(medium)));
         }
-        // Not a sink, and so never in registeredMedia(): the explicit per-type mute is a stored row, and
-        // it has to be selectable for a player to reach it from a screen with no other way to say "none".
-        mediaChoices.add(new Choice(NotificationPreferences.MUTED_MEDIUM, "Mute this type",
-                selectedMedia.isEmpty() || selectedMedia.contains(NotificationPreferences.MUTED_MEDIUM)));
+        // Not a sink, and so never in registeredMedia(): an explicit per-type silence is a stored row,
+        // and it has to be selectable for a player to reach it from a screen with no other way to say
+        // "none".
+        mediaChoices.add(new Choice(NotificationPreferences.SILENCED_MEDIUM, "Silence this type",
+                selectedMedia.isEmpty() || selectedMedia.contains(NotificationPreferences.SILENCED_MEDIUM)));
 
         return new State(selected, List.copyOf(typeChoices), List.copyOf(mediaChoices),
                 Set.copyOf(selectedMedia), session.muted(), session.dirtyCount(), false);
@@ -199,7 +200,7 @@ public final class PreferenceView {
     private @NotNull List<String> mediaKeys() {
         Set<String> media = new LinkedHashSet<>(new TreeSet<>(this.sinks.registeredMedia()));
         List<String> keys = new ArrayList<>(media);
-        // One slot is reserved for the mute choice appended by the caller.
+        // One slot is reserved for the silence choice appended by the caller.
         return keys.size() > MAX_CHOICES - 1 ? keys.subList(0, MAX_CHOICES - 1) : keys;
     }
 

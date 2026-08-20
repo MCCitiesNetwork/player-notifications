@@ -113,7 +113,7 @@ class MailNotifierTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences =
-                fixedMedia(Set.of(NotificationPreferences.MUTED_MEDIUM));
+                fixedMedia(Set.of(NotificationPreferences.SILENCED_MEDIUM));
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, LOGGER);
         notifier.notifyArrival(UUID.randomUUID());

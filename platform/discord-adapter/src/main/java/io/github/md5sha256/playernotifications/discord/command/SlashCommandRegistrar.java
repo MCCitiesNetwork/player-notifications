@@ -103,7 +103,8 @@ public final class SlashCommandRegistrar extends ListenerAdapter {
                         entrySubcommand("dismiss", "Dismiss one notification"),
                         new SubcommandData("clear", "Dismiss all of your notifications"),
                         new SubcommandData("prefs", "Choose how your notifications reach you"),
-                        new SubcommandData("mute", "Stop all notifications from interrupting you"),
+                        new SubcommandData("mute",
+                                "Temporarily stop all notifications from interrupting you"),
                         new SubcommandData("unmute", "Let notifications interrupt you again")));
     }
 

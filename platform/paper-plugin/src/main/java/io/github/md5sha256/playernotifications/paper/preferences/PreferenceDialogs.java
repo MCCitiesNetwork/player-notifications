@@ -142,14 +142,14 @@ final class PreferenceDialogs {
     }
 
     /**
-     * The media offered as checkboxes/buttons: every registered medium except the muted medium, whose
+     * The media offered as checkboxes/buttons: every registered medium except the silenced medium, whose
      * meaning is already carried by an empty selection. Sorted so dialog row order is stable between
      * openings.
      */
     @NotNull
     static List<String> selectableMedia(@NotNull NotificationSinkRegistry sinkRegistry) {
         Set<String> sorted = new TreeSet<>(sinkRegistry.registeredMedia());
-        sorted.remove(NotificationPreferences.MUTED_MEDIUM);
+        sorted.remove(NotificationPreferences.SILENCED_MEDIUM);
         return List.copyOf(sorted);
     }
 

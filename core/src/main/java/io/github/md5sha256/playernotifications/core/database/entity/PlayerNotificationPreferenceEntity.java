@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNull;
  * or via the {@code *} fallback) configured for one data type.
  *
  * @param dataType the data type key, or {@code *} for the pre-migration fallback row
- * @param medium   the medium key, or {@code none} for an explicit mute
+ * @param medium   the medium key, or {@code none} for an explicit silence of that data type
  */
 public record PlayerNotificationPreferenceEntity(
         @NotNull String dataType,

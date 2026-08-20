@@ -53,7 +53,7 @@ Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kt
   - `NotificationSinkRegistry` — separate registry keyed by **medium** (`"chat"`, `"dialog"`, `"discord-dm"`), not by data type. `registerSink` keys off `NotificationSink#mediumKey()`. `"discord-channel-ping"` is **reserved but unimplemented** (see "Discord adapter").
   - `Notification` / `ResolvedNotification` — records for the persisted vs. target-resolved forms. `ResolvedNotification` holds a `NotificationTarget` (list of player UUIDs) and carries `notifPayloadType` (the registry data-type string) plus the `String` payload.
   - **`api.processor`** package — `NotificationProcessor<T>` is a pure `@FunctionalInterface`: `NotificationDisposition receiveNotification(T payload, UUID target)` — it processes **one target (audience member) per call** and returns whether the notification should be `RETAIN`ed or marked `MARK_SEEN` for that target. Composition lives in `NotificationProcessorBuilder` (fluent "chop-down" chaining via `andThen`/`andThenIf`/`onComplete`, folding dispositions with MARK_SEEN-wins). `FixedDelayProcessor` wraps a processor with a scheduled delay.
-  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `discord-dm` → "Discord Dm"). `api.render.sink` holds `ChatSink` and `DialogSink`. The `"none"` medium backing an explicit **per-`dataType`** mute is **not** a sink: it is the constant `NotificationPreferences.MUTED_MEDIUM`, which `RenderingProcessor` filters out of the resolved media set. Separately, `NotificationPreferences` carries a `default boolean isMuted(UUID)` — the player-level do-not-disturb flag, orthogonal to the media matrix and enforced in `NotificationDelivery.deliver` rather than here. See "Global mute" and "Player commands".
+  - **`api.render`** package — the renderer/sink architecture (see "Rendering & delivery media" below): `RenderableNotification` (medium-neutral `Component` title + body), `NotificationRenderer<T>` (payload → `RenderableNotification`, one per payload type), `NotificationSink` (`RenderableNotification` → a medium, one per medium, returning a `DeliveryResult`), `DeliveryResult` (`DELIVERED` / `UNREACHABLE` / `UNSUPPORTED`), `NotificationPreferences` (`UUID` → `Set<String>` of preferred media, plus a `default` two-argument `preferredMedia(UUID, String dataType)` overload — resolved directly against the payload's `dataType`, with no category involved in dispatch; see "Notification categories" for the separate, display-only category concept), and `RenderingProcessor<T>` — the single framework-supplied processor that binds them, constructed with the `dataType` it dispatches for (`@NotNull`, required). `NotificationSink` also carries `default` `displayName()` / `description()` `Component`s used to label media in player-facing UI (`displayName()` title-cases `mediumKey()`, so `discord-dm` → "Discord Dm"). `api.render.sink` holds `ChatSink` and `DialogSink`. The `"none"` medium backing an explicit **per-`dataType` silence** is **not** a sink: it is the constant `NotificationPreferences.SILENCED_MEDIUM`, which `RenderingProcessor` filters out of the resolved media set. **"Silence" and "mute" are deliberately different words** — a silence is a standing per-type choice, a mute is a temporary player-level suspension of delivery; every command surface, in game and in Discord, keeps them apart. Separately, `NotificationPreferences` carries a `default boolean isMuted(UUID)` — the player-level do-not-disturb flag, orthogonal to the media matrix and enforced in `NotificationDelivery.deliver` rather than here. See "Global mute" and "Player commands".
   - **`api.category`** package — `NotificationCategoryRegistry` (`DefaultNotificationCategoryRegistry` the in-memory impl) lets module authors declare categories and claim `dataType`s under them in code, exactly like payload types/processors/renderers/sinks are registered. Exposed via `NotificationService#categoryRegistry()`. Merged at read time with `categories.yml` by `core.category.NotificationCategories` — see "Notification categories".
   - `InboxEntry` / `InboxPage` — one notification as it appears in a player's inbox (stored payload plus that viewer's `seenTime`, with `unread()`), and one page of them (`entries`, `page`, `pageSize`, `totalEntries`, `unreadCount`, `totalPages()` at least 1). See "Notification inbox".
   - **`api.link`** package — `AccountLinkProvider` (`providerKey`, a `default` title-casing `displayName()`
@@ -170,10 +170,10 @@ never pushed again. Consequences:
 - When **nothing** was delivered and at least one medium returned `UNSUPPORTED`, a `warning` is logged
   (a player whose only preferred medium is permanently unreachable would otherwise sit on unread
   notifications until expiry with no operator-visible signal).
-- **`RenderingProcessor` drops `MUTED_MEDIUM` from the resolved set** and returns `RETAIN` if nothing
-  deliverable remains, leaving the notification **unread** in the inbox. This is the **per-`dataType`**
-  mute only; the player-level mute never reaches here, because `NotificationDelivery.deliver` returns
-  before dispatching (see "Global mute"). Either way a mute means "do not interrupt me", not "do not
+- **`RenderingProcessor` drops `SILENCED_MEDIUM` from the resolved set** and returns `RETAIN` if nothing
+  deliverable remains, leaving the notification **unread** in the inbox. This is the **per-`dataType`
+  silence** only; the player-level mute never reaches here, because `NotificationDelivery.deliver` returns
+  before dispatching (see "Global mute"). Either way it means "do not interrupt me", not "do not
   tell me".
 - A sink throwing a `RuntimeException` is caught, logged, and treated as `UNREACHABLE`, so one broken
   sink cannot abort delivery to the others.
@@ -418,7 +418,7 @@ the JDA listeners over them logic-free.
   submits once, so it cannot re-render as a player toggles: it would mean either no staging, or asking
   players to type medium keys as free text where a typo is silent. `/notifications prefs` posts an
   ephemeral message with a data-type select, a media multi-select (min 0 — ticking nothing is how a
-  player mutes one type) and Apply / Discard / Mute everything. Modals carry only prose: the
+  player silences one type; the reserved `"none"` row is labelled "Silence this type") and Apply / Discard / Mute everything. Modals carry only prose: the
   `/mail compose` body. A *Reply* button is deliberately absent — `InboxView.Row` carries the rendered
   title, not the sender's name.
 - **The staged session is the host's `PreferenceEditSession` in a session manager this module owns.**
@@ -492,7 +492,7 @@ ignores the `target` argument; a mail reads the same to everyone (in practice, i
 bypasses `NotificationPreferences` entirely, so a `mail`-keyed preference row cannot affect the mail
 itself. `categories.yml` ships a `mail` category all the same (label "Mail", claiming the `mail`
 `dataType`), and its Chat / Discord DM checkboxes in `/notifications preferences types` answer a real,
-different question: "where do I want to be told that mail arrived". Muting `mail` means "don't tell me
+different question: "where do I want to be told that mail arrived". Silencing `mail` means "don't tell me
 when mail arrives" — the mail still lands in the inbox, unread, waiting; it does not mean "don't
 deliver my mail", since mail is never delivered to begin with.
 
@@ -506,7 +506,7 @@ reaches whatever media the recipient prefers for `mail`. `paper.mail.MailNotifie
 this: it returns immediately when the recipient is **globally muted**
 (`NotificationPreferences#isMuted`), and otherwise resolves
 `preferences.preferredMedia(recipient, MailPayload.DATA_TYPE)`, drops
-`NotificationPreferences.MUTED_MEDIUM`, and delivers a fixed `RenderableNotification` to each medium's
+`NotificationPreferences.SILENCED_MEDIUM`, and delivers a fixed `RenderableNotification` to each medium's
 sink, catching and logging a throwing sink so one broken sink cannot suppress the others. It
 deliberately does **not** reuse `RenderingProcessor` — that class exists to render a *stored*
 notification's payload and report a `NotificationDisposition` back to the delivery loop, and the
@@ -818,6 +818,14 @@ A player-level do-not-disturb switch, **orthogonal to the per-`dataType` media m
 every unsolicited push; it does not stop anything reaching the inbox. A muted player still accrues
 notifications, still has them stored unread, and still reads them through `/notifications` and `/mail`.
 
+**A mute is not a silence.** A mute is temporary and player-level — it suspends delivery through every
+medium until the player unmutes, and touches no preference row. Turning one `dataType` off for good is
+a **silence** (`NotificationPreferences.SILENCED_MEDIUM`, the `medium = 'none'` row — see "Player
+commands"). The wording is kept apart on every surface: in game, `/notifications mute|unmute` and the
+"Mute everything" dialog are the player-level switch, while the medium/category editors silence a type
+by emptying its selection; in Discord, `/notifications mute|unmute` and the "Mute everything" button
+are the switch, and the media select's reserved row reads "Silence this type".
+
 - **API:** `NotificationPreferences#isMuted(UUID)`, a `default` method returning `false` — feature
   modules are compiled separately against `api`, so a new abstract method would break them. Mutation
   stays off the read interface: `DatabaseNotificationPreferences#mute(UUID)`/`unmute(UUID)`, the same
@@ -834,10 +842,10 @@ notifications, still has them stored unread, and still reads them through `/noti
   `NotificationDelivery.deliver(UUID, Instant)`**, before the due query: a muted target's notifications
   are not decoded, not dispatched, and not marked seen. That placement is the whole point — `deliver` is
   the single funnel every stored notification passes, so the mute applies uniformly to the renderer path
-  **and** to bespoke processors, which the old `MUTED_MEDIUM` filter inside `RenderingProcessor` could
+  **and** to bespoke processors, which the old `SILENCED_MEDIUM` filter inside `RenderingProcessor` could
   never do. The other two are `MailNotifier#notifyArrival` and `JoinDeliveryListener`'s announcement
-  lines. `RenderingProcessor` was **not** changed; its `MUTED_MEDIUM` filter still serves the per-type
-  mute.
+  lines. `RenderingProcessor` was **not** changed; its `SILENCED_MEDIUM` filter still serves the per-type
+  silence.
 - **Unmuting restores exactly what the player had**, because the flag never touches a preference row.
   This replaced `muteAll`, which rewrote every known `dataType` to `{none}` and therefore had no
   meaningful inverse.
@@ -921,7 +929,7 @@ picker's "(server default)" suffix were all removed together, along with
 `PreferenceEditSession.resetDataType`/`dataTypesToReset`/`isUsingServerDefault` and
 `PreferenceDialogRouter.resetImmediately`: players read "defaults" as a fourth preference state they
 had to reason about. Every edit a player makes is now an explicit choice, and the only way out of one
-is to pick different media or mute. `default-media` still exists and still applies to a `dataType` the
+is to pick different media or silence the type. `default-media` still exists and still applies to a `dataType` the
 player has never configured — it is just no longer reachable once they have. `core` kept
 `DatabaseNotificationPreferences.resetAll`/`explicitlyConfiguredDataTypes` and `applyChanges`'s
 `dataTypesToReset` parameter, which are now **uncalled** — persistence-level operations left in place
@@ -934,7 +942,7 @@ player has never configured — it is just no longer reachable once they have. `
   player-only. The **only** caller of `NotificationDelivery.deliver(UUID)` in the tree. Its reply names
   the media *attempted*, not delivered — `RenderingProcessor` reports no per-sink outcome — labelled via
   `NotificationSinkRegistry#displayName(String)` so they match the preference dialogs, and separates the
-  three preference states: a `{none}` mute and an empty selection each get their own "nothing was sent"
+  three preference states: a `{none}` silence and an empty selection each get their own "nothing was sent"
   reply, and a preferred medium with **no registered sink** is called out, since `RenderingProcessor`
   skips it silently and the reply would otherwise overstate what happened. Backed by
   `paper.diagnostic.TestNotificationSender`, which takes a `Supplier<NotificationDelivery>` rather than
@@ -1035,7 +1043,7 @@ button commits them, which only Apply does; nothing is persisted until **Apply**
 `dataType` in one transaction
 (`DatabaseNotificationPreferences.applyChanges`, called with an empty `dataTypesToReset` — the session
 has no reset concept left, so every staged edit is an explicit write). A `dataType` emptied to nothing —
-from either editor — stages a mute (`{"none"}`); there is no staged form of "fall back to the server
+from either editor — stages a silence (`{"none"}`); there is no staged form of "fall back to the server
 default" at all. In `CategoryEditorDialog`, committing always writes every member `dataType`'s state for
 every medium shown, even ones the player didn't touch — opening a category editor and pressing Apply
 with no changes still marks every member `dataType` dirty and converts them from unconfigured to an
@@ -1048,10 +1056,10 @@ out) via the category editor:
 |---|---|---|
 | Unconfigured | no exact rows for that `dataType` | `*` rows, else `default-media` from `settings.yml` |
 | Explicit selection | one row per medium for that `dataType` | that set |
-| Explicit mute | a single `medium = 'none'` row for that `dataType` | `{none}` |
+| Explicit silence | a single `medium = 'none'` row for that `dataType` | `{none}` |
 
-A per-type-muted notification is **retained unread in the inbox**, not consumed: `RenderingProcessor`
-drops `NotificationPreferences.MUTED_MEDIUM` and returns `RETAIN`. **This table is the per-`dataType`
+A silenced type's notification is **retained unread in the inbox**, not consumed: `RenderingProcessor`
+drops `NotificationPreferences.SILENCED_MEDIUM` and returns `RETAIN`. **This table is the per-`dataType`
 axis only** — the player-level mute is a separate switch on top of it, and does not appear in these
 rows; see "Global mute".
 
@@ -1061,9 +1069,9 @@ a `dataType` to it since the "server default" affordances were removed. The row 
 registered by a module installed after they last edited their preferences.
 
 `"none"` is **not a registered sink** — `NullSink` was deleted with the inbox work, because reporting
-`DELIVERED` would have marked a muted notification seen and hidden it from the unread list, precisely
-backwards for a player who muted a type in order to read it later. It survives as the constant
-`NotificationPreferences.MUTED_MEDIUM`, stored as a row rather than as zero rows because zero rows
+`DELIVERED` would have marked a silenced notification seen and hidden it from the unread list, precisely
+backwards for a player who silenced a type in order to read it later. It survives as the constant
+`NotificationPreferences.SILENCED_MEDIUM`, stored as a row rather than as zero rows because zero rows
 already means "has expressed no preference". It is excluded from every checkbox list, since checking
 nothing already says the same thing. It is reached only through the medium/category editors, by
 emptying a `dataType`'s selection: **`/notifications mute` and `MuteConfirmDialog` no longer write
@@ -1096,11 +1104,11 @@ Implementation notes:
   open past that has inert buttons and must be reopened.
 - **Known quirk, now also a deliberate feature:** an explicitly registered `NotificationProcessor` wins
   the dispatch-precedence rule and bypasses **per-`dataType`** preferences entirely (categories were
-  never part of the dispatch path, even before this quirk existed), so a player who muted one type
+  never part of the dispatch path, even before this quirk existed), so a player who silenced one type
   would still receive its notifications. It does **not** escape the player-level mute, which is checked
   in `NotificationDelivery.deliver` before dispatch — see "Global mute". There is again an in-tree instance of this — `mail`'s RETAIN processor (see "Mail") —
   but there it is intentional: mail is never sent through any medium at all, so there is nothing for a
-  mute to bypass, and the `mail`-keyed preference rows the processor skips are reused to route the
+  silence to bypass, and the `mail`-keyed preference rows the processor skips are reused to route the
   arrival *notice* instead. The quirk remains reachable, and still a footgun, for any other
   third-party processor that isn't making that same trade deliberately.
 - The six dialog classes and the router are **unverified by automated tests** — they need a live

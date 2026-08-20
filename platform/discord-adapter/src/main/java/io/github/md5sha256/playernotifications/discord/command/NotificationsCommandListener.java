@@ -96,12 +96,14 @@ public final class NotificationsCommandListener extends ListenerAdapter {
             case "mute" -> {
                 this.preferences.muteImmediately(player);
                 InteractionSupport.reply(hook,
-                        "Muted. Nothing will interrupt you; your inbox still fills up.", this.logger);
+                        "Muted until you unmute. Nothing will interrupt you; your inbox still fills up.",
+                        this.logger);
             }
             case "unmute" -> {
                 this.preferences.unmuteImmediately(player);
                 InteractionSupport.reply(hook,
-                        "Unmuted. Your notification preferences are exactly as you left them.", this.logger);
+                        "Unmuted. Your notification preferences are exactly as you left them; "
+                                + "types you silenced stay silenced.", this.logger);
             }
             default -> InteractionSupport.reply(hook, "Unknown subcommand.", this.logger);
         }

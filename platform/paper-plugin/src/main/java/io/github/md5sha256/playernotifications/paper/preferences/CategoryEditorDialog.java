@@ -32,7 +32,8 @@ import java.util.function.Consumer;
  * <p>Its button set is deliberately identical to {@link MediumEditorDialog}'s: Apply folds the
  * checkboxes into the session and persists everything staged, Discard throws the session away, Back
  * leaves without saving. There is no Save, and no "use server default" — a player's edit is always an
- * explicit choice, and unticking everything means mute rather than a fall back to the server default.
+ * explicit choice, and unticking everything silences that category rather than falling back to the
+ * server default.
  */
 final class CategoryEditorDialog {
 

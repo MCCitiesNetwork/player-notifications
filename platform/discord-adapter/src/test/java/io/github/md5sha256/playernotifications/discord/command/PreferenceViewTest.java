@@ -133,10 +133,10 @@ class PreferenceViewTest {
     }
 
     @Test
-    void everyRegisteredMediumIsOfferedAlongsideAnExplicitMuteForTheType() {
+    void everyRegisteredMediumIsOfferedAlongsideAnExplicitSilenceForTheType() {
         PreferenceView.State state = view().open(PLAYER, null);
 
-        Assertions.assertEquals(List.of("chat", "discord-dm", NotificationPreferences.MUTED_MEDIUM),
+        Assertions.assertEquals(List.of("chat", "discord-dm", NotificationPreferences.SILENCED_MEDIUM),
                 state.media().stream().map(PreferenceView.Choice::key).toList());
         Assertions.assertTrue(state.media().get(0).selected(), "the current selection is pre-ticked");
         Assertions.assertFalse(state.media().get(1).selected());
@@ -155,8 +155,8 @@ class PreferenceViewTest {
     }
 
     @Test
-    void emptyingATypeStagesTheTypeMute() {
-        // Ticking nothing already says "do not send me this", so it is stored as the mute row rather
+    void emptyingATypeSilencesIt() {
+        // Ticking nothing already says "do not send me this", so it is stored as the silence row rather
         // than as zero rows, which already means "has expressed no preference".
         PreferenceView view = view();
         view.open(PLAYER, null);
@@ -164,21 +164,21 @@ class PreferenceViewTest {
 
         view.apply(PLAYER);
 
-        Assertions.assertEquals(Map.of("mail", Set.of(NotificationPreferences.MUTED_MEDIUM)),
+        Assertions.assertEquals(Map.of("mail", Set.of(NotificationPreferences.SILENCED_MEDIUM)),
                 this.preferences.applied.get(0).media());
     }
 
     @Test
-    void selectingTheMuteChoiceIsTheSameAsSelectingNothing() {
+    void selectingTheSilenceChoiceIsTheSameAsSelectingNothing() {
         PreferenceView view = view();
         view.open(PLAYER, null);
-        view.setMedia(PLAYER, "mail", Set.of("chat", NotificationPreferences.MUTED_MEDIUM));
+        view.setMedia(PLAYER, "mail", Set.of("chat", NotificationPreferences.SILENCED_MEDIUM));
 
         view.apply(PLAYER);
 
-        Assertions.assertEquals(Map.of("mail", Set.of(NotificationPreferences.MUTED_MEDIUM)),
+        Assertions.assertEquals(Map.of("mail", Set.of(NotificationPreferences.SILENCED_MEDIUM)),
                 this.preferences.applied.get(0).media(),
-                "a mute is not one medium among others");
+                "a silence is not one medium among others");
     }
 
     @Test

@@ -22,7 +22,7 @@ class PreferenceMessageFactoryTest {
                         new PreferenceView.Choice("test", "Test", false)),
                 List.of(new PreferenceView.Choice("chat", "Chat", true),
                         new PreferenceView.Choice("discord-dm", "Discord Dm", false),
-                        new PreferenceView.Choice("none", "Mute this type", false)),
+                        new PreferenceView.Choice("none", "Silence this type", false)),
                 Set.of("chat"), muted, pending, false);
     }
 
@@ -61,7 +61,7 @@ class PreferenceMessageFactoryTest {
 
     @Test
     void theMediaSelectAllowsPickingNoneOrAll() {
-        // Zero is a real answer here — ticking nothing is how a player mutes one type.
+        // Zero is a real answer here — ticking nothing is how a player silences one type.
         StringSelectMenu media = selectsOf(FACTORY.preferences(state(0, false))).get(1);
 
         Assertions.assertEquals(0, media.getMinValues());

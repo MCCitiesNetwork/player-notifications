@@ -191,7 +191,8 @@ public final class PreferenceDialogRouter {
      * what the player had.
      */
     public void muteImmediately(@NotNull Player player) {
-        setMutedImmediately(player, true, "All notifications muted.");
+        setMutedImmediately(player, true,
+                "All notifications muted until you unmute. Your inbox still fills up.");
     }
 
     /**
@@ -199,7 +200,8 @@ public final class PreferenceDialogRouter {
      * {@link #muteImmediately}.
      */
     public void unmuteImmediately(@NotNull Player player) {
-        setMutedImmediately(player, false, "Notifications unmuted.");
+        setMutedImmediately(player, false,
+                "Notifications unmuted. Your delivery preferences are exactly as you left them.");
     }
 
     private void setMutedImmediately(@NotNull Player player, boolean muted, @NotNull String successMessage) {

@@ -71,7 +71,7 @@ public final class PreferenceEditSession {
     }
 
     /**
-     * Overwrites one data type's staged media, marking it dirty. An empty set stages a mute: there is
+     * Overwrites one data type's staged media, marking it dirty. An empty set silences the type: there is
      * no way to stage a fall-through to the server default, which is deliberate — every edit a player
      * makes is an explicit choice.
      */
@@ -138,14 +138,15 @@ public final class PreferenceEditSession {
 
     /**
      * Every dirty data type keyed to the media that should be written wholesale. An empty selection is
-     * encoded as {@link NotificationPreferences#MUTED_MEDIUM}, so a staged edit always resolves to explicit rows.
+     * encoded as {@link NotificationPreferences#SILENCED_MEDIUM} — the per-type silence — so a staged
+     * edit always resolves to explicit rows.
      */
     @NotNull
     public Map<String, Set<String>> explicitChanges() {
         Map<String, Set<String>> result = new LinkedHashMap<>();
         for (String dataType : this.dirtyDataTypes) {
             Set<String> selected = this.media.getOrDefault(dataType, Set.of());
-            result.put(dataType, selected.isEmpty() ? Set.of(NotificationPreferences.MUTED_MEDIUM) : Set.copyOf(selected));
+            result.put(dataType, selected.isEmpty() ? Set.of(NotificationPreferences.SILENCED_MEDIUM) : Set.copyOf(selected));
         }
         return Map.copyOf(result);
     }
