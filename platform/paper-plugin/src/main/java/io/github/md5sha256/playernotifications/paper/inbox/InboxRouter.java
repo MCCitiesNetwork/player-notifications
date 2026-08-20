@@ -6,6 +6,8 @@ import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.paper.ui.DialogSupport;
 import io.github.md5sha256.playernotifications.paper.ui.PageBounds;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
@@ -198,10 +200,15 @@ public final class InboxRouter {
             int index = 1;
             for (InboxEntry entry : read.entries()) {
                 var rendered = this.renderer.render(entry, player.getUniqueId());
-                player.sendMessage(Component.text(index + ". ",
-                                entry.unread() ? NamedTextColor.WHITE : NamedTextColor.GRAY)
-                        .append(rendered.title().colorIfAbsent(
-                                entry.unread() ? NamedTextColor.WHITE : NamedTextColor.GRAY)));
+                String readCommand = "/" + this.commandLabel + " read " + index;
+                NamedTextColor color = entry.unread() ? NamedTextColor.WHITE : NamedTextColor.GRAY;
+                player.sendMessage(Component.text(index + ". ", color)
+                        .append(rendered.title().colorIfAbsent(color))
+                        // The whole row is the button: hovering names the command and clicking runs it,
+                        // so a chat-fallback reader never has to retype an index they can already see.
+                        .hoverEvent(HoverEvent.showText(Component.text(
+                                "Click to run " + readCommand, NamedTextColor.GRAY)))
+                        .clickEvent(ClickEvent.runCommand(readCommand)));
                 index++;
             }
             player.sendMessage(Component.text("Use /" + this.commandLabel + " read <entry> or /"
@@ -246,7 +253,7 @@ public final class InboxRouter {
         List<InboxEntry> listed = this.lastListed.get(player.getUniqueId());
         if (listed == null || listed.isEmpty()) {
             player.sendMessage(Component.text(
-                    "Run /notifications list first.", NamedTextColor.RED));
+                    "Run /" + this.commandLabel + " list first.", NamedTextColor.RED));
             return null;
         }
         if (index < 1 || index > listed.size()) {
