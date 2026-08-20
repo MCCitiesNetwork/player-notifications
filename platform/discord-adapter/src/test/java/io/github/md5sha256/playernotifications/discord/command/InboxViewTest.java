@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.IntSupplier;
 import java.util.logging.Logger;
 
 class InboxViewTest {
@@ -67,6 +68,10 @@ class InboxViewTest {
     }
 
     private InboxView view(String filter, String title, int pageSize) {
+        return view(filter, title, () -> pageSize);
+    }
+
+    private InboxView view(String filter, String title, IntSupplier pageSize) {
         return new InboxView(this.service, new InboxEntryRenderer(this.registry, LOGGER),
                 filter, title, pageSize);
     }
@@ -113,6 +118,21 @@ class InboxViewTest {
         Assertions.assertEquals(1, page.rows().size(), "the last page holds the remainder");
         Assertions.assertEquals(1, page.rows().get(0).entry(),
                 "entries are numbered within the page, not across the inbox");
+    }
+
+    @Test
+    void thePageSizeIsReadPerCallSoAReloadReachesAnAlreadyBuiltView() {
+        // The host's inbox-page-size is reloadable; a size captured at construction would leave the
+        // Discord surface paging differently from every other one until a restart.
+        addNote("a", "first", true);
+        addNote("b", "second", true);
+        int[] size = {1};
+
+        InboxView view = view(null, "Notifications", () -> size[0]);
+        Assertions.assertEquals(2, view.page(PLAYER, 1).totalPages());
+
+        size[0] = 10;
+        Assertions.assertEquals(1, view.page(PLAYER, 1).totalPages());
     }
 
     @Test

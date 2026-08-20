@@ -2,10 +2,27 @@ package io.github.md5sha256.playernotifications.discord;
 
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleInitializationException;
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.PluginModule;
+import io.github.md5sha256.playernotifications.api.mail.MailPayload;
+import io.github.md5sha256.playernotifications.discord.command.DiscordMailService;
+import io.github.md5sha256.playernotifications.discord.command.DiscordUserResolver;
+import io.github.md5sha256.playernotifications.discord.command.InboxInteractionListener;
+import io.github.md5sha256.playernotifications.discord.command.InboxMessageFactory;
+import io.github.md5sha256.playernotifications.discord.command.InboxView;
+import io.github.md5sha256.playernotifications.discord.command.MailCommandListener;
+import io.github.md5sha256.playernotifications.discord.command.NotificationsCommandListener;
+import io.github.md5sha256.playernotifications.discord.command.PreferenceInteractionListener;
+import io.github.md5sha256.playernotifications.discord.command.PreferenceMessageFactory;
+import io.github.md5sha256.playernotifications.discord.command.PreferenceView;
 import io.github.md5sha256.playernotifications.discord.command.SlashCommandRegistrar;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
+import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
+import io.github.md5sha256.playernotifications.paper.mail.MailSender;
+import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
 import io.github.md5sha256.playernotifications.discord.schema.DiscordSchemaMigrator;
 import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.configurate.ConfigurationNode;
 import org.spongepowered.configurate.serialize.SerializationException;
@@ -17,6 +34,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.logging.Logger;
 
@@ -89,6 +107,10 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
             eventListeners.add(new LinkSlashCommandListener(linkFlow, asyncExecutor, logger));
         }
 
+        if (settings.resolvedCommandsEnabled()) {
+            eventListeners.addAll(commandListeners(plugin, accounts, settings, asyncExecutor, logger));
+        }
+
         try {
             this.bot = DiscordBot.start(settings.botToken(), eventListeners.toArray());
         } catch (RuntimeException exception) {
@@ -113,6 +135,69 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
         plugin.sinkRegistry().registerSink(new DiscordDmSink(accounts, factory, messenger, logger));
         logger.info("Discord adapter registered for medium '" + DiscordMedia.DM
                 + "' (format: " + settings.resolvedMessageFormat() + ")");
+    }
+
+    /**
+     * The {@code /mail} and {@code /notifications} listeners, built over the host's own mail, inbox and
+     * preference machinery — this module adds a second client onto it, not a second copy of it.
+     *
+     * <p>Nothing here needs unregistering: the listeners die with the bot, and the only host
+     * registrations this module makes are the sink and the link provider, both undone in
+     * {@link #shutdown}.
+     */
+    private static @NotNull List<Object> commandListeners(@NotNull PlayerNotificationsPlugin plugin,
+                                                          @NotNull DiscordAccountProvider accounts,
+                                                          @NotNull DiscordSettings settings,
+                                                          @NotNull Executor asyncExecutor,
+                                                          @NotNull Logger logger) {
+        DiscordUserResolver users = new DiscordUserResolver(accounts, logger);
+        InboxEntryRenderer entryRenderer =
+                new InboxEntryRenderer(plugin.notificationService().dataTypeRegistry(), logger);
+
+        InboxView notifications = new InboxView(plugin.notificationService(), entryRenderer,
+                null, "Notifications", plugin::inboxPageSize);
+        InboxView mailInbox = new InboxView(plugin.notificationService(), entryRenderer,
+                MailPayload.DATA_TYPE, "Mail", plugin::inboxPageSize);
+
+        DiscordMailService mail = new DiscordMailService(
+                new MailSender(plugin.notificationService()),
+                new MailNotifier(plugin.sinkRegistry(), plugin.preferences(), logger),
+                DiscordModule::resolveRecipient,
+                playerId -> String.valueOf(Bukkit.getOfflinePlayer(playerId).getName()),
+                logger);
+
+        // A session manager this module owns, not the host's: sharing would let an Apply from Discord
+        // commit a half-finished in-game dialog edit with nothing on the player's screen saying so.
+        PreferenceView preferences = new PreferenceView(plugin.preferences(), plugin.sinkRegistry(),
+                () -> plugin.notificationService().dataTypeRegistry().dataTypes(),
+                new PreferenceSessionManager(), logger);
+
+        InboxMessageFactory inboxMessages = new InboxMessageFactory(settings.resolvedEmbedColor());
+        PreferenceMessageFactory preferenceMessages =
+                new PreferenceMessageFactory(settings.resolvedEmbedColor());
+
+        return List.of(
+                new MailCommandListener(users, mail, mailInbox, inboxMessages, asyncExecutor, logger),
+                new NotificationsCommandListener(users, notifications, inboxMessages, preferences,
+                        asyncExecutor, logger),
+                new InboxInteractionListener(users, notifications, mailInbox, inboxMessages,
+                        asyncExecutor, logger),
+                new PreferenceInteractionListener(users, preferences, preferenceMessages,
+                        asyncExecutor, logger));
+    }
+
+    /**
+     * The same rule {@code /mail send} applies in game: an online player by name, else one this server
+     * has seen before. A never-joined name is rejected, because {@code getOfflinePlayer(String)}
+     * fabricates a UUID for any string at all.
+     */
+    private static UUID resolveRecipient(@NotNull String name) {
+        Player online = Bukkit.getPlayerExact(name);
+        if (online != null) {
+            return online.getUniqueId();
+        }
+        OfflinePlayer offline = Bukkit.getOfflinePlayer(name);
+        return offline.hasPlayedBefore() ? offline.getUniqueId() : null;
     }
 
     @Override

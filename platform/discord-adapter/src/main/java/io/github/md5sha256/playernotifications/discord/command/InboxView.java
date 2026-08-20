@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.IntSupplier;
 
 /**
  * Reading and acting on one player's inbox from Discord: the Discord-side counterpart of the host's
@@ -21,6 +22,10 @@ import java.util.UUID;
  * <p>Constructed twice — once filtered to {@code mail} and titled "Mail", once unfiltered and titled
  * "Notifications" — which is exactly how the host runs two routers, and for the same reason: the
  * filter has to reach every call, or a mail command would act on the whole inbox.
+ *
+ * <p>The page size is a supplier, not a captured int: the host's {@code inbox-page-size} is
+ * reloadable, and a size fixed at construction would leave this surface paging differently from every
+ * other one until a restart.
  *
  * <p>Holds <b>no state</b>. The page a row belongs to arrives as a slash option or inside a component
  * id, so there is no cursor to expire, and no way for a stale listing to resolve an entry against a
@@ -32,10 +37,11 @@ public final class InboxView {
     private final InboxEntryRenderer renderer;
     private final @Nullable String dataTypeFilter;
     private final String title;
-    private final int pageSize;
+    private final IntSupplier pageSize;
 
     public InboxView(@NotNull NotificationService service, @NotNull InboxEntryRenderer renderer,
-                     @Nullable String dataTypeFilter, @NotNull String title, int pageSize) {
+                     @Nullable String dataTypeFilter, @NotNull String title,
+                     @NotNull IntSupplier pageSize) {
         this.service = service;
         this.renderer = renderer;
         this.dataTypeFilter = dataTypeFilter;
@@ -50,7 +56,7 @@ public final class InboxView {
 
     /** One page, rendered. {@code page} is 1-based; the service clamps it into {@code 1..totalPages}. */
     public @NotNull Page page(@NotNull UUID player, int page) {
-        InboxPage stored = this.service.inbox(player, page, this.pageSize, this.dataTypeFilter);
+        InboxPage stored = this.service.inbox(player, page, this.pageSize.getAsInt(), this.dataTypeFilter);
         List<Row> rows = new ArrayList<>(stored.entries().size());
         int entry = 1;
         for (InboxEntry inboxEntry : stored.entries()) {
