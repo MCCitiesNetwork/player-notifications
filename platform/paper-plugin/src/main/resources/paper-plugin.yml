@@ -15,6 +15,15 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    # Same shape, for the essentials-mail-converter module: its EssentialsMailBinding names
+    # com.earth2me.essentials types, and a feature module's URLClassLoader is parent-first onto this
+    # plugin's loader, so without join-classpath those classes are unreachable and the binding dies with
+    # NoClassDefFoundError even on a server where EssentialsX is installed and enabled. This module is a
+    # one-shot migration tool, so the entry can be deleted once every server has converted.
+    Essentials:
+      load: BEFORE
+      required: false
+      join-classpath: true
 
 permissions:
   playernotifications.command.preferences:

@@ -341,9 +341,11 @@ single preference row.
   - **The class being loaded is irrelevant** — JDA only appears because a gateway reconnect (which
     Discord initiates on its own, hence "I wasn't doing anything") was the next thing needing a class
     not yet loaded. It breaks host-class loads the same way, and keeps firing on every reconnect.
-  - **Fix: remove the DiscordSRV jar from `plugins/`.** DiscordSRV is now the only `dependencies:
-    server:` entry in `paper-plugin.yml`, and so the only source of this exposure — the Essentials
-    entry that used to carry the identical risk was removed with the Essentials adapter (see "Mail").
+  - **Fix: remove the DiscordSRV jar from `plugins/`.** Note `paper-plugin.yml` now carries **two**
+    `dependencies: server:` entries, DiscordSRV and Essentials (the latter re-added for the mail
+    converter — see "EssentialsX mail converter"), so both are sources of this exposure: an unloaded
+    *Essentials* poisons module class loading in exactly the same way, and its trace will likewise blame
+    whatever class was being loaded rather than Essentials.
   - Two code fixes were designed and **deliberately not taken**: dropping `join-classpath` and driving
     `DiscordSrvAccountProvider` reflectively through DiscordSRV's own plugin loader (the only fix that
     covers host-class loads too — the surface is three calls returning `String`/`UUID`, so it is cheap),
@@ -641,6 +643,24 @@ one moves the mail out of Essentials instead.
   either a fingerprint table or a full scan of every existing mail notification, for a command an
   operator runs once. An `AtomicBoolean` refuses a second concurrent run rather than queueing it.
   Console is a valid sender — this operates on server data, not on the player running it.
+- **The host declares `Essentials` in `paper-plugin.yml`, `required: false`, `join-classpath: true`
+  — and the module does not work without it.** `EssentialsMailBinding` names `com.earth2me` types, and
+  a feature module's `URLClassLoader` is parent-first onto the *host's* loader, so with Paper's default
+  classloader isolation those classes are simply unreachable: `register` dies on
+  `NoClassDefFoundError: com/earth2me/essentials/IEssentials` at its `instanceof`, on a server where
+  EssentialsX is installed **and enabled**. This hid for a while because DiscordSRV's own
+  `join-classpath: true` entry plus its Essentials hook drags Essentials' loader into our classloader
+  group — so the module worked by accident on any server that also ran DiscordSRV, and only failed
+  where it did not. Read a `NoClassDefFoundError` here as a *missing declared route*, not as the
+  `isPluginEnabled` guard leaking: the guard sits in the entry class and a failure inside
+  `EssentialsMailBinding` proves it already passed. The cost of the entry is the exposure described
+  under "Discord adapter" — an *unloaded* Essentials now poisons module class loading too. The entry
+  can be deleted once every server has converted, along with the module.
+- **A `LinkageError` from the binding is caught and the module skipped**, not allowed to escape.
+  `ModuleLoader` catches only `ModuleLoadException`, so before this the error above propagated out of
+  `startModules()` → `onEnable` and **disabled the entire host plugin** — notifications, mail and
+  Discord all down because an optional one-shot migration tool could not resolve a class. It now logs
+  at `SEVERE` and returns, leaving `/essmailconvert` unregistered and everything else running.
 - **The permission `essentialsmailconverter.command.convert` is declared nowhere.**
   `paper-plugin.yml` belongs to the host, and programmatic permission registration is the pattern the
   Discord adapter was cleaned of. An undeclared permission resolves through Bukkit's default — op only
