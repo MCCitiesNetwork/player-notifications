@@ -33,6 +33,7 @@ final class PreferenceRootDialog {
     private static final Component BY_MEDIUM_LABEL = Component.text("Delivery methods");
     private static final Component BY_CATEGORY_LABEL = Component.text("Notification types");
     private static final Component MUTE_ALL_LABEL = Component.text("Mute everything");
+    private static final Component UNMUTE_ALL_LABEL = Component.text("Unmute everything");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     private final PreferenceDialogRouter router;
@@ -51,7 +52,7 @@ final class PreferenceRootDialog {
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showCategoryPicker(player, session), PreferenceDialogs.callbackOptions()))
                 .build());
-        buttons.add(ActionButton.builder(MUTE_ALL_LABEL)
+        buttons.add(ActionButton.builder(session.muted() ? UNMUTE_ALL_LABEL : MUTE_ALL_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.showMuteConfirm(player, session), PreferenceDialogs.callbackOptions()))
                 .build());

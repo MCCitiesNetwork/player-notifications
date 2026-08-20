@@ -176,33 +176,6 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
         }
 
         @Test
-        @DisplayName("muteAll stores an explicit 'none' row for every given data type")
-        void muteAllMutesEveryDataType() {
-            DatabaseNotificationPreferences preferences =
-                    new DatabaseNotificationPreferences(database, Set.of("chat"));
-
-            preferences.muteAll(PLAYER_A, Set.of("economy", "moderation"));
-
-            Assertions.assertEquals(Set.of("none"), preferences.preferredMedia(PLAYER_A, "economy"));
-            Assertions.assertEquals(Set.of("none"), preferences.preferredMedia(PLAYER_A, "moderation"));
-        }
-
-        @Test
-        @DisplayName("muteAll also writes the '*' blanket row, covering a data type not passed in")
-        void muteAllAlsoWritesBlanketFallback() {
-            DatabaseNotificationPreferences preferences =
-                    new DatabaseNotificationPreferences(database, Set.of("chat"));
-
-            preferences.muteAll(PLAYER_A, Set.of("economy", "moderation"));
-
-            Assertions.assertEquals(Set.of("none"),
-                    preferences.preferredMedia(PLAYER_A, DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY));
-            // A data type never passed to muteAll (e.g. registered by a module installed later) still
-            // falls back to the blanket "*" mute rather than the configured default.
-            Assertions.assertEquals(Set.of("none"), preferences.preferredMedia(PLAYER_A, "some-future-type"));
-        }
-
-        @Test
         @DisplayName("resetAll clears every row for the player across all data types")
         void resetAllClearsEveryDataType() {
             DatabaseNotificationPreferences preferences =

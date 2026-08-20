@@ -1,6 +1,5 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
-import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
@@ -18,25 +17,29 @@ import org.jetbrains.annotations.NotNull;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * The confirmation screen for "Mute everything". Structurally an editor with no inputs: Apply stages the
- * mute and persists everything staged, Discard throws the session away, Back leaves without staging
- * anything.
+ * The confirmation screen for "Mute everything" / "Unmute everything" — the same screen either way,
+ * reading its title, intro and direction off {@link PreferenceEditSession#muted()} so it flips once the
+ * flag does. Structurally an editor with no inputs: Apply stages the flag flip and persists everything
+ * staged, Discard throws the session away, Back leaves without staging anything.
  *
  * <p>It exists because the root screen no longer carries Apply/Discard at all — an Apply sitting on a
  * screen whose only edit was a button press read as belonging to the whole menu rather than to the mute.
- * The mute is staged by the Apply button's commit callback rather than on the way in, so Back really is
+ * The change is staged by the Apply button's commit callback rather than on the way in, so Back really is
  * a way out that changes nothing.
  */
 final class MuteConfirmDialog {
 
-    private static final Component TITLE = Component.text("Mute everything");
-    private static final Component INTRO = Component.text(
+    private static final Component MUTE_TITLE = Component.text("Mute everything");
+    private static final Component UNMUTE_TITLE = Component.text("Unmute everything");
+    private static final Component MUTE_INTRO = Component.text(
             "Muting stops every notification from being sent to you. They still arrive in your inbox, "
                     + "so nothing is lost — you just won't be interrupted.");
+    private static final Component UNMUTE_INTRO = Component.text(
+            "Unmuting lets notifications reach you again, according to your per-type delivery "
+                    + "preferences.");
     private static final Component BACK_LABEL = Component.text("Back");
 
     private final PreferenceDialogRouter router;
@@ -46,13 +49,9 @@ final class MuteConfirmDialog {
     }
 
     void show(@NotNull Player player, @NotNull PreferenceEditSession session) {
-        Consumer<DialogResponseView> commit = response -> {
-            Instant now = Instant.now();
-            for (String dataType : this.router.dataTypeRegistry().dataTypes()) {
-                session.setDataTypeMedia(dataType, Set.of(), now);
-            }
-            session.setDataTypeMedia(DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, Set.of(), now);
-        };
+        boolean currentlyMuted = session.muted();
+        Consumer<DialogResponseView> commit = response ->
+                session.setMuted(!currentlyMuted, Instant.now());
 
         List<ActionButton> buttons = new ArrayList<>();
         PreferenceDialogs.addEditorCommitButtons(this.router, player, session, buttons,
@@ -66,14 +65,16 @@ final class MuteConfirmDialog {
                 .build();
 
         List<DialogBody> body = new ArrayList<>();
-        body.add(DialogBody.plainMessage(INTRO));
+        body.add(DialogBody.plainMessage(currentlyMuted ? UNMUTE_INTRO : MUTE_INTRO));
         body.add(DialogBody.plainMessage(Component.text(
-                "Press Apply to mute everything, or Back to leave your preferences as they are.",
+                currentlyMuted
+                        ? "Press Apply to unmute, or Back to leave your preferences as they are."
+                        : "Press Apply to mute everything, or Back to leave your preferences as they are.",
                 NamedTextColor.YELLOW)));
         PreferenceDialogs.stagedSummary(session).ifPresent(summary ->
                 body.add(DialogBody.plainMessage(summary)));
 
-        DialogBase base = DialogBase.builder(TITLE)
+        DialogBase base = DialogBase.builder(currentlyMuted ? UNMUTE_TITLE : MUTE_TITLE)
                 .body(body)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();

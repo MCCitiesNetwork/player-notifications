@@ -6,6 +6,7 @@ import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.PlayerNotificationPreferenceEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.PlayerNotificationPreferenceMapper;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -121,6 +122,19 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
     public void applyChanges(@NotNull UUID player,
                              @NotNull Map<String, Set<String>> explicitMedia,
                              @NotNull Set<String> dataTypesToReset) {
+        applyChanges(player, explicitMedia, dataTypesToReset, null);
+    }
+
+    /**
+     * Applies a batch of staged changes in one transaction, same as the three-argument form, plus an
+     * optional change to the player-level mute flag: {@code null} leaves it untouched, {@code true}/
+     * {@code false} sets/clears it on the same session before the commit. Used by the preference dialogs,
+     * where a session can stage a mute change alongside (or instead of) per-{@code dataType} edits.
+     */
+    public void applyChanges(@NotNull UUID player,
+                             @NotNull Map<String, Set<String>> explicitMedia,
+                             @NotNull Set<String> dataTypesToReset,
+                             @Nullable Boolean muted) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             PlayerNotificationPreferenceMapper mapper = wrapper.playerNotificationPreferenceMapper();
             for (String dataType : dataTypesToReset) {
@@ -130,25 +144,15 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
                 mapper.deleteByPlayerAndDataType(player, entry.getKey());
                 mapper.insertPreferences(player, entry.getKey(), entry.getValue());
             }
+            if (muted != null) {
+                if (muted) {
+                    wrapper.playerMuteMapper().insertMute(player, Instant.now());
+                } else {
+                    wrapper.playerMuteMapper().deleteByPlayer(player);
+                }
+            }
             wrapper.session().commit();
         }
-    }
-
-    /**
-     * Immediately mutes every given data type for the player in one transaction, storing an explicit
-     * {@code none} row for each, plus an unconditional {@link #ALL_DATA_TYPES_KEY} blanket row so the
-     * mute also covers any data type not in {@code dataTypes} — including one registered by a module
-     * installed after this call, and the degenerate case of an empty {@code dataTypes} (no registered
-     * payload mappings), which would otherwise write nothing and silently no-op. Used by
-     * {@code /notifications mute}.
-     */
-    public void muteAll(@NotNull UUID player, @NotNull Set<String> dataTypes) {
-        Map<String, Set<String>> mutes = new LinkedHashMap<>();
-        for (String dataType : dataTypes) {
-            mutes.put(dataType, Set.of(NotificationPreferences.MUTED_MEDIUM));
-        }
-        mutes.put(ALL_DATA_TYPES_KEY, Set.of(NotificationPreferences.MUTED_MEDIUM));
-        applyChanges(player, mutes, Set.of());
     }
 
     /**
