@@ -14,8 +14,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Builds the ephemeral preference screen: a data-type select, a media multi-select, and the buttons
- * that commit or throw away the staged edit.
+ * Builds the ephemeral preference screen: a data-type select, a media multi-select, and four buttons —
+ * Apply, Discard, and the two silences (this type, and every type).
+ *
+ * <p>The screen edits <em>silences</em> only: lasting, per-{@code dataType} choices. The player-level
+ * mute is temporary and covers every type at once, so it has no button here — {@code /notifications
+ * mute} sets it, and this screen only says so when it is on.
  *
  * <p>Components rather than a modal. A modal opens only in response to an interaction and submits
  * once, so it cannot re-render as the player toggles — it would mean either no staging at all, or
@@ -50,52 +54,70 @@ public final class PreferenceMessageFactory {
                     .build();
         }
 
-        String pending = state.pendingChanges() == 0
-                ? "Choose how each kind of notification reaches you."
-                : state.pendingChanges() + " pending change"
-                        + (state.pendingChanges() == 1 ? "" : "s") + " — press Apply to save.";
-
         MessageEmbed embed = new EmbedBuilder()
                 .setColor(this.embedColor)
                 .setTitle("Notification preferences")
-                .setDescription(truncate(pending, MessageEmbed.DESCRIPTION_MAX_LENGTH))
+                .setDescription(truncate(description(state), MessageEmbed.DESCRIPTION_MAX_LENGTH))
                 .build();
 
         List<SelectOption> typeOptions = optionsOf(state.dataTypes());
         List<SelectOption> mediaOptions = optionsOf(state.media());
 
-        return new MessageCreateBuilder()
+        MessageCreateBuilder message = new MessageCreateBuilder()
                 .addEmbeds(embed)
-                .addComponents(
-                        ActionRow.of(StringSelectMenu.create(
-                                        ComponentIds.encode(ComponentIds.SURFACE_PREFS, "type"))
-                                .setPlaceholder("Notification type")
-                                .addOptions(typeOptions)
-                                .build()),
-                        ActionRow.of(StringSelectMenu.create(
-                                        ComponentIds.encode(ComponentIds.SURFACE_PREFS, "media",
-                                                state.selectedDataType()))
-                                .setPlaceholder("Where it reaches you")
-                                .addOptions(mediaOptions)
-                                // Zero is a real answer: ticking nothing is how a player silences one type.
-                                .setRequiredRange(0, mediaOptions.size())
-                                .build()),
-                        ActionRow.of(
-                                Button.success(
-                                        ComponentIds.encode(ComponentIds.SURFACE_PREFS, "apply"), "Apply"),
-                                Button.secondary(
-                                        ComponentIds.encode(ComponentIds.SURFACE_PREFS, "discard"), "Discard"),
-                                muteButton(state)))
+                .addComponents(ActionRow.of(StringSelectMenu.create(
+                                ComponentIds.encode(ComponentIds.SURFACE_PREFS, "type"))
+                        .setPlaceholder("Notification type")
+                        .addOptions(typeOptions)
+                        .build()));
+
+        // Discord rejects a select with no options outright, the same shape of bug as vanilla's empty
+        // multiAction dialog. With no sink registered there is no medium to offer, but Silence this
+        // type is still a real answer, so the buttons stay.
+        if (!mediaOptions.isEmpty()) {
+            message.addComponents(ActionRow.of(StringSelectMenu.create(
+                            ComponentIds.encode(ComponentIds.SURFACE_PREFS, "media",
+                                    state.selectedDataType()))
+                    .setPlaceholder("Where it reaches you")
+                    .addOptions(mediaOptions)
+                    // Zero is a real answer: unticking everything silences the type, exactly as the
+                    // Silence this type button does.
+                    .setRequiredRange(0, mediaOptions.size())
+                    .build()));
+        }
+
+        return message
+                .addComponents(ActionRow.of(
+                        Button.success(
+                                ComponentIds.encode(ComponentIds.SURFACE_PREFS, "apply"), "Apply"),
+                        Button.secondary(
+                                ComponentIds.encode(ComponentIds.SURFACE_PREFS, "discard"), "Discard"),
+                        Button.danger(ComponentIds.encode(ComponentIds.SURFACE_PREFS, "silence-all",
+                                state.selectedDataType()), "Silence everything"),
+                        Button.danger(ComponentIds.encode(ComponentIds.SURFACE_PREFS, "silence-type",
+                                state.selectedDataType()), "Silence this type")))
                 .build();
     }
 
-    /** Labelled by what pressing it would do, not by the state it reports. */
-    private static @NotNull Button muteButton(@NotNull PreferenceView.State state) {
-        String id = ComponentIds.encode(ComponentIds.SURFACE_PREFS,
-                state.muted() ? "unmute" : "mute", state.selectedDataType());
-        return state.muted()
-                ? Button.primary(id, "Unmute everything")
-                : Button.danger(id, "Mute everything");
+    /**
+     * The pending-change line, plus whatever the player cannot otherwise see. A silenced type shows as
+     * an empty media select, which is indistinguishable from a type they have simply not configured;
+     * and the player-level mute has no button on this screen at all, so a muted player would otherwise
+     * read a screen full of correct-looking media and still receive nothing.
+     */
+    private static @NotNull String description(@NotNull PreferenceView.State state) {
+        StringBuilder text = new StringBuilder(state.pendingChanges() == 0
+                ? "Choose how each kind of notification reaches you."
+                : state.pendingChanges() + " pending change"
+                        + (state.pendingChanges() == 1 ? "" : "s") + " — press Apply to save.");
+        if (state.silenced()) {
+            text.append("\n\nThis type is silenced: pick a delivery method above to hear about it again.");
+        }
+        if (state.muted()) {
+            text.append("\n\nYou are muted, so nothing is being sent to you at all — whatever you"
+                    + " choose here. Use `/notifications unmute` to lift it.");
+        }
+        return text.toString();
     }
 
     private static @NotNull List<SelectOption> optionsOf(@NotNull List<PreferenceView.Choice> choices) {

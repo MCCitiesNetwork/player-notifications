@@ -66,7 +66,8 @@ public final class PreferenceView {
         List<String> dataTypes = dataTypes();
         if (dataTypes.isEmpty()) {
             // Nothing registered any payload type, so there is nothing to configure.
-            return new State("", List.of(), List.of(), Set.of(), this.preferences.isMuted(player), 0, false);
+            return new State("", List.of(), List.of(), Set.of(), false,
+                    this.preferences.isMuted(player), 0, false);
         }
         PreferenceEditSession session = this.sessions.getOrCreate(player, () -> newSession(player, dataTypes));
         String selected = selectedDataType != null && dataTypes.contains(selectedDataType)
@@ -81,34 +82,64 @@ public final class PreferenceView {
     }
 
     /**
-     * Stages this data type's media. An empty selection — or one containing
-     * {@link NotificationPreferences#SILENCED_MEDIUM} — silences the type: ticking nothing already
-     * says "do not send me this", and a silence is not one medium among others.
+     * Stages this data type's media. An empty selection silences the type, exactly as unticking every
+     * box does in game.
+     *
+     * <p>{@link NotificationPreferences#SILENCED_MEDIUM} is <em>filtered out</em> rather than treated as
+     * a selection. It used to be offered as a row in this select, where ticking it alongside a real
+     * medium silently discarded the real one — the player was shown a silenced type with no sign their
+     * other tick had been thrown away. Silencing is the {@code Silence this type} button now, so the
+     * key can only arrive here from a message built before that change.
      */
     public @NotNull State setMedia(@NotNull UUID player, @NotNull String dataType,
                                    @NotNull Set<String> media) {
         return withSession(player, session -> {
-            Set<String> staged = media.contains(NotificationPreferences.SILENCED_MEDIUM)
-                    ? Set.of()
-                    : Set.copyOf(media);
-            session.setDataTypeMedia(dataType, staged, Instant.now());
+            Set<String> staged = new LinkedHashSet<>(media);
+            staged.remove(NotificationPreferences.SILENCED_MEDIUM);
+            session.setDataTypeMedia(dataType, Set.copyOf(staged), Instant.now());
             return state(session, dataTypes(), dataType);
         });
     }
 
-    /** Stages the player-level mute. Takes effect on Apply, as the in-game confirmation screen does. */
-    public @NotNull State setMuted(@NotNull UUID player, boolean muted, @NotNull String selectedDataType) {
+    /**
+     * Stages a silence for one data type: no medium at all, so nothing of that type is ever pushed.
+     * Distinct from the player-level mute, which is temporary, covers every type at once, and is set
+     * only by {@code /notifications mute}.
+     */
+    public @NotNull State silenceDataType(@NotNull UUID player, @NotNull String dataType) {
         return withSession(player, session -> {
-            session.setMuted(muted, Instant.now());
-            // The mute button shares a screen with the type select, so the row on show has to survive
-            // pressing it — otherwise the next media edit silently applies to a different type.
-            return state(session, dataTypes(), selectedDataType);
+            session.setDataTypeMedia(dataType, Set.of(), Instant.now());
+            return state(session, dataTypes(), dataType);
+        });
+    }
+
+    /**
+     * Stages a silence for <em>every</em> known data type. One-way by construction: it writes an
+     * explicit "no media" row per type, and there is no player-facing way back to the server default
+     * (in Discord or in game), so undoing it means picking media for each type again. Staging is the
+     * safety net — nothing is written until Apply, and Discard puts everything back.
+     *
+     * <p>The row on show survives the press, so the next media edit cannot land on a different type.
+     */
+    public @NotNull State silenceEverything(@NotNull UUID player, @NotNull String selectedDataType) {
+        return withSession(player, session -> {
+            List<String> dataTypes = dataTypes();
+            Instant now = Instant.now();
+            for (String dataType : dataTypes) {
+                session.setDataTypeMedia(dataType, Set.of(), now);
+            }
+            String selected = dataTypes.contains(selectedDataType)
+                    ? selectedDataType
+                    : dataTypes.get(0);
+            return state(session, dataTypes, selected);
         });
     }
 
     /**
      * Writes every staged edit in one transaction and drops the session. The reset set is always empty:
-     * there is no player-facing way back to the server default, in Discord or in game.
+     * there is no player-facing way back to the server default, in Discord or in game. The staged mute
+     * is always {@code null} from this surface — no button here sets it — but it is still passed, so a
+     * session staged elsewhere in this module would commit with the rest rather than be dropped.
      */
     public @NotNull String apply(@NotNull UUID player) {
         Optional<PreferenceEditSession> session = this.sessions.get(player);
@@ -150,7 +181,8 @@ public final class PreferenceView {
         if (session.isEmpty()) {
             // The ephemeral message outlived its session; staging against a matrix the player can no
             // longer see would apply edits they never made.
-            return new State("", List.of(), List.of(), Set.of(), this.preferences.isMuted(player), 0, true);
+            return new State("", List.of(), List.of(), Set.of(), false,
+                    this.preferences.isMuted(player), 0, true);
         }
         return action.apply(session.get());
     }
@@ -187,21 +219,19 @@ public final class PreferenceView {
                     PlainTextComponentSerializer.plainText().serialize(this.sinks.displayName(medium)),
                     selectedMedia.contains(medium)));
         }
-        // Not a sink, and so never in registeredMedia(): an explicit per-type silence is a stored row,
-        // and it has to be selectable for a player to reach it from a screen with no other way to say
-        // "none".
-        mediaChoices.add(new Choice(NotificationPreferences.SILENCED_MEDIUM, "Silence this type",
-                selectedMedia.isEmpty() || selectedMedia.contains(NotificationPreferences.SILENCED_MEDIUM)));
+        // The silence is a button, not a row: as an option it competed with the real media, and a
+        // player who ticked one of each had the real medium dropped without being told.
+        boolean silenced = selectedMedia.isEmpty()
+                || selectedMedia.contains(NotificationPreferences.SILENCED_MEDIUM);
 
         return new State(selected, List.copyOf(typeChoices), List.copyOf(mediaChoices),
-                Set.copyOf(selectedMedia), session.muted(), session.dirtyCount(), false);
+                Set.copyOf(selectedMedia), silenced, session.muted(), session.dirtyCount(), false);
     }
 
     private @NotNull List<String> mediaKeys() {
         Set<String> media = new LinkedHashSet<>(new TreeSet<>(this.sinks.registeredMedia()));
         List<String> keys = new ArrayList<>(media);
-        // One slot is reserved for the silence choice appended by the caller.
-        return keys.size() > MAX_CHOICES - 1 ? keys.subList(0, MAX_CHOICES - 1) : keys;
+        return keys.size() > MAX_CHOICES ? keys.subList(0, MAX_CHOICES) : keys;
     }
 
     /** Title-cased, matching how the in-game dialogs label a data type rather than showing a raw key. */
@@ -216,10 +246,14 @@ public final class PreferenceView {
         return builder.toString();
     }
 
-    /** Everything one preference screen shows. */
+    /**
+     * Everything one preference screen shows. {@code silenced} is the selected type's own state — no
+     * medium staged for it — while {@code muted} is the player-level, all-types suspension, which this
+     * screen only reports: it is set by {@code /notifications mute}, never by a button here.
+     */
     public record State(@NotNull String selectedDataType, @NotNull List<Choice> dataTypes,
                         @NotNull List<Choice> media, @NotNull Set<String> selectedMedia,
-                        boolean muted, int pendingChanges, boolean expired) {
+                        boolean silenced, boolean muted, int pendingChanges, boolean expired) {
     }
 
     /** One select option. */

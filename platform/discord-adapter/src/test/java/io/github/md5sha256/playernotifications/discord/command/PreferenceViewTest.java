@@ -133,10 +133,12 @@ class PreferenceViewTest {
     }
 
     @Test
-    void everyRegisteredMediumIsOfferedAlongsideAnExplicitSilenceForTheType() {
+    void everyRegisteredMediumIsOfferedAndTheSilenceIsNotOneOfThem() {
+        // As a select row the silence competed with the real media: ticking it alongside chat dropped
+        // chat without telling anyone. It is a button now, so the select carries media only.
         PreferenceView.State state = view().open(PLAYER, null);
 
-        Assertions.assertEquals(List.of("chat", "discord-dm", NotificationPreferences.SILENCED_MEDIUM),
+        Assertions.assertEquals(List.of("chat", "discord-dm"),
                 state.media().stream().map(PreferenceView.Choice::key).toList());
         Assertions.assertTrue(state.media().get(0).selected(), "the current selection is pre-ticked");
         Assertions.assertFalse(state.media().get(1).selected());
@@ -169,61 +171,93 @@ class PreferenceViewTest {
     }
 
     @Test
-    void selectingTheSilenceChoiceIsTheSameAsSelectingNothing() {
+    void aStaleScreenSendingTheSilenceKeyKeepsTheRealMediumItWasSentWith() {
+        // The key can only arrive from a message built before the silence became a button. Dropping the
+        // real medium instead — what this used to do — silently discarded a tick the player had made.
         PreferenceView view = view();
         view.open(PLAYER, null);
         view.setMedia(PLAYER, "mail", Set.of("chat", NotificationPreferences.SILENCED_MEDIUM));
 
         view.apply(PLAYER);
 
-        Assertions.assertEquals(Map.of("mail", Set.of(NotificationPreferences.SILENCED_MEDIUM)),
+        Assertions.assertEquals(Map.of("mail", Set.of("chat")),
                 this.preferences.applied.get(0).media(),
                 "a silence is not one medium among others");
     }
 
     @Test
-    void applyWritesEveryStagedTypeAndTheStagedMuteInOneCall() {
+    void theSilenceButtonStagesNoMediaForTheSelectedTypeOnly() {
+        PreferenceView view = view();
+        view.open(PLAYER, null);
+
+        PreferenceView.State state = view.silenceDataType(PLAYER, "mail");
+
+        Assertions.assertTrue(state.silenced());
+        Assertions.assertEquals("mail", state.selectedDataType());
+        view.apply(PLAYER);
+        Assertions.assertEquals(Map.of("mail", Set.of(NotificationPreferences.SILENCED_MEDIUM)),
+                this.preferences.applied.get(0).media(), "only the selected type is touched");
+    }
+
+    @Test
+    void silencingEverythingStagesEveryKnownTypeAndKeepsTheRowOnShow() {
+        PreferenceView view = view();
+        view.open(PLAYER, null);
+        view.selectDataType(PLAYER, "test");
+
+        PreferenceView.State state = view.silenceEverything(PLAYER, "test");
+
+        Assertions.assertEquals("test", state.selectedDataType(),
+                "the next media edit must not land on a different type");
+        Assertions.assertEquals(2, state.pendingChanges());
+        view.apply(PLAYER);
+        Assertions.assertEquals(
+                Map.of("mail", Set.of(NotificationPreferences.SILENCED_MEDIUM),
+                        "test", Set.of(NotificationPreferences.SILENCED_MEDIUM)),
+                this.preferences.applied.get(0).media());
+    }
+
+    @Test
+    void discardIsTheWayBackFromAStagedSilenceEverything() {
+        // It is the only way back: a silence writes explicit rows, and no player-facing route returns a
+        // data type to the server default once Apply has run.
+        PreferenceView view = view();
+        view.open(PLAYER, null);
+        view.silenceEverything(PLAYER, "mail");
+
+        view.discard(PLAYER);
+
+        Assertions.assertEquals(List.of(), this.preferences.applied);
+        Assertions.assertEquals(Set.of("chat"), view.open(PLAYER, "mail").selectedMedia());
+    }
+
+    @Test
+    void applyWritesEveryStagedTypeInOneCall() {
         PreferenceView view = view();
         view.open(PLAYER, null);
         view.setMedia(PLAYER, "mail", Set.of("discord-dm"));
         view.setMedia(PLAYER, "test", Set.of("chat", "discord-dm"));
-        view.setMuted(PLAYER, true, "mail");
 
         String reply = view.apply(PLAYER);
 
-        Assertions.assertEquals(1, this.preferences.applied.size(), "one transaction, not three");
+        Assertions.assertEquals(1, this.preferences.applied.size(), "one transaction, not two");
         Applied applied = this.preferences.applied.get(0);
         Assertions.assertEquals(Map.of("mail", Set.of("discord-dm"), "test", Set.of("chat", "discord-dm")),
                 applied.media());
         Assertions.assertEquals(Set.of(), applied.reset(),
                 "there is no player-facing way back to the server default");
-        Assertions.assertEquals(Boolean.TRUE, applied.muted());
-        Assertions.assertTrue(reply.contains("3"), "the reply names how many changes were applied");
+        Assertions.assertNull(applied.muted(), "no button on this screen stages the player-level mute");
+        Assertions.assertTrue(reply.contains("2"), "the reply names how many changes were applied");
     }
 
     @Test
-    void aStagedMuteIsCountedAsAPendingChangeAndShownBeforeItIsApplied() {
-        PreferenceView view = view();
-        view.open(PLAYER, null);
+    void theScreenReportsThePlayerLevelMuteWithoutOfferingToChangeIt() {
+        // Muting is temporary and covers every type; this screen edits lasting per-type silences. It
+        // still has to say so, or a muted player reads a screen of correct-looking media and receives
+        // nothing.
+        this.preferences.mute(PLAYER);
 
-        PreferenceView.State state = view.setMuted(PLAYER, true, "mail");
-
-        Assertions.assertTrue(state.muted());
-        Assertions.assertEquals(1, state.pendingChanges());
-        Assertions.assertFalse(this.preferences.isMuted(PLAYER), "nothing is written until Apply");
-    }
-
-    @Test
-    void stagingAMuteKeepsTheRowTheScreenIsShowing() {
-        // The mute button sits on the same screen as the type select; jumping the select back to the
-        // first type would silently change what the next media edit applies to.
-        PreferenceView view = view();
-        view.open(PLAYER, null);
-        view.selectDataType(PLAYER, "test");
-
-        PreferenceView.State state = view.setMuted(PLAYER, true, "test");
-
-        Assertions.assertEquals("test", state.selectedDataType());
+        Assertions.assertTrue(view().open(PLAYER, null).muted());
     }
 
     @Test
@@ -261,7 +295,8 @@ class PreferenceViewTest {
         view.discard(PLAYER);
 
         Assertions.assertTrue(view.setMedia(PLAYER, "mail", Set.of("chat")).expired());
-        Assertions.assertTrue(view.setMuted(PLAYER, true, "mail").expired());
+        Assertions.assertTrue(view.silenceDataType(PLAYER, "mail").expired());
+        Assertions.assertTrue(view.silenceEverything(PLAYER, "mail").expired());
         Assertions.assertTrue(view.selectDataType(PLAYER, "test").expired());
     }
 

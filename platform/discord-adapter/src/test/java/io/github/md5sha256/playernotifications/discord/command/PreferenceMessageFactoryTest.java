@@ -17,13 +17,17 @@ class PreferenceMessageFactoryTest {
     private static final PreferenceMessageFactory FACTORY = new PreferenceMessageFactory(0x5865F2);
 
     private static PreferenceView.State state(int pending, boolean muted) {
+        return state(pending, muted, false, Set.of("chat"));
+    }
+
+    private static PreferenceView.State state(int pending, boolean muted, boolean silenced,
+                                              Set<String> selectedMedia) {
         return new PreferenceView.State("mail",
                 List.of(new PreferenceView.Choice("mail", "Mail", true),
                         new PreferenceView.Choice("test", "Test", false)),
                 List.of(new PreferenceView.Choice("chat", "Chat", true),
-                        new PreferenceView.Choice("discord-dm", "Discord Dm", false),
-                        new PreferenceView.Choice("none", "Silence this type", false)),
-                Set.of("chat"), muted, pending, false);
+                        new PreferenceView.Choice("discord-dm", "Discord Dm", false)),
+                selectedMedia, silenced, muted, pending, false);
     }
 
     private static List<StringSelectMenu> selectsOf(MessageCreateData message) {
@@ -61,11 +65,11 @@ class PreferenceMessageFactoryTest {
 
     @Test
     void theMediaSelectAllowsPickingNoneOrAll() {
-        // Zero is a real answer here — ticking nothing is how a player silences one type.
+        // Zero is a real answer here — unticking everything silences the type, as the button does.
         StringSelectMenu media = selectsOf(FACTORY.preferences(state(0, false))).get(1);
 
         Assertions.assertEquals(0, media.getMinValues());
-        Assertions.assertEquals(3, media.getMaxValues());
+        Assertions.assertEquals(2, media.getMaxValues());
         Assertions.assertEquals(List.of("chat"),
                 media.getOptions().stream().filter(SelectOption::isDefault)
                         .map(SelectOption::getValue).toList());
@@ -80,12 +84,47 @@ class PreferenceMessageFactoryTest {
     }
 
     @Test
-    void theMuteButtonReadsAsTheActionItWouldTake() {
-        List<Button> unmuted = buttonsOf(FACTORY.preferences(state(0, false)));
-        Assertions.assertTrue(unmuted.stream().anyMatch(button -> button.getLabel().contains("Mute")));
+    void bothSilencesArePressableAndTheMuteIsNotOnThisScreen() {
+        // The screen edits silences — lasting, per-type choices. The mute is temporary and covers every
+        // type at once, so it belongs to /notifications mute, not to a button here.
+        List<String> labels = buttonsOf(FACTORY.preferences(state(0, false))).stream()
+                .map(Button::getLabel).toList();
 
-        List<Button> muted = buttonsOf(FACTORY.preferences(state(0, true)));
-        Assertions.assertTrue(muted.stream().anyMatch(button -> button.getLabel().contains("Unmute")));
+        Assertions.assertEquals(List.of("Apply", "Discard", "Silence everything", "Silence this type"),
+                labels);
+    }
+
+    @Test
+    void aSilencedTypeSaysSoRatherThanShowingAnEmptySelect() {
+        // Nothing ticked is how a silence looks, which is indistinguishable from a type the player has
+        // never configured.
+        String description = FACTORY.preferences(state(0, false, true, Set.of()))
+                .getEmbeds().get(0).getDescription();
+
+        Assertions.assertTrue(description.contains("silenced"), description);
+    }
+
+    @Test
+    void aMutedPlayerIsToldWhyNothingArrivesDespiteTheirChoices() {
+        // No button reports it on this screen, so the description has to.
+        String description = FACTORY.preferences(state(0, true)).getEmbeds().get(0).getDescription();
+
+        Assertions.assertTrue(description.contains("muted"), description);
+        Assertions.assertTrue(description.contains("unmute"), description);
+    }
+
+    @Test
+    void aScreenWithNoRegisteredMediumStillOffersTheSilenceButtons() {
+        // Discord rejects a select with no options outright, so the media row has to be omitted rather
+        // than sent empty.
+        PreferenceView.State noMedia = new PreferenceView.State("mail",
+                List.of(new PreferenceView.Choice("mail", "Mail", true)),
+                List.of(), Set.of(), true, false, 0, false);
+
+        MessageCreateData message = FACTORY.preferences(noMedia);
+
+        Assertions.assertEquals(1, selectsOf(message).size(), "only the data-type select");
+        Assertions.assertEquals(4, buttonsOf(message).size());
     }
 
     @Test
@@ -99,7 +138,7 @@ class PreferenceMessageFactoryTest {
     @Test
     void anExpiredScreenSaysSoAndOffersNothingToPress() {
         PreferenceView.State expired =
-                new PreferenceView.State("", List.of(), List.of(), Set.of(), false, 0, true);
+                new PreferenceView.State("", List.of(), List.of(), Set.of(), false, false, 0, true);
 
         MessageCreateData message = FACTORY.preferences(expired);
 
@@ -115,7 +154,8 @@ class PreferenceMessageFactoryTest {
         for (int i = 0; i < 30; i++) {
             many.add(new PreferenceView.Choice("type-" + i, "Type " + i, i == 0));
         }
-        PreferenceView.State state = new PreferenceView.State("type-0", many, many, Set.of(), false, 0, false);
+        PreferenceView.State state =
+                new PreferenceView.State("type-0", many, many, Set.of(), false, false, 0, false);
 
         List<StringSelectMenu> selects = selectsOf(FACTORY.preferences(state));
 

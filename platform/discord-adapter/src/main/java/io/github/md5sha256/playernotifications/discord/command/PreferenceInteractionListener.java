@@ -77,12 +77,14 @@ public final class PreferenceInteractionListener extends ListenerAdapter {
                             this.messages.preferences(this.preferences.open(player, dataType)), this.logger);
                     InteractionSupport.reply(hook, reply, this.logger);
                 }
-                // Staged, not immediate: the immediate form is /notifications mute.
-                case "mute" -> InteractionSupport.edit(hook,
-                        this.messages.preferences(this.preferences.setMuted(player, true, dataType)),
+                // Staged, not immediate — Discard is the way back, and it is the only way back: a
+                // silence writes explicit rows, and there is no player-facing route to the server
+                // default once Apply has run.
+                case "silence-type" -> InteractionSupport.edit(hook,
+                        this.messages.preferences(this.preferences.silenceDataType(player, dataType)),
                         this.logger);
-                case "unmute" -> InteractionSupport.edit(hook,
-                        this.messages.preferences(this.preferences.setMuted(player, false, dataType)),
+                case "silence-all" -> InteractionSupport.edit(hook,
+                        this.messages.preferences(this.preferences.silenceEverything(player, dataType)),
                         this.logger);
                 default -> this.logger.fine(() -> "Unknown preference action: " + parsed.get().action());
             }
@@ -108,8 +110,8 @@ public final class PreferenceInteractionListener extends ListenerAdapter {
                             this.messages.preferences(this.preferences.selectDataType(player, values.get(0))),
                             this.logger);
                 }
-                // The data type is in the select's own id, so an empty selection — which is how a player
-                // silences one type — still knows which type it applies to.
+                // The data type is in the select's own id, so an empty selection — which silences the
+                // type, as the button does — still knows which type it applies to.
                 case "media" -> parsed.get().arg(0).ifPresent(dataType ->
                         InteractionSupport.edit(hook, this.messages.preferences(
                                         this.preferences.setMedia(player, dataType, Set.copyOf(values))),

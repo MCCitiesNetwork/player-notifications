@@ -417,8 +417,9 @@ the JDA listeners over them logic-free.
 - **Preferences are components, not a modal.** A modal opens only in response to an interaction and
   submits once, so it cannot re-render as a player toggles: it would mean either no staging, or asking
   players to type medium keys as free text where a typo is silent. `/notifications prefs` posts an
-  ephemeral message with a data-type select, a media multi-select (min 0 — ticking nothing is how a
-  player silences one type; the reserved `"none"` row is labelled "Silence this type") and Apply / Discard / Mute everything. Modals carry only prose: the
+  ephemeral message with a data-type select, a media multi-select (min 0 — unticking everything
+  silences the type) and four buttons: Apply / Discard / **Silence everything** / **Silence this
+  type**. Modals carry only prose: the
   `/mail compose` body. A *Reply* button is deliberately absent — `InboxView.Row` carries the rendered
   title, not the sender's name.
 - **The staged session is the host's `PreferenceEditSession` in a session manager this module owns.**
@@ -426,8 +427,25 @@ the JDA listeners over them logic-free.
   an Apply from Discord would otherwise commit a half-finished in-game edit with nothing on the player's
   screen saying so. Consequence, accepted: a staged edit on one surface is invisible on the other, and
   last Apply wins. Apply calls `applyChanges(player, changes, Set.of(), stagedMute)` — an always-empty
-  reset set, since there is no player-facing way back to the server default here either.
-  `/notifications mute|unmute` stay immediate, as in game.
+  reset set, since there is no player-facing way back to the server default here either, and a
+  `stagedMute` that is always `null` from this surface (nothing here stages the player-level mute; it is
+  still passed rather than hardcoded so a session staged elsewhere in the module would commit with the
+  rest). `/notifications mute|unmute` stay immediate, as in game.
+- **The screen edits silences; the mute is not on it.** `SILENCED_MEDIUM` used to be a *row* in the
+  media select, which meant ticking "Silence this type" **and** "Chat" silently discarded the chat tick
+  — `setMedia` folded any set containing the key down to the empty set, and the player was shown a
+  silenced type with no sign of what had been dropped. The key is now filtered out of an incoming
+  selection (it can only arrive from a message built before this change) and silencing is two buttons:
+  `Silence this type` stages `{none}` for the selected `dataType`, `Silence everything` stages it for
+  every known one. **`Silence everything` is one-way once applied** — a silence writes explicit rows and
+  no player-facing route returns a `dataType` to the server default, so Discard *before* Apply is the
+  only way back; staging is what makes that safe. The player-level mute lost its button here: it is
+  temporary and covers every type at once, so it belongs to `/notifications mute|unmute`, and the screen
+  only **reports** it (a muted player would otherwise read a screen of correct-looking media and receive
+  nothing). The embed likewise names a silenced type, since a silence and an unconfigured type both show
+  as an empty select. A screen with **no** registered medium omits the media row entirely rather than
+  sending an empty select, which Discord rejects outright — the same shape of bug as the empty
+  `multiAction` dialog under "Notification inbox".
 - **The reverse lookup is on the provider chain, not the store.** `DiscordAccountProvider` carries a
   `default playerFor(long)` returning empty (a `default`, so a provider compiled against the old
   interface still builds), implemented by both shipped providers and chained exactly as `discordIdFor`
@@ -823,8 +841,9 @@ medium until the player unmutes, and touches no preference row. Turning one `dat
 a **silence** (`NotificationPreferences.SILENCED_MEDIUM`, the `medium = 'none'` row — see "Player
 commands"). The wording is kept apart on every surface: in game, `/notifications mute|unmute` and the
 "Mute everything" dialog are the player-level switch, while the medium/category editors silence a type
-by emptying its selection; in Discord, `/notifications mute|unmute` and the "Mute everything" button
-are the switch, and the media select's reserved row reads "Silence this type".
+by emptying its selection; in Discord, `/notifications mute|unmute` are the switch (there is no mute
+button on the preference screen at all), and the screen's own buttons read "Silence this type" and
+"Silence everything".
 
 - **API:** `NotificationPreferences#isMuted(UUID)`, a `default` method returning `false` — feature
   modules are compiled separately against `api`, so a new abstract method would break them. Mutation
@@ -1166,7 +1185,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 204 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 466 in total, all passing.
+Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 209 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 471 in total, all passing.
 
 ## Current state
 
@@ -1207,8 +1226,10 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
 - **The Discord slash-command surface has never run against a live bot.** Every view class is unit
   tested (82 new tests), but slash-command registration, the compose modal, component interactions and
   the ephemeral-message editing all need a real bot token and a linked account. **Task 13's 19-item
-  manual checklist in `docs/superpowers/plans/2026-08-20-discord-slash-commands.md` has not been run.**
-  See "Discord slash commands".
+  manual checklist in `docs/superpowers/plans/2026-08-20-discord-slash-commands.md` has not been run**,
+  and it predates the four-button preference screen — the two `Silence` buttons, the muted/silenced
+  embed lines, and the omitted media row on a sink-less server are not on it. See "Discord slash
+  commands".
 - **Discord linking exists but its end-to-end path has never been run.** `embedded` + `/notifications link discord` +
   the Discord `/link` slash command are implemented and unit tested where testable, but JDA slash-command
   registration, the DM interaction, and a row actually landing need a live server, a bot token and a
