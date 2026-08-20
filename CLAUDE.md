@@ -609,7 +609,9 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   stays clear for the inbox's own verbs, which would otherwise collide with a name like `mute`.
 - `/notifications list [page]` / `/notifications read <entry>` / `/notifications dismiss <entry>` — the **chat
   fallback** for clients where the dialog does not render. `<entry>` indexes the page most recently listed
-  for that player, held in `InboxRouter`. All three are player-only, under the same
+  for that player, held in `InboxRouter`. Each listed row carries a hover ("Click to run /… read `<entry>`")
+  and a `runCommand` click event for its own `read` — so the fallback is clickable too, and the command it
+  runs is worded from the router's `commandLabel`, making the same rows work under `/mail list`. All three are player-only, under the same
   `playernotifications.command.preferences` permission, and dispatch off the main thread.
 - `/notifications clear` — empties the inbox outright, **unread entries included**, as a shorthand for
   the list screen's "Mark all read" then "Dismiss all read". Composed from `markAllSeen` +
