@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-20
 **Module:** `platform:discord-adapter`
-**Status:** approved, unimplemented
+**Status:** implemented; the live-server checklist in the plan has not been run
 
 ## Goal
 
@@ -10,11 +10,16 @@ Give a linked player the mail and notification surface they have in game, from D
 mail, list, read and dismiss notifications, and edit delivery preferences. The adapter today is a
 one-way sink plus a `/link` redemption command; this makes it a two-way client.
 
-Everything is built inside `platform:discord-adapter`. **No host change is required** — `MailSender`,
-`MailNotifier`, `MailRecipients`, `MailFormatting`, `InboxEntryRenderer`, `PreferenceEditSession`,
-`PreferenceSessionManager` and `DatabaseNotificationPreferences` are all public, and
-`PlayerNotificationsPlugin` already exposes `notificationService()`, `sinkRegistry()`, `preferences()`
-and `categories()`.
+Everything is built inside `platform:discord-adapter`, over host machinery that is already public —
+`MailSender`, `MailNotifier`, `MailRecipients`, `InboxEntryRenderer`, `PreferenceEditSession`,
+`PreferenceSessionManager`, `DatabaseNotificationPreferences`, and `PlayerNotificationsPlugin`'s
+`notificationService()` / `sinkRegistry()` / `preferences()` / `categories()`.
+
+**The one host change** is `PlayerNotificationsPlugin#inboxPageSize()`, a read-only accessor over a
+`volatile` field set on enable and on reload. `settings.yml`'s `inbox-page-size` was reachable only by
+the two `InboxRouter`s, and a Discord surface paging differently from every in-game screen would be a
+bug nobody could configure away. `InboxView` takes it as an `IntSupplier`, so a reload reaches an
+already-built view — the same reason `InboxRouter.reloadPageSize` exists.
 
 ## Where this sits
 
@@ -227,5 +232,6 @@ wiring.
   push, and every command in this document is solicited.
 - **No rate limiting**, matching `/link`. A linked user driving `/mail send` in a loop is bounded by
   Discord's own interaction rate limits, not by anything here.
+- **No Reply button on a read mail**, per the modal section above.
 - **A Discord-side staged preference edit is invisible in game** and vice versa, per the two-manager
   decision above. Last Apply wins.

@@ -11,6 +11,28 @@ All new production code lands in `platform/discord-adapter/src/main/java/io/gith
 
 That module's suite as a whole needs Docker (its schema tests use Testcontainers), but **every test in this plan is hermetic** — filter to the named class and no daemon is needed.
 
+## What changed while executing this plan
+
+Recorded here rather than silently: the plan below is as written, these are the places the code
+diverged from it.
+
+- **`InboxView` takes an `IntSupplier` page size, not an `int`**, and Task 12 adds
+  `PlayerNotificationsPlugin#inboxPageSize()` to feed it. `settings.yml`'s `inbox-page-size` was
+  reachable only by the two `InboxRouter`s, and a size captured at construction would have left the
+  Discord surface paging differently from every in-game screen after a reload. This is the plan's only
+  host change; the spec's "no host change is required" was wrong and has been corrected there too.
+- **`PreferenceView` has no `Clock` parameter.** `PreferenceSessionManager` stamps and expires sessions
+  with `Instant.now()`, so an injected clock could only disagree with the thing deciding whether a
+  session is alive — a fixed test clock made every session instantly expired. The expiry test therefore
+  drops the session explicitly instead of advancing a clock.
+- **`PreferenceView#setMuted` takes the displayed `dataType`.** The mute button shares a screen with the
+  type select, so the row on show has to survive pressing it.
+- **`InboxReplies` was extracted** (with its own test) rather than duplicating the out-of-range wording
+  in both command listeners.
+- **No *Reply* button on a read mail.** `InboxView.Row` carries the rendered title, not the sender's
+  name, so wiring it means either parsing a name out of rendered text or widening the row for one
+  button. Deferred; the compose modal is the only modal built.
+
 ## Parallelisation
 
 Waves, not a chain. Every task inside a wave touches a disjoint file set and depends only on **interfaces declared in an earlier wave's task header**, which are reproduced verbatim below so a task can be written against them before its dependency's body exists.
