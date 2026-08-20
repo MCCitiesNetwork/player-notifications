@@ -6,6 +6,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.mail.MailFormatting;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailRecipients;
 import io.github.md5sha256.playernotifications.paper.mail.MailSender;
@@ -13,6 +14,7 @@ import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
@@ -28,10 +30,14 @@ import java.util.function.Consumer;
  * machinery {@code /notifications} uses, plus {@code send}.
  *
  * <p>The bare root opens the mail-filtered inbox dialog; {@code list}/{@code read}/{@code dismiss}/
- * {@code clear} are its chat fallback, mirroring {@code NotificationsCommand}'s shape exactly. Every
- * branch is player-only and dispatches off the main thread — all of it does blocking JDBC, and
- * {@code send} additionally resolves an offline recipient through {@code Bukkit.getOfflinePlayer}, which
- * can touch disk.
+ * {@code clear} are its chat fallback, mirroring {@code NotificationsCommand}'s shape exactly. Those
+ * branches are player-only — they act on <i>your</i> inbox, and the console has none. {@code send} is
+ * not: it acts on someone else's inbox, so it runs for any {@code CommandSender} and attributes a
+ * non-player one to {@code MailSender.SERVER_SENDER}.
+ *
+ * <p>Every branch dispatches off the main thread — all of it does blocking JDBC, and {@code send}
+ * additionally resolves an offline recipient through {@code Bukkit.getOfflinePlayer}, which can touch
+ * disk.
  */
 public final class MailCommand {
 
@@ -51,7 +57,7 @@ public final class MailCommand {
             Component.text("Only players can use mail.", NamedTextColor.RED);
 
     private static final String PAGE_ARGUMENT = "page";
-    private static final String INDEX_ARGUMENT = "n";
+    private static final String INDEX_ARGUMENT = "entry";
     private static final String PLAYER_ARGUMENT = "player";
     private static final String MESSAGE_ARGUMENT = "message";
 
@@ -98,26 +104,42 @@ public final class MailCommand {
                                 .executes(context -> send(context, plugin, mailSender, mailNotifier))));
     }
 
+    /**
+     * Unlike every other branch, this one accepts a non-player sender: mail is written <i>to</i> someone
+     * else, so the console has a use for it even though it has no inbox of its own. A non-player sender
+     * is attributed to {@link MailSender#SERVER_SENDER}.
+     *
+     * <p>The tag resolver is built <b>here</b>, on the command thread, rather than inside the async task:
+     * it reads the sender's permissions, and Bukkit's permission state belongs to the main thread. The
+     * resolved {@code TagResolver} is then just data the task closes over.
+     */
     private static int send(@NotNull CommandContext<CommandSourceStack> context, @NotNull Plugin plugin,
                             @NotNull MailSender mailSender, @NotNull MailNotifier mailNotifier) {
         String name = StringArgumentType.getString(context, PLAYER_ARGUMENT);
         String message = StringArgumentType.getString(context, MESSAGE_ARGUMENT);
-        return run(context, player -> Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            MailRecipients.Result result = MailRecipients.resolve(name, message, MailCommand::resolveRecipient);
+        CommandSender sender = context.getSource().getSender();
+        UUID senderId = sender instanceof Player player ? player.getUniqueId() : MailSender.SERVER_SENDER;
+        String senderName = sender instanceof Player player ? player.getName() : MailSender.SERVER_NAME;
+        TagResolver allowedTags = MailFormatting.resolverFor(sender::hasPermission);
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            MailRecipients.Result result = MailRecipients.resolve(name, message,
+                    MailCommand::resolveRecipient, raw -> MailFormatting.sanitize(raw, allowedTags));
             switch (result) {
                 case MailRecipients.Result.Ok ok -> {
-                    mailSender.send(player.getUniqueId(), player.getName(), ok.recipient(), ok.message());
-                    player.sendMessage(Component.text("Mail sent to " + name + ".", NamedTextColor.GREEN));
+                    mailSender.send(senderId, senderName, ok.recipient(), ok.message());
+                    sender.sendMessage(Component.text("Mail sent to " + name + ".", NamedTextColor.GREEN));
                     // Unconditional: Discord DM reaches the recipient whether or not they're online, and
                     // MailNotifier already resolves what can reach them.
                     mailNotifier.notifyArrival(ok.recipient());
                 }
-                case MailRecipients.Result.UnknownPlayer unknown -> player.sendMessage(Component.text(
+                case MailRecipients.Result.UnknownPlayer unknown -> sender.sendMessage(Component.text(
                         "Unknown player: " + unknown.name(), NamedTextColor.RED));
-                case MailRecipients.Result.InvalidMessage invalid -> player.sendMessage(Component.text(
+                case MailRecipients.Result.InvalidMessage invalid -> sender.sendMessage(Component.text(
                         invalid.reason(), NamedTextColor.RED));
             }
-        }));
+        });
+        return Command.SINGLE_SUCCESS;
     }
 
     /**

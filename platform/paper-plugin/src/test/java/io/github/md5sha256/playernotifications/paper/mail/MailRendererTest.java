@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.paper.mail;
 
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
@@ -51,5 +52,42 @@ class MailRendererTest {
 
         Assertions.assertEquals(PLAIN.serialize(first.title()), PLAIN.serialize(second.title()));
         Assertions.assertEquals(PLAIN.serialize(first.body()), PLAIN.serialize(second.body()));
+    }
+
+    @Test
+    @DisplayName("the stored body is parsed as MiniMessage, since it was authorised at send time")
+    void bodyIsParsedAsMiniMessage() {
+        MailPayload payload = new MailPayload(UUID.randomUUID(), "Steve", "<red>hello there");
+
+        RenderableNotification rendered = new MailRenderer().render(payload, UUID.randomUUID());
+
+        Assertions.assertEquals("hello there", PLAIN.serialize(rendered.body()));
+        Assertions.assertTrue(
+                rendered.body().color() == NamedTextColor.RED
+                        || rendered.body().children().stream()
+                                .anyMatch(child -> child.color() == NamedTextColor.RED),
+                "expected the stored colour tag to render");
+    }
+
+    @Test
+    @DisplayName("escaped text in the stored body stays literal")
+    void escapedTextStaysLiteral() {
+        MailPayload payload = new MailPayload(
+                UUID.randomUUID(), "Steve", "\\<click:run_command:/op me>x");
+
+        RenderableNotification rendered = new MailRenderer().render(payload, UUID.randomUUID());
+
+        Assertions.assertEquals("<click:run_command:/op me>x", PLAIN.serialize(rendered.body()));
+        Assertions.assertNull(rendered.body().clickEvent());
+    }
+
+    @Test
+    @DisplayName("the title is never parsed as MiniMessage, so a tag in a name cannot format it")
+    void titleIsLiteral() {
+        MailPayload payload = new MailPayload(UUID.randomUUID(), "<red>Steve", "hello");
+
+        RenderableNotification rendered = new MailRenderer().render(payload, UUID.randomUUID());
+
+        Assertions.assertEquals("Mail from <red>Steve", PLAIN.serialize(rendered.title()));
     }
 }

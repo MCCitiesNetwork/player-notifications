@@ -402,10 +402,16 @@ MailPayload.class, new MailRenderer())`, alongside the RETAIN processor) — not
 processor above short-circuits before a renderer is ever reached, but because `InboxEntryRenderer`
 (see "Notification inbox") resolves payload → renderer on **read**, independent of the delivery path.
 Without a renderer, `/mail` would show the "unrenderable payload" placeholder instead of the mail.
-`MailRenderer` titles the notification `"Mail from <senderName>"` and renders the message as the body,
-both built with `Component.text(...)` — never MiniMessage or a legacy serializer, since the message is
-player-supplied and must not be interpretable as formatting. It ignores the `target` argument; a mail
-reads the same to everyone (in practice, its one recipient).
+`MailRenderer` titles the notification `"Mail from <senderName>"` with `Component.text(...)` — a player
+name is not a formatting document, and parsing it would smuggle tags past the message's permission gate
+— and renders the message as the body **with `MiniMessage.miniMessage().deserialize(...)`**. That
+inverts the original rule (the body used to be `Component.text` precisely because it is
+player-supplied): the stored string is not raw player input any more, it is what
+`MailFormatting.sanitize` produced at send time from only the tags the sender held a permission for,
+with everything else escaped — see "Mail formatting". The parse is guarded all the same: MiniMessage
+*throws* on a legacy section-sign code, and a mail stored before this change can contain one, so a
+`RuntimeException` falls back to the message as literal text, exactly how such a mail read before. It
+ignores the `target` argument; a mail reads the same to everyone (in practice, its one recipient).
 
 **The mail preference rows are real, but they route the arrival *notice*, not the mail.** A processor
 bypasses `NotificationPreferences` entirely, so a `mail`-keyed preference row cannot affect the mail
@@ -452,7 +458,7 @@ possible future reply command. `MailSender` does no validation itself — that i
 a module calling `MailSender` programmatically gets the mail sent rather than an exception thrown
 across a module boundary.
 
-**`paper.mail.MailRecipients.resolve(name, message, resolver)`** is the testable half of `/mail send`'s
+**`paper.mail.MailRecipients.resolve(name, message, resolver[, formatter])`** is the testable half of `/mail send`'s
 argument handling, taking a `Function<String, UUID>` resolver seam (the same device
 `TestNotificationRenderer.usingServerNames()` uses) so its rules are unit-testable without a server: an
 unknown name is rejected; a blank or over-`MailPayload.MAX_MESSAGE_LENGTH` (256-character) message is
@@ -460,7 +466,43 @@ rejected **without truncation** (silently dropping the end of someone's sentence
 asking them to shorten it). `MailCommand` resolves the recipient itself on the async dispatch thread —
 an online player by name first, else `Bukkit.getOfflinePlayer(name)` accepted only when
 `hasPlayedBefore()` (rejecting a never-joined name matters because `getOfflinePlayer(String)`
-fabricates a UUID for any string at all) — then calls `MailRecipients.resolve` for the message rule.
+fabricates a UUID for any string at all) — then calls `MailRecipients.resolve` for the message rule. The
+four-argument overload additionally runs a `UnaryOperator<String>` over the trimmed message — in
+production `MailFormatting.sanitize` — **after** the length check, so `MAX_MESSAGE_LENGTH` bounds what
+the sender typed rather than what it serialises to, and rejects a formatter result that is blank
+(`<red>` alone carries no readable text, and `MailPayload` refuses a blank message). The three-argument
+form delegates with `UnaryOperator.identity()`, so a programmatic caller is unchanged.
+
+### Mail formatting
+
+`/mail send`'s message is **MiniMessage**, with **one permission per tag group** under
+`playernotifications.command.mail.format.` (`paper.mail.MailFormatting.PERMISSION_PREFIX`).
+**Every one of the fifteen is `default: op`** — a formatted mail is something an operator opts a rank
+into, cosmetic tags included, so an ordinary player's message stays literal text until a server says
+otherwise. The split is fine-grained anyway, so a server can grant exactly the cosmetic groups
+(`color`, `decoration`, `gradient`, `rainbow`, `reset`, `newline`) without also handing out `click` and
+`hover`, which attach a runnable command or a payload to text landing in someone else's inbox, or
+`score`/`nbt`, which pull server-side state into it; `font` sits with those because a client-side font
+can render text misleadingly. `MailFormatting.Group` deliberately carries no "granted by default"
+component — it would be the same value fifteen times — and `MailFormattingTest` asserts the defaults
+against `paper-plugin.yml` itself instead.
+
+**Parsing happens at send time, not at render time**, because the permission check needs the *sender*
+and a renderer runs on read, long after, with the sender possibly gone. `MailCommand` builds the
+resolver with `MailFormatting.resolverFor(sender::hasPermission)` **on the command thread** (Bukkit
+permission state belongs to the main thread) and closes over it in the async task;
+`MailFormatting.sanitize` then deserializes with only those tags and re-serializes with the standard
+`MiniMessage`, and *that* string is stored. A tag the sender may not use was never registered, so it
+survives as text and is escaped on the way out — the recipient sees `<click:run_command:/op me>`
+verbatim rather than the sentence being silently shortened. `sanitize` returns `""` when nothing
+readable survives, judged on the *rendered* text: `<red>` alone still serialises back to `<red>`, so a
+blankness check on the stored string would let it through and then trip `MailPayload`'s constructor.
+
+Consequences worth knowing: **permissions are evaluated once, at send time** — revoking
+`…format.click` later does not neutralise mail already sent, deliberately, since the alternative makes
+an old mail's appearance depend on the sender's *current* rank. And `MAX_MESSAGE_LENGTH` bounds the
+typed message, not the stored one. Design doc:
+`docs/superpowers/specs/2026-08-20-console-mail-and-minimessage-design.md`.
 
 **`/mail` is a second `InboxRouter` instance**, not the shared one `/notifications` uses.
 `InboxRouter` gained a `@Nullable String dataTypeFilter` and a `Component title` constructor argument,
@@ -472,28 +514,34 @@ are per-screen state: `/mail list 2` must not make a stale `/notifications read 
 mail page. `InboxQuitListener` now holds a `List<InboxRouter>` and drops the quitting player from each.
 
 **The `/mail` command table**, mirroring `NotificationsCommand`'s shape (`paper.command.MailCommand`,
-all branches player-only, dispatched off the main thread):
+every branch dispatched off the main thread; player-only **except `send`**, which acts on someone
+else's inbox and so runs for any `CommandSender` — a console send is attributed to
+`MailSender.SERVER_SENDER` (the nil UUID) / `SERVER_NAME` (`"Server"`) and reads as "Mail from Server".
+The other branches act on *your* inbox, which the console does not have):
 
 | Command | Behaviour |
 |---|---|
 | `/mail` | opens the mail inbox dialog (filtered `InboxDialog`, titled "Mail") |
-| `/mail send <player> <message>` | sends mail (`<message>` is a greedy string) and fires the notice |
+| `/mail send <player> <message>` | sends mail (`<message>` is a greedy string, parsed as MiniMessage) and fires the notice |
 | `/mail list [page]` | chat fallback list |
-| `/mail read <n>` | reads entry `n` of the last-listed page; marks it seen |
-| `/mail dismiss <n>` | dismisses entry `n` |
+| `/mail read <entry>` | reads entry `<entry>` of the last-listed page; marks it seen |
+| `/mail dismiss <entry>` | dismisses entry `<entry>` |
 | `/mail clear` | `markAllSeen` + `dismissSeen`, both filtered to `mail` |
 
-Two permissions, both `default: true`: `playernotifications.command.mail` gates the root
+Two command permissions, both `default: true`: `playernotifications.command.mail` gates the root
 (read/list/dismiss/clear), and `playernotifications.command.mail.send` is an **additional** requirement
 on `send` only, nested under the root the way `playernotifications.command.link` nests under
 `playernotifications.command.preferences` — so a server can make mail read-only for a rank by revoking
-only the `.send` permission, while revoking the root hides `/mail` entirely.
+only the `.send` permission, while revoking the root hides `/mail` entirely. The fifteen
+`playernotifications.command.mail.format.*` nodes are separate from both, all `default: op`, and gate
+tags rather than commands — see "Mail formatting".
 
 **Nothing in this feature has been exercised on a live server.** `MailCommand`'s Brigadier wiring, the
-`/mail` and `/notifications` dialogs, tab completion, the permission split, and both notice paths
-(send-time and join-time) are unverified — see the manual checklist recorded under "Current state".
+`/mail` and `/notifications` dialogs, tab completion, the permission split, console `/mail send`, the
+per-tag formatting gate, and both notice paths (send-time and join-time) are unverified — see the
+manual checklists recorded under "Current state".
 Everything unit-testable is tested: `MailSenderTest`, `MailRecipientsTest`, `MailNotifierTest`,
-`MailRendererTest`, and — against a real MariaDB — `FilteredInboxTest` and
+`MailRendererTest`, `MailFormattingTest`, and — against a real MariaDB — `FilteredInboxTest` and
 `core.MailNotDeliveredTest` (the regression test for the central claim above: a mail and an ordinary
 renderable notification enqueued together, delivery runs, and only the non-mail one reaches a
 recording sink while the mail's `seenTime` stays null and it is still present in `inbox(player, 1, 10,
@@ -661,14 +709,16 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications` (alias `/notifs`) — **opens the player's inbox** (`paper.inbox.InboxDialog`). The name
   was reserved for exactly this; the preference subcommands sit under `preferences` so the top level
   stays clear for the inbox's own verbs, which would otherwise collide with a name like `mute`.
-- `/notifications list [page]` / `/notifications read <n>` / `/notifications dismiss <n>` — the **chat
-  fallback** for clients where the dialog does not render. `<n>` indexes the page most recently listed
-  for that player, held in `InboxRouter`. All three are player-only, under the same
+- `/notifications list [page]` / `/notifications read <entry>` / `/notifications dismiss <entry>` — the **chat
+  fallback** for clients where the dialog does not render. `<entry>` indexes the page most recently listed
+  for that player, held in `InboxRouter`. Each listed row carries a hover ("Click to run /… read `<entry>`")
+  and a `runCommand` click event for its own `read` — so the fallback is clickable too, and the command it
+  runs is worded from the router's `commandLabel`, making the same rows work under `/mail list`. All three are player-only, under the same
   `playernotifications.command.preferences` permission, and dispatch off the main thread.
 - `/notifications clear` — empties the inbox outright, **unread entries included**, as a shorthand for
   the list screen's "Mark all read" then "Dismiss all read". Composed from `markAllSeen` +
   `dismissSeen` rather than a new service method, and drops the player's page cursor so a stale
-  `read <n>`/`dismiss <n>` cannot resolve. Same permission, player-only, async.
+  `read <entry>`/`dismiss <entry>` cannot resolve. Same permission, player-only, async.
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
@@ -922,7 +972,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 84 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 344 in total, all passing.
+Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 101 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 361 in total, all passing.
 
 ## Current state
 
@@ -991,8 +1041,12 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   `MailCommand`'s Brigadier tree, both `InboxRouter` dialogs under the "Mail" title, the chat fallback,
   tab completion, the two-permission split, and both notice paths (send-time and join-time) all need
   `:platform:paper-plugin:runServer`. **Task 4's 14-item manual checklist in
-  `docs/superpowers/plans/2026-08-10-first-party-mail.md` has not been run.** Everything underneath it
-  is unit- or Testcontainers-tested — see "Mail" for the list.
+  `docs/superpowers/plans/2026-08-10-first-party-mail.md` has not been run**, and neither has **Task 3's
+  six-item checklist in `docs/superpowers/plans/2026-08-20-console-mail-and-minimessage.md`** (console
+  `/mail send`, the "Mail from Server" title, a plain player getting literal text until a format node is
+  granted, a non-op's `<click>` still arriving literal, an op's arriving live, and a tag-only message
+  rejected as blank). Everything underneath is
+  unit- or Testcontainers-tested — see "Mail" and "Mail formatting" for the list.
 - **The global mute's player-facing surface is unverified — nothing about it has run on a live
   server.** `/notifications mute|unmute` (both the top-level and `preferences` forms), the root
   dialog's state-dependent button label, `MuteConfirmDialog`'s staged flip, the suppressed join and

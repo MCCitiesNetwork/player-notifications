@@ -6,9 +6,11 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -64,5 +66,38 @@ class MailRecipientsTest {
         Map<String, UUID> map = Map.of("Alex", UUID.randomUUID());
         MailRecipients.Result result = MailRecipients.resolve("Alex", "hi", map::get);
         assertTrue(result instanceof MailRecipients.Result.Ok);
+    }
+
+    @Test
+    void formatterRunsOnTheTrimmedMessage() {
+        MailRecipients.Result result = MailRecipients.resolve(
+                "Steve", "  hello  ", this.resolver, message -> "[" + message + "]");
+        MailRecipients.Result.Ok ok = assertInstanceOf(MailRecipients.Result.Ok.class, result);
+        assertEquals("[hello]", ok.message());
+    }
+
+    @Test
+    void aFormatterThatEmptiesTheMessageIsRejected() {
+        // MailFormatting.sanitize returns "" for a message of nothing but tags, e.g. "<red>".
+        MailRecipients.Result result =
+                MailRecipients.resolve("Steve", "<red>", this.resolver, message -> "");
+        MailRecipients.Result.InvalidMessage invalid =
+                assertInstanceOf(MailRecipients.Result.InvalidMessage.class, result);
+        assertTrue(invalid.reason().toLowerCase().contains("blank"), invalid.reason());
+    }
+
+    @Test
+    void lengthIsCheckedOnTheTypedMessageBeforeTheFormatterRuns() {
+        boolean[] ran = {false};
+        UnaryOperator<String> formatter = message -> {
+            ran[0] = true;
+            return message;
+        };
+
+        MailRecipients.Result result = MailRecipients.resolve(
+                "Steve", "x".repeat(MailPayload.MAX_MESSAGE_LENGTH + 1), this.resolver, formatter);
+
+        assertInstanceOf(MailRecipients.Result.InvalidMessage.class, result);
+        assertFalse(ran[0], "the formatter must not run on a message that was already rejected");
     }
 }
