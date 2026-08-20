@@ -628,7 +628,7 @@ The other branches act on *your* inbox, which the console does not have):
 |---|---|
 | `/mail` | opens the mail inbox dialog (filtered `InboxDialog`, titled "Mail") |
 | `/mail send <player> <message>` | sends mail (`<message>` is a greedy string, parsed as MiniMessage) and fires the notice |
-| `/mail list [page]` | chat fallback list |
+| `/mail list [page]` | chat fallback list, `#<entry> [Time] [Sender] <content>` (see `MailChatRow`) |
 | `/mail read <entry>` | reads entry `<entry>` of the last-listed page; marks it seen |
 | `/mail delete <entry>` | deletes entry `<entry>` |
 | `/mail clear` | `markAllSeen` + `dismissSeen`, both filtered to `mail` |
@@ -826,7 +826,10 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   an existing method.
 - **Rendering happens on read, not on write.** `paper.inbox.InboxEntryRenderer` resolves payload class →
   `PayloadSerializer` → `NotificationRenderer`, the same three lookups `NotificationDelivery.dispatch`
-  does, extracted so the two cannot drift and so this one is unit-testable without a server. Any lookup
+  does, extracted so the two cannot drift and so this one is unit-testable without a server. Its
+  `decodePayload(entry)` — the first two lookups plus the decode, `Optional.empty()` on any failure — is
+  **public**, because a caller can need a field the rendered form does not carry: `MailChatRow` needs a
+  mail's sender name, which survives into the rendered title only as part of the string "Mail from X". Any lookup
   missing, or a decode or render throwing, yields a **placeholder** naming the data type — hiding the
   entry would leave it counted in `totalEntries` and read as a bug. Mail needs a renderer registered
   alongside its RETAIN processor for exactly this reason — see "Mail".
@@ -835,7 +838,17 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Delete all
   read*, Previous/Next); **no inbox screen carries a *Preferences* button** — the inbox is for
   reading, and preferences are reached by their own command; jumping into the preference screens from
-  a list left the player with no way back to what they were reading. `InboxDetailDialog` shows one
+  a list left the player with no way back to what they were reading. **A chat listing's row wording is
+  `paper.inbox.InboxChatRow`**, a per-instance constructor argument like the title, command label and
+  filter beside it — so `/mail` gets its own format without the listing loop learning that `mail` is a
+  special data type. `InboxChatRow.titleOnly()` (`<entry>. <title>`) is what `/notifications` uses and
+  what every listing looked like before; `paper.mail.MailChatRow` is the mail one:
+  `#<entry> [Time] [Sender] <content>`, where the time is `HH:mm` today, `d MMM` inside this year and
+  `d MMM yyyy` beyond it (mail never expires and an EssentialsX import can be years old, so the year
+  cannot simply be dropped), and the content is flattened to one line and cut at 40 characters — the row
+  already clicks through to `read <entry>` for the whole thing. Its zone, clock and payload decode are
+  all injected, which is what keeps it unit-testable without a server; a payload that is not a
+  `MailPayload`, or does not decode, falls back to the rendered title rather than showing empty columns. `InboxDetailDialog` shows one
   entry with *Delete* and *Back*,
   Back-doesn't-commit as in the preference editors. Opening a row marks it seen.
 - **An empty inbox replies in chat and opens no dialog at all.** `InboxRouter.openInbox` returns early
@@ -1214,7 +1227,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 210 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 475 in total, all passing.
+Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 113 in `:platform:paper-plugin:test`, 210 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 485 in total, all passing.
 
 ## Current state
 

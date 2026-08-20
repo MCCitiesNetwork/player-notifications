@@ -44,6 +44,9 @@ public final class InboxRouter {
     /** The screen's own name, so the chat fallback's header matches the dialog's title. */
     private final Component title;
 
+    /** How this screen words one row of its chat listing. See {@link InboxChatRow}. */
+    private final InboxChatRow chatRow;
+
     /**
      * The data type this screen is restricted to, or {@code null} for unfiltered. Threaded into every
      * {@link NotificationService} call this router makes, so {@code /mail}'s paging and counts agree with
@@ -71,7 +74,8 @@ public final class InboxRouter {
                        int pageSize,
                        @Nullable String dataTypeFilter,
                        @NotNull String commandLabel,
-                       @NotNull Component title) {
+                       @NotNull Component title,
+                       @NotNull InboxChatRow chatRow) {
         this.plugin = plugin;
         this.service = service;
         this.renderer = renderer;
@@ -79,6 +83,7 @@ public final class InboxRouter {
         this.dataTypeFilter = dataTypeFilter;
         this.commandLabel = commandLabel;
         this.title = title;
+        this.chatRow = chatRow;
         this.listDialog = new InboxDialog(this, title);
         this.detailDialog = new InboxDetailDialog(this);
     }
@@ -201,9 +206,7 @@ public final class InboxRouter {
             for (InboxEntry entry : read.entries()) {
                 var rendered = this.renderer.render(entry, player.getUniqueId());
                 String readCommand = "/" + this.commandLabel + " read " + index;
-                NamedTextColor color = entry.unread() ? NamedTextColor.WHITE : NamedTextColor.GRAY;
-                player.sendMessage(Component.text(index + ". ", color)
-                        .append(rendered.title().colorIfAbsent(color))
+                player.sendMessage(this.chatRow.format(index, entry, rendered, entry.unread())
                         // The whole row is the button: hovering names the command and clicking runs it,
                         // so a chat-fallback reader never has to retype an index they can already see.
                         .hoverEvent(HoverEvent.showText(Component.text(

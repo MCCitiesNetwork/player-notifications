@@ -15,9 +15,11 @@ import io.github.md5sha256.playernotifications.paper.command.NotificationsComman
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxChatRow;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.mail.MailChatRow;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailRenderer;
 import io.github.md5sha256.playernotifications.paper.mail.MailSender;
@@ -53,6 +55,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
@@ -272,13 +276,14 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         InboxEntryRenderer inboxRenderer = new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger());
         this.inboxRouter = new InboxRouter(
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                null, "notifications", Component.text("Notifications"));
+                null, "notifications", Component.text("Notifications"), InboxChatRow.titleOnly());
         // A second, mail-filtered InboxRouter instance rather than one shared router with a per-call
         // filter: the cursor and last-listed maps are per-screen state, and /mail list 2 must not make
         // /notifications read 1 resolve against the mail page.
         this.mailRouter = new InboxRouter(
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                MailPayload.DATA_TYPE, "mail", Component.text("Mail"));
+                MailPayload.DATA_TYPE, "mail", Component.text("Mail"),
+                new MailChatRow(inboxRenderer::decodePayload, ZoneId.systemDefault(), Instant::now));
         getServer().getPluginManager().registerEvents(
                 new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
         this.mailNotifier = new MailNotifier(this.sinkRegistry, this.preferences, getLogger());

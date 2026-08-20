@@ -31,14 +31,38 @@ public final class InboxEntryRenderer {
         this.logger = logger;
     }
 
-    public @NotNull RenderableNotification render(@NotNull InboxEntry entry, @NotNull UUID viewer) {
+    /**
+     * Decodes an entry's stored payload, or empty when the data type has no payload mapping, no
+     * serializer, or the stored JSON does not decode. Exposed because a caller may need a field the
+     * rendered form does not carry — {@code MailChatRow} needs a mail's sender name, which exists in
+     * the payload but only as part of a display string in the rendered title.
+     */
+    public @NotNull Optional<Object> decodePayload(@NotNull InboxEntry entry) {
         String dataType = entry.notifPayloadType();
 
         Optional<Class<?>> payloadClass = this.registry.resolvePayloadClass(dataType);
         if (payloadClass.isEmpty()) {
-            this.logger.fine(() -> "No payload mapping for data type '" + dataType + "'; rendering placeholder");
-            return placeholder(dataType);
+            this.logger.fine(() -> "No payload mapping for data type '" + dataType + "'");
+            return Optional.empty();
         }
+
+        Optional<? extends PayloadSerializer<?>> serializer = this.registry.getSerializer(payloadClass.get());
+        if (serializer.isEmpty()) {
+            this.logger.warning("No serializer registered for payload type " + payloadClass.get().getName());
+            return Optional.empty();
+        }
+
+        try {
+            return Optional.ofNullable(serializer.get().deserialize(entry.notifPayload()));
+        } catch (RuntimeException e) {
+            this.logger.warning("Failed to deserialize inbox payload of type " + dataType
+                    + ": " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    public @NotNull RenderableNotification render(@NotNull InboxEntry entry, @NotNull UUID viewer) {
+        String dataType = entry.notifPayloadType();
 
         Optional<? extends NotificationRenderer<?>> renderer = this.registry.getRenderer(dataType);
         if (renderer.isEmpty()) {
@@ -46,24 +70,14 @@ public final class InboxEntryRenderer {
             return placeholder(dataType);
         }
 
-        Optional<? extends PayloadSerializer<?>> serializer = this.registry.getSerializer(payloadClass.get());
-        if (serializer.isEmpty()) {
-            this.logger.warning("No serializer registered for payload type " + payloadClass.get().getName()
-                    + "; rendering placeholder");
-            return placeholder(dataType);
-        }
-
-        Object payload;
-        try {
-            payload = serializer.get().deserialize(entry.notifPayload());
-        } catch (RuntimeException e) {
-            this.logger.warning("Failed to deserialize inbox payload of type " + dataType
-                    + "; rendering placeholder: " + e.getMessage());
+        Optional<Object> payload = decodePayload(entry);
+        if (payload.isEmpty()) {
+            // decodePayload has already logged which of the three lookups failed.
             return placeholder(dataType);
         }
 
         try {
-            return castRenderer(renderer.get()).render(payload, viewer);
+            return castRenderer(renderer.get()).render(payload.get(), viewer);
         } catch (RuntimeException e) {
             this.logger.warning("Renderer for data type " + dataType + " threw; rendering placeholder: "
                     + e.getMessage());

@@ -45,6 +45,37 @@ class InboxEntryRendererTest {
     }
 
     @Test
+    @DisplayName("decodePayload returns the decoded payload, so a caller can read fields off it")
+    void decodePayloadYieldsThePayload() {
+        // The seam MailChatRow uses to reach a mail's sender, which no rendered form carries.
+        NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
+        registry.registerPayloadMapping("greeting", String.class);
+        registry.registerSerializer(String.class, new UnquotingSerializer());
+
+        Assertions.assertEquals(java.util.Optional.of("hello"),
+                new InboxEntryRenderer(registry, LOGGER).decodePayload(entry("greeting", "\"hello\"")));
+    }
+
+    @Test
+    @DisplayName("decodePayload is empty when the type is unmapped, unserializable, or fails to decode")
+    void decodePayloadIsEmptyRatherThanThrowing() {
+        NotificationDataTypeRegistry unmapped = new NotificationDataTypeRegistry();
+        Assertions.assertEquals(java.util.Optional.empty(),
+                new InboxEntryRenderer(unmapped, LOGGER).decodePayload(entry("ghost-module", "{}")));
+
+        NotificationDataTypeRegistry noSerializer = new NotificationDataTypeRegistry();
+        noSerializer.registerPayloadMapping("greeting", StringBuilder.class);
+        Assertions.assertEquals(java.util.Optional.empty(),
+                new InboxEntryRenderer(noSerializer, LOGGER).decodePayload(entry("greeting", "{}")));
+
+        NotificationDataTypeRegistry throwing = new NotificationDataTypeRegistry();
+        throwing.registerPayloadMapping("broken", String.class);
+        throwing.registerSerializer(String.class, new ThrowingSerializer());
+        Assertions.assertEquals(java.util.Optional.empty(),
+                new InboxEntryRenderer(throwing, LOGGER).decodePayload(entry("broken", "not json")));
+    }
+
+    @Test
     @DisplayName("a data type with no registered payload mapping renders a placeholder naming the type")
     void unregisteredTypeRendersAPlaceholder() {
         NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
