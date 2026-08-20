@@ -9,6 +9,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.InteractionHook;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
+import net.dv8tion.jda.api.interactions.modals.ModalMapping;
 import net.dv8tion.jda.api.modals.Modal;
 import org.jetbrains.annotations.NotNull;
 
@@ -81,8 +82,8 @@ public final class MailCommandListener extends ListenerAdapter {
             return;
         }
         String recipient = parsed.get().arg(0).orElse("");
-        String body = String.valueOf(event.getValue(COMPOSE_BODY) == null
-                ? "" : event.getValue(COMPOSE_BODY).getAsString());
+        ModalMapping bodyField = event.getValue(COMPOSE_BODY);
+        String body = bodyField == null ? "" : bodyField.getAsString();
 
         event.deferReply(true).queue();
         InteractionHook hook = event.getHook();
