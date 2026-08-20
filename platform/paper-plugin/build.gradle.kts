@@ -27,6 +27,7 @@ val featureModules: Configuration by configurations.creating {
 dependencies {
     // One line per adapter. Adding a new feature module means adding it here too.
     featureModules(project(path = ":platform:discord-adapter", configuration = "moduleJar"))
+    featureModules(project(path = ":platform:essentials-mail-converter", configuration = "moduleJar"))
 
     api(projects.api)
     api(projects.core)

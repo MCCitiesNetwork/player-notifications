@@ -1,0 +1,8 @@
+# Manifest for the PlayerNotifications EssentialsX mail converter module.
+# Keys are kebab-case: Configurate's ObjectMapper maps record components with
+# NamingSchemes.LOWER_CASE_DASHED, so `moduleName` reads the key `module-name`.
+module-name: essentials-mail-converter
+entry-class: io.github.md5sha256.playernotifications.essentials.convert.EssentialsMailConverterModule
+author: md5sha256
+expected-plugin-class: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin
+reloadable: false
