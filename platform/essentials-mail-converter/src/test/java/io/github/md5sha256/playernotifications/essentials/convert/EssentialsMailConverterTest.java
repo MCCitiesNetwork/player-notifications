@@ -72,6 +72,11 @@ class EssentialsMailConverterTest {
         }
 
         @Override
+        public void markUnread(@NotNull String key, @NotNull UUID playerId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public <T> void registerJsonPayload(@NotNull String dataType, @NotNull Class<T> type,
                                             @NotNull NotificationProcessor<T> processor) {
             throw new UnsupportedOperationException();

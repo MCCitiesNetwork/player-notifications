@@ -12,7 +12,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Sending mail from Discord: the rules {@code /mail send} and the compose modal share.
+ * Sending mail from Discord: the rules behind the {@code /mail send} modal.
  *
  * <p>Mail sent from Discord is always plain text. It passes through no permission gate — there is no
  * {@code CommandSender} in Discord to check {@code playernotifications.command.mail.format.*} against,

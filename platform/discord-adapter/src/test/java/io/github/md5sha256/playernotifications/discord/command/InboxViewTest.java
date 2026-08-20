@@ -217,6 +217,22 @@ class InboxViewTest {
     }
 
     @Test
+    void markingUnreadClearsTheSeenStampAndNothingElse() {
+        addMail("m", "hello", false);
+        InboxView view = view(MailPayload.DATA_TYPE, "Mail", 10);
+
+        InboxView.ActionResult result = view.markUnreadByKey(PLAYER, "m");
+
+        Assertions.assertInstanceOf(InboxView.ActionResult.Ok.class, result);
+        Assertions.assertEquals(List.of(new FakeNotificationService.Call("markUnread", null, "m")),
+                this.service.calls());
+        // Still listed, and listed as unread — this undoes the read, it does not dismiss anything.
+        InboxView.Page page = view.page(PLAYER, 1);
+        Assertions.assertEquals(1, page.rows().size());
+        Assertions.assertTrue(page.rows().get(0).unread());
+    }
+
+    @Test
     void clearingMarksEverythingSeenAndThenDismissesIt() {
         // The in-game /mail clear is the same composition, and the filter has to reach both halves or a
         // mail clear would dismiss the player's notifications too.

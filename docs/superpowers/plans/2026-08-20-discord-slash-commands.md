@@ -385,10 +385,13 @@ Constructs, guarded by `settings.commandsEnabled()`: an `InboxEntryRenderer` ove
 - [ ] `/link` still works after this change (the registration move did not drop it)
 - [ ] An unlinked Discord user running `/mail list` is told to link, naming `/notifications link discord`
 - [ ] `/mail send` to an online player: arrives in `/mail` in game, titled "Mail from <discord user's player name>"
-- [ ] `/mail send` to an offline player who has joined before: accepted; to a name that never joined: rejected
-- [ ] `/mail send message:<red>hi` arrives as the literal text `<red>hi`, not coloured
-- [ ] `/mail send message:<click:run_command:/op me>x` arrives literal and is not clickable in game
-- [ ] `/mail compose` opens a modal; a multi-line body arrives with its line breaks
+- [ ] `/mail send` opens the compose modal; a multi-line body arrives with its line breaks
+- [ ] `/mail send` to an offline player who has joined before: accepted; to a name that never joined:
+      rejected (both reported on modal submit, since the recipient is only checked then)
+- [ ] A modal body of `<red>hi` arrives as the literal text `<red>hi`, not coloured
+- [ ] A modal body of `<click:run_command:/op me>x` arrives literal and is not clickable in game
+- [ ] Opening an entry, then *Mark as unread*, returns to the listing with the row unread again
+- [ ] A `/notifications` entry marked unread is delivered again on the player's next join
 - [ ] The recipient's mail arrival notice reaches their preferred media, including a Discord DM
 - [ ] `/mail list` shows only mail; `/notifications list` shows everything
 - [ ] Prev/Next page through a >1 page inbox; the row select opens a detail; Dismiss removes it

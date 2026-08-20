@@ -106,6 +106,11 @@ class MailSenderTest {
         }
 
         @Override
+        public void markUnread(@NotNull String key, @NotNull UUID playerId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
             throw new UnsupportedOperationException();
         }

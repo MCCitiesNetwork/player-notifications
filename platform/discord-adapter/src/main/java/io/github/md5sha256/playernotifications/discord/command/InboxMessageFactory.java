@@ -85,7 +85,13 @@ public final class InboxMessageFactory {
                 .build();
     }
 
-    /** One entry, with Dismiss and a way back to the listing. */
+    /**
+     * One entry, with Dismiss, Mark as unread, and a way back to the listing.
+     *
+     * <p>Opening an entry marks it seen, so <em>Mark as unread</em> is how a player undoes that. It
+     * returns to the listing exactly as Back does; it exists as its own button because Back leaving the
+     * entry read is not something the word "back" says.
+     */
     public @NotNull MessageCreateData detail(@NotNull InboxView.Row row, @NotNull String surface) {
         MessageEmbed embed = new EmbedBuilder()
                 .setColor(this.embedColor)
@@ -97,6 +103,8 @@ public final class InboxMessageFactory {
                 .addEmbeds(embed)
                 .addComponents(ActionRow.of(
                         Button.danger(ComponentIds.encode(surface, "dismiss", row.notifKey()), "Dismiss"),
+                        Button.secondary(ComponentIds.encode(surface, "unread", row.notifKey()),
+                                "Mark as unread"),
                         Button.secondary(ComponentIds.encode(surface, "page", "1"), "Back")))
                 .build();
     }

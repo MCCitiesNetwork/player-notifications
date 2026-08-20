@@ -221,6 +221,11 @@ class JoinDeliveryListenerTest {
         }
 
         @Override
+        public void markUnread(@NotNull String notificationKey, @NotNull UUID playerId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
             throw new UnsupportedOperationException();
         }

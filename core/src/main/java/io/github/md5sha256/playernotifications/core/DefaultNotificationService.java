@@ -205,6 +205,17 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
+    public void markUnread(@NotNull String notificationKey, @NotNull UUID playerId) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            NotificationEntity entity = wrapper.notificationMapper().selectByKey(notificationKey);
+            if (entity != null) {
+                wrapper.notificationTargetMapper().markUnread(entity.notifTargetId(), playerId);
+            }
+            wrapper.session().commit();
+        }
+    }
+
+    @Override
     public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             wrapper.notificationTargetMapper().markAllSeenForPlayer(playerId, Instant.now(), dataType);

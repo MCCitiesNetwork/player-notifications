@@ -98,6 +98,14 @@ public final class InboxInteractionListener extends ListenerAdapter {
                                 this.logger);
                     }
                 }
+                case "unread" -> {
+                    parsed.arg(0).ifPresent(key -> view.markUnreadByKey(player.get(), key));
+                    // Back to the listing, where the row is now shown unread — the only place the
+                    // change is visible, since the detail embed says nothing about read state.
+                    InteractionSupport.edit(hook,
+                            this.messages.listing(view.page(player.get(), 1), parsed.surface()),
+                            this.logger);
+                }
                 case "dismiss" -> {
                     parsed.arg(0).ifPresent(key -> view.dismissByKey(player.get(), key));
                     InteractionSupport.edit(hook,

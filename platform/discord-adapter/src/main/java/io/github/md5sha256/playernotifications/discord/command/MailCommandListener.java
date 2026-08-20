@@ -19,8 +19,8 @@ import java.util.concurrent.Executor;
 import java.util.logging.Logger;
 
 /**
- * The Discord {@code /mail} command: send, compose, list, read, dismiss and clear, mirroring the
- * in-game command's shape.
+ * The Discord {@code /mail} command: send, list, read, dismiss and clear, mirroring the in-game
+ * command's shape. {@code send} takes the recipient as a slash option and the message in a modal.
  *
  * <p>A logic-free adapter, like {@link io.github.md5sha256.playernotifications.discord.LinkSlashCommandListener}
  * — every rule lives in {@link DiscordMailService} and {@link InboxView}, which are unit tested, and
@@ -30,6 +30,9 @@ public final class MailCommandListener extends ListenerAdapter {
 
     /** The modal's body field. */
     static final String COMPOSE_BODY = "body";
+
+    /** What a bare {@code /mail} does — the same thing the in-game command does. */
+    static final String DEFAULT_SUBCOMMAND = "list";
 
     private final DiscordUserResolver users;
     private final DiscordMailService mail;
@@ -54,10 +57,15 @@ public final class MailCommandListener extends ListenerAdapter {
         if (!SlashCommandRegistrar.MAIL_COMMAND.equals(event.getName())) {
             return;
         }
-        String subcommand = String.valueOf(event.getSubcommandName());
+        // A command declaring subcommands cannot be invoked bare in Discord today, but if that ever
+        // changes a bare /mail should show the mailbox, as the in-game command does.
+        String subcommand = event.getSubcommandName() == null
+                ? DEFAULT_SUBCOMMAND
+                : event.getSubcommandName();
 
-        if (subcommand.equals("compose")) {
-            // A modal has to be the *initial* response to the interaction, so this branch cannot defer.
+        if (subcommand.equals("send")) {
+            // A modal has to be the *initial* response to the interaction, so this branch cannot
+            // defer — the link check therefore happens on submit, in onModalInteraction.
             event.replyModal(composeModal(stringOption(event, SlashCommandRegistrar.OPTION_PLAYER)))
                     .queue();
             return;
@@ -101,10 +109,6 @@ public final class MailCommandListener extends ListenerAdapter {
     private void handle(@NotNull String subcommand, @NotNull UUID player,
                         @NotNull SlashCommandInteractionEvent event, @NotNull InteractionHook hook) {
         switch (subcommand) {
-            case "send" -> InteractionSupport.reply(hook, replyFor(this.mail.send(player,
-                            stringOption(event, SlashCommandRegistrar.OPTION_PLAYER),
-                            stringOption(event, SlashCommandRegistrar.OPTION_MESSAGE))),
-                    this.logger);
             case "list" -> InteractionSupport.reply(hook,
                     this.messages.listing(this.inbox.page(player, intOption(event,
                             SlashCommandRegistrar.OPTION_PAGE, 1)), ComponentIds.SURFACE_INBOX_MAIL),
@@ -140,7 +144,7 @@ public final class MailCommandListener extends ListenerAdapter {
                 .setMaxLength(MailPayload.MAX_MESSAGE_LENGTH)
                 .setRequired(true)
                 .build();
-        return Modal.create(ComponentIds.encode(SlashCommandRegistrar.MAIL_COMMAND, "compose", recipient),
+        return Modal.create(ComponentIds.encode(SlashCommandRegistrar.MAIL_COMMAND, "send", recipient),
                         "Mail to " + recipient)
                 .addComponents(Label.of("Message", body))
                 .build();

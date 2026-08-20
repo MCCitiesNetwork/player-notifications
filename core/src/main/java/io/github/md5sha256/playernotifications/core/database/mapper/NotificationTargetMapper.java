@@ -50,6 +50,14 @@ public interface NotificationTargetMapper {
     int markSeen(int notifTargetId, @NotNull UUID playerUuid, @NotNull Instant seenTime);
 
     /**
+     * Clears {@code seenTime} on one member row, returning it to the unread state.
+     *
+     * @return the number of rows updated: {@code 1} when the row was seen, {@code 0} when it was
+     *         already unread or does not exist
+     */
+    int markUnread(int notifTargetId, @NotNull UUID playerUuid);
+
+    /**
      * Stamps {@code seenTime} on every still-unread row belonging to the given player.
      *
      * @param dataType when non-null, restricts the update to rows whose notification has that data

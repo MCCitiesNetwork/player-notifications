@@ -80,7 +80,7 @@ class SlashCommandRegistrarTest {
     void mailCarriesEverySubcommandTheInGameCommandHas() {
         SlashCommandData mail = command(SlashCommandRegistrar.commandData(true, true), "mail");
         Assertions.assertEquals(
-                Set.of("send", "compose", "list", "read", "dismiss", "clear"),
+                Set.of("send", "list", "read", "dismiss", "clear"),
                 mail.getSubcommands().stream().map(SubcommandData::getName).collect(Collectors.toSet()));
     }
 
@@ -95,10 +95,12 @@ class SlashCommandRegistrarTest {
     }
 
     @Test
-    void mailSendRequiresBothARecipientAndAMessage() {
+    void mailSendTakesOnlyARecipient() {
+        // The message is typed in the modal that send opens, not as a slash option.
         SubcommandData send = subcommand(command(SlashCommandRegistrar.commandData(true, true), "mail"), "send");
         Assertions.assertTrue(option(send, "player").isRequired());
-        Assertions.assertTrue(option(send, "message").isRequired());
+        Assertions.assertEquals(List.of("player"),
+                send.getOptions().stream().map(OptionData::getName).toList());
     }
 
     @Test

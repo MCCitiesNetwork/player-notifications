@@ -392,9 +392,21 @@ the JDA listeners over them logic-free.
   commands, with the loser decided by event ordering. `SlashCommandRegistrar` owns `onReady` and the
   single `updateCommands()` call for `/link`, `/mail` and `/notifications`; `LinkSlashCommandListener`
   keeps only its interaction branch. **Do not add an `onReady` anywhere else in this module.**
-- **The command names match the in-game ones** — no root literal. `/mail send|compose|list|read|dismiss|clear`
+- **The command names match the in-game ones** — no root literal. `/mail send|list|read|dismiss|clear`
   and `/notifications list|read|dismiss|clear|prefs|mute|unmute`, every reply ephemeral, all with
-  `setContexts(BOT_DM, GUILD)`.
+  `setContexts(BOT_DM, GUILD)`. A bare `/mail` (which Discord does not currently allow for a command
+  carrying subcommands) falls back to `list`, as the in-game `/mail` opens the mailbox.
+- **`/mail send <player>` takes the message in a modal, not as a slash option.** There is no separate
+  `compose` subcommand any more — the two were the same command differing only in where the body was
+  typed, and a slash option is a single line with no room to review what you wrote. The modal is the
+  *initial* response to the interaction (a modal cannot follow a defer), so the "are you linked" check
+  happens on submit, in `onModalInteraction`, rather than before the box opens.
+- **An entry’s detail carries Dismiss / Mark as unread / Back**, on both surfaces. Opening an entry
+  marks it seen, so *Mark as unread* is how a player undoes that; it returns to the listing exactly as
+  Back does, and exists as its own button because Back leaving the entry read is not something the word
+  "back" says. It edits back to the listing rather than staying on the entry, since the detail embed
+  shows no read state and the row’s bullet is the only place the change is visible. On
+  `/notifications` this makes the notification due again — it will be pushed on the player’s next join.
 - **Entry indexing is stateless.** `page` is an explicit slash option defaulting to 1, and a component's
   custom id carries its own page and notification key (`ComponentIds`, format `pn|surface|action|args`,
   capped at Discord's 100 characters). There is no per-player cursor, so the stale-cursor class of bug
@@ -420,7 +432,7 @@ the JDA listeners over them logic-free.
   ephemeral message with a data-type select, a media multi-select (min 0 — unticking everything
   silences the type) and four buttons: Apply / Discard / **Silence everything** / **Silence this
   type**. Modals carry only prose: the
-  `/mail compose` body. A *Reply* button is deliberately absent — `InboxView.Row` carries the rendered
+  `/mail send` body. A *Reply* button is deliberately absent — `InboxView.Row` carries the rendered
   title, not the sender's name.
 - **The staged session is the host's `PreferenceEditSession` in a session manager this module owns.**
   Not the host's: the dialogs' "Back abandons this screen's checkboxes" semantics assume one owner, and
@@ -767,12 +779,19 @@ Three states, all carried by one nullable column, `NotificationTarget.seenTime`:
 | seen | row exists, `seenTime` set | listed, not counted, never pushed again |
 | dismissed | target row deleted | absent |
 
+`markUnread(key, playerId)` is the exact inverse of `markSeen` — it clears `seenTime`, keeping no record
+that the notification was read. That returns the notification to **due**, so a trigger-driven push
+(joining, today) sends it again; that is what unread means, but it is why nothing calls this on a
+player’s behalf. It is reached only from the *Mark as unread* button on a Discord entry’s detail (see
+"Discord slash commands"); the in-game `InboxDetailDialog` does **not** carry it yet.
+
 Dismissal **deletes the target row** rather than setting a third timestamp: an absent row makes
 "never reappear" true without any query knowing the rule, and it reuses the existing
 `trg_delete_targetless_notification` trigger to dispose of the notification once the last member goes.
 
 - **Read API** (on `NotificationService`): `inbox(playerId, page, pageSize)` → `InboxPage`,
-  `unreadCount(playerId)`, `markSeen(key, playerId)`, `markAllSeen(playerId)`, `dismissSeen(playerId)`,
+  `unreadCount(playerId)`, `markSeen(key, playerId)`, `markUnread(key, playerId)`,
+  `markAllSeen(playerId)`, `dismissSeen(playerId)`,
   `pruneOrphanedTargets()`. Dismissing **one** notification needs no new method —
   `deleteNotificationTarget(key, playerId)` already does exactly that. `page` is 1-based and clamped
   into `1..totalPages`, `pageSize` into `1..20`, so a stale dialog button cannot produce an error
@@ -1185,7 +1204,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 209 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 471 in total, all passing.
+Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 210 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 475 in total, all passing.
 
 ## Current state
 
@@ -1224,7 +1243,7 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   dialogs all need a live server. The path underneath them (`registerJsonRenderable` → enqueue →
   `deliver` → render → sink fan-out → prune) **is** covered, by `core`'s `RenderedDeliveryTest`.
 - **The Discord slash-command surface has never run against a live bot.** Every view class is unit
-  tested (82 new tests), but slash-command registration, the compose modal, component interactions and
+  tested (82 new tests), but slash-command registration, the `/mail send` modal, component interactions and
   the ephemeral-message editing all need a real bot token and a linked account. **Task 13's 19-item
   manual checklist in `docs/superpowers/plans/2026-08-20-discord-slash-commands.md` has not been run**,
   and it predates the four-button preference screen — the two `Silence` buttons, the muted/silenced

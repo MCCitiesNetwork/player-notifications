@@ -167,6 +167,47 @@ class InboxReadTest extends AbstractDatabaseTest {
     }
 
     @Test
+    @DisplayName("markUnread returns a seen notification to unread and makes it due again")
+    void markUnreadClearsSeenTime() {
+        insert("a", NOW.minusSeconds(60), null, PLAYER);
+        service.markSeen("a", PLAYER);
+        Assertions.assertEquals(0, service.unreadCount(PLAYER));
+
+        service.markUnread("a", PLAYER);
+
+        Assertions.assertEquals(1, service.unreadCount(PLAYER));
+        Assertions.assertNull(seenTimeOf("a"));
+        // Still in the inbox: unread is a state of a stored notification, not a second copy of it.
+        Assertions.assertEquals(List.of("a"), keys(service.inbox(PLAYER, 1, 10)));
+    }
+
+    @Test
+    @DisplayName("markUnread affects only the player who asked")
+    void markUnreadIsPerPlayer() {
+        insert("shared", NOW.minusSeconds(60), null, PLAYER, OTHER);
+        service.markSeen("shared", PLAYER);
+        service.markSeen("shared", OTHER);
+
+        service.markUnread("shared", PLAYER);
+
+        Assertions.assertEquals(1, service.unreadCount(PLAYER));
+        Assertions.assertEquals(0, service.unreadCount(OTHER));
+    }
+
+    @Test
+    @DisplayName("markUnread on an unknown key, or an already-unread one, is a no-op")
+    void markUnreadIsANoOpWhenThereIsNothingToClear() {
+        insert("a", NOW.minusSeconds(60), null, PLAYER);
+
+        Assertions.assertDoesNotThrow(() -> service.markUnread("nope", PLAYER));
+        Assertions.assertDoesNotThrow(() -> service.markUnread("a", PLAYER));
+        Assertions.assertDoesNotThrow(() -> service.markUnread("a", OTHER));
+
+        Assertions.assertEquals(1, service.unreadCount(PLAYER));
+        Assertions.assertEquals(0, service.unreadCount(OTHER));
+    }
+
+    @Test
     @DisplayName("dismissSeen removes seen rows, keeps unread ones, and the trigger drops the notification")
     void dismissSeenRemovesOnlySeenRows() {
         insert("seen", NOW.minusSeconds(60), null, PLAYER);

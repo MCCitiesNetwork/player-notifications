@@ -89,6 +89,15 @@ final class FakeNotificationService implements NotificationService {
     }
 
     @Override
+    public void markUnread(String notificationKey, UUID playerId) {
+        this.calls.add(new Call("markUnread", null, notificationKey));
+        this.entries.replaceAll(entry -> entry.notifKey().equals(notificationKey)
+                ? new InboxEntry(entry.notifKey(), entry.notifScheduledTime(), entry.notifExpiryTime(),
+                entry.notifPayloadType(), entry.notifPayload(), entry.notifPriority(), null)
+                : entry);
+    }
+
+    @Override
     public void markAllSeen(UUID playerId, String dataType) {
         this.calls.add(new Call("markAllSeen", dataType, null));
     }

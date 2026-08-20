@@ -1,6 +1,5 @@
 package io.github.md5sha256.playernotifications.discord.command;
 
-import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.discord.DiscordLinkFlow;
 import io.github.md5sha256.playernotifications.discord.LinkSlashCommandListener;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
@@ -9,7 +8,6 @@ import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
-import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
 import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import org.jetbrains.annotations.NotNull;
@@ -40,7 +38,6 @@ public final class SlashCommandRegistrar extends ListenerAdapter {
     public static final String NOTIFICATIONS_COMMAND = "notifications";
 
     public static final String OPTION_PLAYER = "player";
-    public static final String OPTION_MESSAGE = "message";
     public static final String OPTION_ENTRY = "entry";
     public static final String OPTION_PAGE = "page";
 
@@ -82,12 +79,10 @@ public final class SlashCommandRegistrar extends ListenerAdapter {
     private static @NotNull SlashCommandData mail() {
         return contexts(Commands.slash(MAIL_COMMAND, "Read and send in-game mail")
                 .addSubcommands(
+                        // The message is typed in a modal rather than as a slash option: a slash
+                        // option is a single line with no room to see what you wrote, and the modal
+                        // enforces the same length limit with a visible counter.
                         new SubcommandData("send", "Send mail to a player")
-                                .addOption(OptionType.STRING, OPTION_PLAYER, "Who to send it to", true)
-                                .addOptions(new OptionData(OptionType.STRING, OPTION_MESSAGE,
-                                        "The message; sent as plain text", true)
-                                        .setMaxLength(MailPayload.MAX_MESSAGE_LENGTH)),
-                        new SubcommandData("compose", "Write mail to a player in a pop-up box")
                                 .addOption(OptionType.STRING, OPTION_PLAYER, "Who to send it to", true),
                         listSubcommand("Show your mail"),
                         entrySubcommand("read", "Read one mail"),

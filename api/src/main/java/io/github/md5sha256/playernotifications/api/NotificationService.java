@@ -92,6 +92,19 @@ public interface NotificationService {
      */
     void markSeen(@NotNull String notificationKey, @NotNull UUID playerId);
 
+    /**
+     * Clears {@code seenTime} on one notification for one player, returning it to the unread state. An
+     * unknown key, or a player the notification does not target, affects zero rows and is a silent
+     * no-op, as {@link #markSeen} already is.
+     *
+     * <p>This is the exact inverse of {@link #markSeen}, timestamp included: nothing records that the
+     * notification was ever read. It therefore becomes <em>due</em> again, so an unread notification
+     * whose delivery is driven by a trigger (joining, today) is pushed a second time. That is what
+     * unread means — the player asked to be reminded — but it is why this is a deliberate player
+     * action rather than something any code path does on its behalf.
+     */
+    void markUnread(@NotNull String notificationKey, @NotNull UUID playerId);
+
     /** Marks every unread notification seen for the given player. */
     default void markAllSeen(@NotNull UUID playerId) {
         markAllSeen(playerId, null);

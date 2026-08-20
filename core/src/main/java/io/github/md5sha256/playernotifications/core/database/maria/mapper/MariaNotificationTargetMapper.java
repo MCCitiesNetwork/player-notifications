@@ -72,6 +72,14 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
 
     @Override
     @Update("""
+            UPDATE NotificationTarget SET seenTime = NULL
+            WHERE notifTargetId = #{notifTargetId} AND playerUuid = #{playerUuid} AND seenTime IS NOT NULL
+            """)
+    int markUnread(@Param("notifTargetId") int notifTargetId,
+                   @Param("playerUuid") @NotNull UUID playerUuid);
+
+    @Override
+    @Update("""
             <script>
             UPDATE NotificationTarget SET seenTime = #{seenTime}
             WHERE playerUuid = #{playerUuid} AND seenTime IS NULL

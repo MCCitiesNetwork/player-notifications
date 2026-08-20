@@ -124,13 +124,15 @@ class InboxMessageFactoryTest {
     }
 
     @Test
-    void aDetailShowsTheEntryWithDismissAndBack() {
+    void aDetailShowsTheEntryWithDismissMarkUnreadAndBack() {
         MessageCreateData message = FACTORY.detail(row(1, "mail-1", true), ComponentIds.SURFACE_INBOX_MAIL);
 
         Assertions.assertEquals("Title 1", message.getEmbeds().get(0).getTitle());
         Assertions.assertEquals("Body 1", message.getEmbeds().get(0).getDescription());
         Assertions.assertEquals("mail-1",
                 ComponentIds.parse(button(message, "dismiss").getCustomId()).orElseThrow().arg(0).orElseThrow());
+        Assertions.assertEquals("mail-1",
+                ComponentIds.parse(button(message, "unread").getCustomId()).orElseThrow().arg(0).orElseThrow());
         Assertions.assertNotNull(button(message, "page"), "there is a way back to the listing");
     }
 

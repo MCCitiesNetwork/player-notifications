@@ -91,6 +91,19 @@ public final class InboxView {
         return new ReadResult.Ok(row.get());
     }
 
+    /**
+     * Returns the notification with this key to the unread state — the button on an entry's detail,
+     * for a player who opened something and wants it left waiting.
+     *
+     * <p>Unconditional: an entry that was already unread cannot be reached this way (opening it is what
+     * posted the button), and the service call is a no-op for a key the player does not hold, so there
+     * is nothing here that a missing row would need to be told apart from.
+     */
+    public @NotNull ActionResult markUnreadByKey(@NotNull UUID player, @NotNull String notifKey) {
+        this.service.markUnread(notifKey, player);
+        return new ActionResult.Ok("Marked as unread.");
+    }
+
     /** Dismisses row {@code entry} of {@code page}. */
     public @NotNull ActionResult dismiss(@NotNull UUID player, int page, int entry) {
         Page rendered = page(player, page);
