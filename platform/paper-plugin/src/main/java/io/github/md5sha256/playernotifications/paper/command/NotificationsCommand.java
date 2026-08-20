@@ -101,7 +101,7 @@ public final class NotificationsCommand {
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
                                 .executes(context -> run(context, player -> inboxRouter.readInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
-                .then(Commands.literal("dismiss")
+                .then(Commands.literal("delete")
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
                                 .executes(context -> run(context, player -> inboxRouter.dismissInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))

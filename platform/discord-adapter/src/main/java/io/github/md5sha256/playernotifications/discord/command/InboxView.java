@@ -104,7 +104,7 @@ public final class InboxView {
         return new ActionResult.Ok("Marked as unread.");
     }
 
-    /** Dismisses row {@code entry} of {@code page}. */
+    /** Deletes row {@code entry} of {@code page} — the *Delete* button and {@code /… delete}. */
     public @NotNull ActionResult dismiss(@NotNull UUID player, int page, int entry) {
         Page rendered = page(player, page);
         Optional<Row> row = rowAt(rendered, entry);
@@ -114,10 +114,10 @@ public final class InboxView {
         return dismissByKey(player, row.get().notifKey());
     }
 
-    /** Dismisses the notification with this key. */
+    /** Deletes the notification with this key. */
     public @NotNull ActionResult dismissByKey(@NotNull UUID player, @NotNull String notifKey) {
         this.service.deleteNotificationTarget(notifKey, player);
-        return new ActionResult.Ok("Dismissed.");
+        return new ActionResult.Ok("Deleted.");
     }
 
     /**

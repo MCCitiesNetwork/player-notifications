@@ -464,7 +464,7 @@ the count must sit outside the existing gate.
   - [ ] `/notifications preferences mute`, `/notifications test`, rejoin — no chat message, but the
         join line reports 1 unread and the entry is in the inbox
   - [ ] Rejoin twice with an unread entry — it is pushed to chat only once
-  - [ ] `/notifications list`, `/notifications read 1`, `/notifications dismiss 1` — the chat
+  - [ ] `/notifications list`, `/notifications read 1`, `/notifications delete 1` — the chat
         fallback matches what the dialog shows
 - [ ] Commit
 

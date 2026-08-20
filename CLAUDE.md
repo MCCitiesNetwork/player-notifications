@@ -392,8 +392,8 @@ the JDA listeners over them logic-free.
   commands, with the loser decided by event ordering. `SlashCommandRegistrar` owns `onReady` and the
   single `updateCommands()` call for `/link`, `/mail` and `/notifications`; `LinkSlashCommandListener`
   keeps only its interaction branch. **Do not add an `onReady` anywhere else in this module.**
-- **The command names match the in-game ones** — no root literal. `/mail send|list|read|dismiss|clear`
-  and `/notifications list|read|dismiss|clear|prefs|mute|unmute`, every reply ephemeral, all with
+- **The command names match the in-game ones** — no root literal. `/mail send|list|read|delete|clear`
+  and `/notifications list|read|delete|clear|prefs|mute|unmute`, every reply ephemeral, all with
   `setContexts(BOT_DM, GUILD)`. A bare `/mail` (which Discord does not currently allow for a command
   carrying subcommands) falls back to `list`, as the in-game `/mail` opens the mailbox.
 - **`/mail send <player>` takes the message in a modal, not as a slash option.** There is no separate
@@ -401,7 +401,7 @@ the JDA listeners over them logic-free.
   typed, and a slash option is a single line with no room to review what you wrote. The modal is the
   *initial* response to the interaction (a modal cannot follow a defer), so the "are you linked" check
   happens on submit, in `onModalInteraction`, rather than before the box opens.
-- **An entry’s detail carries Dismiss / Mark as unread / Back**, on both surfaces. Opening an entry
+- **An entry’s detail carries Delete / Mark as unread / Back**, on both surfaces. Opening an entry
   marks it seen, so *Mark as unread* is how a player undoes that; it returns to the listing exactly as
   Back does, and exists as its own button because Back leaving the entry read is not something the word
   "back" says. It edits back to the listing rather than staying on the entry, since the detail embed
@@ -630,11 +630,11 @@ The other branches act on *your* inbox, which the console does not have):
 | `/mail send <player> <message>` | sends mail (`<message>` is a greedy string, parsed as MiniMessage) and fires the notice |
 | `/mail list [page]` | chat fallback list |
 | `/mail read <entry>` | reads entry `<entry>` of the last-listed page; marks it seen |
-| `/mail dismiss <entry>` | dismisses entry `<entry>` |
+| `/mail delete <entry>` | deletes entry `<entry>` |
 | `/mail clear` | `markAllSeen` + `dismissSeen`, both filtered to `mail` |
 
 Two command permissions, both `default: true`: `playernotifications.command.mail` gates the root
-(read/list/dismiss/clear), and `playernotifications.command.mail.send` is an **additional** requirement
+(read/list/delete/clear), and `playernotifications.command.mail.send` is an **additional** requirement
 on `send` only, nested under the root the way `playernotifications.command.link` nests under
 `playernotifications.command.preferences` — so a server can make mail read-only for a rank by revoking
 only the `.send` permission, while revoking the root hides `/mail` entirely. The fifteen
@@ -785,6 +785,17 @@ that the notification was read. That returns the notification to **due**, so a t
 player’s behalf. It is reached only from the *Mark as unread* button on a Discord entry’s detail (see
 "Discord slash commands"); the in-game `InboxDetailDialog` does **not** carry it yet.
 
+**Every player-facing surface calls this "delete", not "dismiss".** The button in both in-game
+dialogs, the Discord button, and the `/mail delete` / `/notifications delete` subcommands all read
+Delete — and the button is red on both surfaces (`Button.danger` in Discord, a `NamedTextColor.RED`
+label in game), since it is the one control on those screens that destroys something. The word
+"dismiss" survives **below** the UI, in `dismissSeen`, `InboxView#dismissByKey`,
+`InboxRouter#dismissInChat` and the state named in the table above; renaming that vocabulary too would
+have touched the public `NotificationService` API for a wording change. One deliberate exception in the
+other direction: the Discord component id still carries the action `dismiss`, because ids travel in
+messages that are already posted and renaming it would answer every button on a listing a player still
+has open with silence.
+
 Dismissal **deletes the target row** rather than setting a third timestamp: an absent row makes
 "never reappear" true without any query knowing the rule, and it reuses the existing
 `trg_delete_targetless_notification` trigger to dispose of the notification once the last member goes.
@@ -822,16 +833,16 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   alongside its RETAIN processor for exactly this reason — see "Mail".
 - **Paper UI:** `paper.inbox.InboxRouter` owns both screens, the per-player page cursor (dropped by
   `InboxQuitListener` on quit) and the async marshalling — the same shape as `PreferenceDialogRouter`,
-  for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Dismiss all
+  for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Delete all
   read*, Previous/Next); **no inbox screen carries a *Preferences* button** — the inbox is for
   reading, and preferences are reached by their own command; jumping into the preference screens from
   a list left the player with no way back to what they were reading. `InboxDetailDialog` shows one
-  entry with *Dismiss* and *Back*,
+  entry with *Delete* and *Back*,
   Back-doesn't-commit as in the preference editors. Opening a row marks it seen.
 - **An empty inbox replies in chat and opens no dialog at all.** `InboxRouter.openInbox` returns early
   with `EMPTY_MESSAGE` ("Your inbox is empty."), the same constant the chat fallback's `listInChat`
   uses. This is not cosmetic: with no entries there are no row buttons, no Previous/Next (one page),
-  no *Mark all read* (`unreadCount > 0` is false) and no *Dismiss all read* (`0 > 0` is false), so
+  no *Mark all read* (`unreadCount > 0` is false) and no *Delete all read* (`0 > 0` is false), so
   `DialogType.multiAction` was handed an **empty** list — and vanilla's `MultiActionDialog` codec wraps
   `actions` in `ExtraCodecs.nonEmptyList`, so the dialog failed to encode and the player saw nothing.
   `exitAction` is a separate optional field and does not satisfy that constraint. **Any future
@@ -941,16 +952,16 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications` (alias `/notifs`) — **opens the player's inbox** (`paper.inbox.InboxDialog`). The name
   was reserved for exactly this; the preference subcommands sit under `preferences` so the top level
   stays clear for the inbox's own verbs, which would otherwise collide with a name like `mute`.
-- `/notifications list [page]` / `/notifications read <entry>` / `/notifications dismiss <entry>` — the **chat
+- `/notifications list [page]` / `/notifications read <entry>` / `/notifications delete <entry>` — the **chat
   fallback** for clients where the dialog does not render. `<entry>` indexes the page most recently listed
   for that player, held in `InboxRouter`. Each listed row carries a hover ("Click to run /… read `<entry>`")
   and a `runCommand` click event for its own `read` — so the fallback is clickable too, and the command it
   runs is worded from the router's `commandLabel`, making the same rows work under `/mail list`. All three are player-only, under the same
   `playernotifications.command.preferences` permission, and dispatch off the main thread.
 - `/notifications clear` — empties the inbox outright, **unread entries included**, as a shorthand for
-  the list screen's "Mark all read" then "Dismiss all read". Composed from `markAllSeen` +
+  the list screen's "Mark all read" then "Delete all read". Composed from `markAllSeen` +
   `dismissSeen` rather than a new service method, and drops the player's page cursor so a stale
-  `read <entry>`/`dismiss <entry>` cannot resolve. Same permission, player-only, async.
+  `read <entry>`/`delete <entry>` cannot resolve. Same permission, player-only, async.
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
@@ -1272,7 +1283,7 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
 - **Rows for a category removed from `categories.yml` are kept, not pruned** — they resurface if the category is re-added, and are invisible in the dialogs meanwhile. No admin command prunes them.
 - **The inbox exists, but its player-facing surface is unverified.** `InboxRouter`, `InboxDialog`,
-  `InboxDetailDialog`, the `list`/`read`/`dismiss` Brigadier subcommands, the bare `/notifications`
+  `InboxDetailDialog`, the `list`/`read`/`delete` Brigadier subcommands, the bare `/notifications`
   opening the dialog, and the join unread line all need a live server. **Task 8's manual checklist in
   `docs/superpowers/plans/2026-08-07-notification-inbox.md` has not been run.** Everything underneath is
   covered: `InboxDeliveryTest`, `InboxReadTest`, `InboxEntryRendererTest` and `PageBoundsTest`.
@@ -1314,4 +1325,4 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   is a select plus per-group deletes, **not** one `DELETE … LEFT JOIN Notification`: MariaDB refuses a
   statement that reads `Notification` when the delete fires `trg_delete_targetless_notification`, which
   writes it.
-- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and **admin commands** (no admin view of another player's inbox or preferences, and no player-initiated bulk clear beyond "Dismiss all read").
+- Deferred to their own designs: **admin Discord link management**, a **`discord-channel-ping` sink**, **per-medium delivery tracking**, **actions/buttons** in `RenderableNotification`, and **admin commands** (no admin view of another player's inbox or preferences, and no player-initiated bulk clear beyond "Delete all read").

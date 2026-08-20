@@ -23,8 +23,8 @@ class InboxRepliesTest {
 
     @Test
     void anOkActionRepliesWithItsOwnMessage() {
-        Assertions.assertEquals("Dismissed.",
-                InboxReplies.of(new InboxView.ActionResult.Ok("Dismissed.")));
+        Assertions.assertEquals("Deleted.",
+                InboxReplies.of(new InboxView.ActionResult.Ok("Deleted.")));
     }
 
     @Test

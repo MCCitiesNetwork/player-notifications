@@ -2,7 +2,7 @@
 
 PlayerNotifications stores notifications for players and delivers them through whichever **delivery
 method** each player prefers: in-game chat, a dialog screen, Essentials mail, or a Discord DM. Every
-notification also stays in the player's **inbox** until they dismiss it, so nothing is missed. This
+notification also stays in the player's **inbox** until they delete it, so nothing is missed. This
 guide covers using the plugin — see `CLAUDE.md` for the developer/API side.
 
 Requires Paper **1.21.8**, Java **21**, and a MariaDB database.
@@ -21,8 +21,8 @@ is `/notifications reload`, noted below.
 | `/notifications` | Opens your **inbox** — every notification waiting for you, unread ones highlighted. |
 | `/notifications list [page]` | The same inbox as chat text, for clients where the dialog does not render. |
 | `/notifications read <n>` | Reads entry `n` of the page you last listed, and marks it read. |
-| `/notifications dismiss <n>` | Removes entry `n` of the page you last listed. |
-| `/notifications clear` | **Empties your inbox outright**, unread entries included. The shorthand for *Mark all read* followed by *Dismiss all read*. |
+| `/notifications delete <n>` | Deletes entry `n` of the page you last listed. |
+| `/notifications clear` | **Empties your inbox outright**, unread entries included. The shorthand for *Mark all read* followed by *Delete all read*. |
 | `/notifications preferences` | Opens the preferences screen. |
 | `/notifications preferences media` | Jumps straight to "Delivery methods" — pick a method, then tick which notifications reach you there. |
 | `/notifications preferences types` | Jumps straight to "Notification types" — pick a category, then tick which methods it uses. |
@@ -57,15 +57,17 @@ Admin-only extras (op by default):
 
 ### Your inbox
 
-Every notification sent to you stays readable until you dismiss it or it expires. Being *delivered* —
+Every notification sent to you stays readable until you delete it or it expires. Being *delivered* —
 appearing in chat, arriving as a Discord DM — marks it **read**; it does not throw it away.
 
 `/notifications` opens the inbox. Each row is one notification, unread ones in bold. Opening a row
-shows it in full and marks it read; from there you can *Dismiss* it or go *Back*. The list itself has:
+shows it in full and marks it read; from there you can *Delete* it, *Mark as unread* (which undoes
+that read and leaves it waiting), or go *Back*. Delete is red on every screen it appears on, in game
+and in Discord — it is the only control there that destroys something, and there is no confirmation.
+The list itself has:
 
 - **Mark all read** — clears the unread count without removing anything.
-- **Dismiss all read** — removes everything you have already read, leaving unread entries alone.
-- **Preferences** — jumps to the preferences screen.
+- **Delete all read** — removes everything you have already read, leaving unread entries alone.
 - **Previous / Next** — paging, when there is more than one page.
 
 `/notifications clear` is the blunt version: it empties the inbox completely, unread entries included.
@@ -77,7 +79,7 @@ Three states, and it is worth knowing which is which:
 |---|---|
 | **Unread** | Not yet delivered or opened. Counted when you log in, and still eligible to be pushed to you. |
 | **Read** | Delivered or opened. Still listed, no longer counted, never pushed again. |
-| **Dismissed** | Gone for good. |
+| **Deleted** | Gone for good. |
 
 When you log in you get a line naming your unread count and pointing at `/notifications` — you get
 that line even if you have muted everything, because muting means "do not interrupt me", not "do not
@@ -162,7 +164,7 @@ Notes:
 - If you prefer several methods and one of them fails transiently, the notification is still marked
   read and is not retried on the method that failed — but it remains in your inbox to read there.
 - Your inbox has no size limit and nothing trims it automatically. Notifications leave it only when
-  you dismiss them or they expire.
+  you delete them or they expire.
 
 ---
 
@@ -287,7 +289,7 @@ notifications are truncated to Discord's limits.
   notification queued for a player who is **already online** is not pushed until their next login,
   though they can read it in `/notifications` immediately.
 - **No admin commands.** There is no way to view or edit another player's inbox or preferences.
-- **Inboxes are unbounded.** Nothing trims them; entries leave only by dismissal or expiry.
+- **Inboxes are unbounded.** Nothing trims them; entries leave only by deletion or expiry.
 - **Read is tracked per player, not per delivery method.** A notification read in chat counts as read
   everywhere.
 - Partial delivery failures are silent (see the player caveat above) — but no longer lossy, since the

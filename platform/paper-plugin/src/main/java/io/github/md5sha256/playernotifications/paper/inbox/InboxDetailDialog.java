@@ -11,6 +11,7 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -18,9 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One notification, read in full. Two buttons: Dismiss (removes it and returns to the list) and Back
- * (returns without dismissing) — Back-doesn't-commit mirrors the rule players already learned in the
- * preference editors.
+ * One notification, read in full. Two buttons: Delete (removes it and returns to the list) and Back
+ * (returns without deleting) — Back-doesn't-commit mirrors the rule players already learned in the
+ * preference editors. Delete is red, because it is the one button here that destroys something.
  *
  * <p>Opening this screen has already marked the entry seen; that is not undone by Back.
  *
@@ -28,7 +29,7 @@ import java.util.List;
  */
 final class InboxDetailDialog {
 
-    private static final Component DISMISS_LABEL = Component.text("Dismiss");
+    private static final Component DELETE_LABEL = Component.text("Delete", NamedTextColor.RED);
     private static final Component BACK_LABEL = Component.text("Back");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
@@ -44,7 +45,7 @@ final class InboxDetailDialog {
 
         String key = entry.notifKey();
         List<ActionButton> buttons = new ArrayList<>();
-        buttons.add(ActionButton.builder(DISMISS_LABEL)
+        buttons.add(ActionButton.builder(DELETE_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.dismissEntry(player, key), DialogSupport.callbackOptions()))
                 .build());

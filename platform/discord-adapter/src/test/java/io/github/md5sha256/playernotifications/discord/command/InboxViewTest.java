@@ -233,7 +233,7 @@ class InboxViewTest {
     }
 
     @Test
-    void clearingMarksEverythingSeenAndThenDismissesIt() {
+    void clearingMarksEverythingSeenAndThenDeletesIt() {
         // The in-game /mail clear is the same composition, and the filter has to reach both halves or a
         // mail clear would dismiss the player's notifications too.
         addMail("m", "hello", true);

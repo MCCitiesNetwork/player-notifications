@@ -163,7 +163,7 @@ public final class InboxRouter {
 
     /**
      * {@code /notifications clear}: empties the inbox outright, unread entries included — the shorthand
-     * for what the list screen otherwise needs "Mark all read" then "Dismiss all read" to do. It is
+     * for what the list screen otherwise needs "Mark all read" then "Delete all read" to do. It is
      * composed from exactly those two service calls rather than a new one, so it dismisses by deleting
      * target rows like every other dismissal and needs no extra query.
      *
@@ -212,7 +212,7 @@ public final class InboxRouter {
                 index++;
             }
             player.sendMessage(Component.text("Use /" + this.commandLabel + " read <entry> or /"
-                    + this.commandLabel + " dismiss <entry>.", NamedTextColor.GRAY));
+                    + this.commandLabel + " delete <entry>.", NamedTextColor.GRAY));
         });
     }
 
@@ -230,7 +230,7 @@ public final class InboxRouter {
         });
     }
 
-    /** {@code /notifications dismiss <entry>}: removes entry n of the last listed page. */
+    /** {@code /notifications delete <entry>}: removes entry n of the last listed page. */
     public void dismissInChat(@NotNull Player player, int index) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             InboxEntry entry = indexed(player, index);
@@ -238,7 +238,7 @@ public final class InboxRouter {
                 return;
             }
             this.service.deleteNotificationTarget(entry.notifKey(), player.getUniqueId());
-            player.sendMessage(Component.text("Dismissed: "
+            player.sendMessage(Component.text("Deleted: "
                     + PlainTextComponentSerializer.plainText().serialize(
                             this.renderer.render(entry, player.getUniqueId()).title()),
                     NamedTextColor.GREEN));

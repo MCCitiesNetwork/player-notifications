@@ -86,7 +86,7 @@ public final class InboxMessageFactory {
     }
 
     /**
-     * One entry, with Dismiss, Mark as unread, and a way back to the listing.
+     * One entry, with Delete, Mark as unread, and a way back to the listing.
      *
      * <p>Opening an entry marks it seen, so <em>Mark as unread</em> is how a player undoes that. It
      * returns to the listing exactly as Back does; it exists as its own button because Back leaving the
@@ -102,7 +102,10 @@ public final class InboxMessageFactory {
         return new MessageCreateBuilder()
                 .addEmbeds(embed)
                 .addComponents(ActionRow.of(
-                        Button.danger(ComponentIds.encode(surface, "dismiss", row.notifKey()), "Dismiss"),
+                        // The action in the id stays "dismiss" though the label reads Delete: an id
+                        // travels in messages already posted, and renaming it would answer every button
+                        // on a listing a player still has open with silence.
+                        Button.danger(ComponentIds.encode(surface, "dismiss", row.notifKey()), "Delete"),
                         Button.secondary(ComponentIds.encode(surface, "unread", row.notifKey()),
                                 "Mark as unread"),
                         Button.secondary(ComponentIds.encode(surface, "page", "1"), "Back")))

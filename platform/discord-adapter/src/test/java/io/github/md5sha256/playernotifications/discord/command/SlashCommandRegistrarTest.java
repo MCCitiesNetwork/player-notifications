@@ -80,7 +80,7 @@ class SlashCommandRegistrarTest {
     void mailCarriesEverySubcommandTheInGameCommandHas() {
         SlashCommandData mail = command(SlashCommandRegistrar.commandData(true, true), "mail");
         Assertions.assertEquals(
-                Set.of("send", "list", "read", "dismiss", "clear"),
+                Set.of("send", "list", "read", "delete", "clear"),
                 mail.getSubcommands().stream().map(SubcommandData::getName).collect(Collectors.toSet()));
     }
 
@@ -89,7 +89,7 @@ class SlashCommandRegistrarTest {
         SlashCommandData notifications =
                 command(SlashCommandRegistrar.commandData(true, true), "notifications");
         Assertions.assertEquals(
-                Set.of("list", "read", "dismiss", "clear", "prefs", "mute", "unmute"),
+                Set.of("list", "read", "delete", "clear", "prefs", "mute", "unmute"),
                 notifications.getSubcommands().stream()
                         .map(SubcommandData::getName).collect(Collectors.toSet()));
     }

@@ -86,8 +86,8 @@ public final class SlashCommandRegistrar extends ListenerAdapter {
                                 .addOption(OptionType.STRING, OPTION_PLAYER, "Who to send it to", true),
                         listSubcommand("Show your mail"),
                         entrySubcommand("read", "Read one mail"),
-                        entrySubcommand("dismiss", "Dismiss one mail"),
-                        new SubcommandData("clear", "Dismiss all of your mail")));
+                        entrySubcommand("delete", "Delete one mail"),
+                        new SubcommandData("clear", "Delete all of your mail")));
     }
 
     private static @NotNull SlashCommandData notifications() {
@@ -95,8 +95,8 @@ public final class SlashCommandRegistrar extends ListenerAdapter {
                 .addSubcommands(
                         listSubcommand("Show your notifications"),
                         entrySubcommand("read", "Read one notification"),
-                        entrySubcommand("dismiss", "Dismiss one notification"),
-                        new SubcommandData("clear", "Dismiss all of your notifications"),
+                        entrySubcommand("delete", "Delete one notification"),
+                        new SubcommandData("clear", "Delete all of your notifications"),
                         new SubcommandData("prefs", "Choose how your notifications reach you"),
                         new SubcommandData("mute",
                                 "Temporarily stop all notifications from interrupting you"),

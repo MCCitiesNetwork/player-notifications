@@ -31,7 +31,8 @@ import java.util.List;
 final class InboxDialog {
 
     private static final Component MARK_ALL_LABEL = Component.text("Mark all read");
-    private static final Component DISMISS_SEEN_LABEL = Component.text("Dismiss all read");
+    private static final Component DELETE_SEEN_LABEL =
+            Component.text("Delete all read", NamedTextColor.RED);
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     private final InboxRouter router;
@@ -74,7 +75,7 @@ final class InboxDialog {
                     .build());
         }
         if (page.totalEntries() > page.unreadCount()) {
-            buttons.add(ActionButton.builder(DISMISS_SEEN_LABEL)
+            buttons.add(ActionButton.builder(DELETE_SEEN_LABEL)
                     .action(DialogAction.customClick((response, audience) ->
                             this.router.dismissSeen(player), DialogSupport.callbackOptions()))
                     .build());

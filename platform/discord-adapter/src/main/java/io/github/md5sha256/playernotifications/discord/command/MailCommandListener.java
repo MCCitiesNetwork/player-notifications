@@ -126,7 +126,7 @@ public final class MailCommandListener extends ListenerAdapter {
                             InboxReplies.outOfRange(range.entry(), range.rowCount()), this.logger);
                 }
             }
-            case "dismiss" -> {
+            case "delete" -> {
                 InboxView.ActionResult result = this.inbox.dismiss(player,
                         intOption(event, SlashCommandRegistrar.OPTION_PAGE, 1),
                         intOption(event, SlashCommandRegistrar.OPTION_ENTRY, 1));

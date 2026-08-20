@@ -81,7 +81,7 @@ public final class MailCommand {
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
                                 .executes(context -> run(context, player -> mailRouter.readInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
-                .then(Commands.literal("dismiss")
+                .then(Commands.literal("delete")
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
                                 .executes(context -> run(context, player -> mailRouter.dismissInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
