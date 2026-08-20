@@ -468,11 +468,16 @@ form delegates with `UnaryOperator.identity()`, so a programmatic caller is unch
 ### Mail formatting
 
 `/mail send`'s message is **MiniMessage**, with **one permission per tag group** under
-`playernotifications.command.mail.format.` (`paper.mail.MailFormatting.PERMISSION_PREFIX`). The
-cosmetic groups — `color`, `decoration`, `gradient`, `rainbow`, `reset`, `newline` — are `default:
-true`, since they can only change how text looks and a player already controls that in chat. The groups
-that make text *do* something — `click`, `hover`, `insertion`, `keybind`, `translatable`, `selector`,
-`score`, `nbt`, and `font` (a client-side font can render text misleadingly) — are `default: op`.
+`playernotifications.command.mail.format.` (`paper.mail.MailFormatting.PERMISSION_PREFIX`).
+**Every one of the fifteen is `default: op`** — a formatted mail is something an operator opts a rank
+into, cosmetic tags included, so an ordinary player's message stays literal text until a server says
+otherwise. The split is fine-grained anyway, so a server can grant exactly the cosmetic groups
+(`color`, `decoration`, `gradient`, `rainbow`, `reset`, `newline`) without also handing out `click` and
+`hover`, which attach a runnable command or a payload to text landing in someone else's inbox, or
+`score`/`nbt`, which pull server-side state into it; `font` sits with those because a client-side font
+can render text misleadingly. `MailFormatting.Group` deliberately carries no "granted by default"
+component — it would be the same value fifteen times — and `MailFormattingTest` asserts the defaults
+against `paper-plugin.yml` itself instead.
 
 **Parsing happens at send time, not at render time**, because the permission check needs the *sender*
 and a renderer runs on read, long after, with the sender possibly gone. `MailCommand` builds the
@@ -520,8 +525,8 @@ Two command permissions, both `default: true`: `playernotifications.command.mail
 on `send` only, nested under the root the way `playernotifications.command.link` nests under
 `playernotifications.command.preferences` — so a server can make mail read-only for a rank by revoking
 only the `.send` permission, while revoking the root hides `/mail` entirely. The fifteen
-`playernotifications.command.mail.format.*` nodes are separate from both and gate tags, not commands —
-see "Mail formatting".
+`playernotifications.command.mail.format.*` nodes are separate from both, all `default: op`, and gate
+tags rather than commands — see "Mail formatting".
 
 **Nothing in this feature has been exercised on a live server.** `MailCommand`'s Brigadier wiring, the
 `/mail` and `/notifications` dialogs, tab completion, the permission split, console `/mail send`, the
@@ -905,7 +910,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **100 tests in `:core:test`, 30 in `:api:test`, 92 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 344 in total, all passing.
+Current baseline: **100 tests in `:core:test`, 30 in `:api:test`, 93 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 345 in total, all passing.
 
 ## Current state
 
@@ -975,9 +980,10 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   tab completion, the two-permission split, and both notice paths (send-time and join-time) all need
   `:platform:paper-plugin:runServer`. **Task 4's 14-item manual checklist in
   `docs/superpowers/plans/2026-08-10-first-party-mail.md` has not been run**, and neither has **Task 3's
-  five-item checklist in `docs/superpowers/plans/2026-08-20-console-mail-and-minimessage.md`** (console
-  `/mail send`, the "Mail from Server" title, a denied `<click>` arriving literal for a non-op, the same
-  message arriving live for an op, and a tag-only message rejected as blank). Everything underneath is
+  six-item checklist in `docs/superpowers/plans/2026-08-20-console-mail-and-minimessage.md`** (console
+  `/mail send`, the "Mail from Server" title, a plain player getting literal text until a format node is
+  granted, a non-op's `<click>` still arriving literal, an op's arriving live, and a tag-only message
+  rejected as blank). Everything underneath is
   unit- or Testcontainers-tested — see "Mail" and "Mail formatting" for the list.
 - **Inbox size is unbounded** and **seen is per player, not per medium** — both accepted; see the design
   doc's "Known limitations".

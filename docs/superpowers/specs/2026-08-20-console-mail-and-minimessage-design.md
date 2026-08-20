@@ -10,10 +10,11 @@ Two changes to `/mail send`, both scoped to the send path only:
 1. **Console can send mail.** `/mail send <player> <message>` works from the server console (and from
    any non-player `CommandSender`). Every other `/mail` branch stays player-only — they operate on
    *your* inbox, and the console has none.
-2. **The message accepts MiniMessage**, with **one permission per tag group**: colours, decorations,
-   gradients and the other purely-cosmetic tags are allowed by default; the tags that can make text
-   *do* something (click, hover, insertion, keybind, translatable, selector, score, nbt, font) default
-   to `op`.
+2. **The message accepts MiniMessage**, with **one permission per tag group**, every group
+   `default: op`. A formatted mail is something an operator opts a rank into, cosmetic tags included;
+   the groups are split finely so a server can grant the cosmetic ones without also handing out the
+   tags that make text *do* something (click, hover, insertion, keybind, translatable, selector,
+   score, nbt, font).
 
 ## Architecture
 
@@ -58,12 +59,12 @@ Node prefix `playernotifications.command.mail.format.`, one node per group
 
 | Node suffix | `StandardTags` | Default |
 |---|---|---|
-| `color` | `color()`, `shadowColor()` | `true` |
-| `decoration` | `decorations()` | `true` |
-| `gradient` | `gradient()`, `transition()`, `pride()` | `true` |
-| `rainbow` | `rainbow()` | `true` |
-| `reset` | `reset()` | `true` |
-| `newline` | `newline()` | `true` |
+| `color` | `color()`, `shadowColor()` | `op` |
+| `decoration` | `decorations()` | `op` |
+| `gradient` | `gradient()`, `transition()`, `pride()` | `op` |
+| `rainbow` | `rainbow()` | `op` |
+| `reset` | `reset()` | `op` |
+| `newline` | `newline()` | `op` |
 | `font` | `font()` | `op` |
 | `click` | `clickEvent()` | `op` |
 | `hover` | `hoverEvent()` | `op` |
@@ -74,10 +75,19 @@ Node prefix `playernotifications.command.mail.format.`, one node per group
 | `score` | `score()` | `op` |
 | `nbt` | `nbt()` | `op` |
 
-The split is *cosmetic vs. active*: the default-`true` groups can only change how text looks, and a
-player already controls that in chat. The `op` groups can attach a runnable command or a hover payload
-to text that arrives in someone else's inbox, or pull server-side state (`score`, `nbt`) into it.
-`font` is `op` because a client-side font can render text unreadably or misleadingly.
+**Nothing is granted by default.** An ordinary player's mail is literal text, tags and all, until a
+server grants a group — formatting someone else's inbox is a privilege, not a baseline, and that holds
+for the merely cosmetic tags too.
+
+The split still runs *cosmetic vs. active*, because it is the line a server will want to grant along:
+the first six can only change how text looks, while the rest attach a runnable command or a hover
+payload to text arriving in someone else's inbox, or pull server-side state (`score`, `nbt`) into it.
+`font` sits with the active ones because a client-side font can render text unreadably or misleadingly.
+
+Because every group shares one default, `MailFormatting.Group` carries no `defaultAllowed` component —
+it would be the same value fifteen times. `MailFormattingTest` reads `paper-plugin.yml` off the test
+classpath and asserts each group is declared there as `default: op`, so the code and the descriptor
+cannot drift.
 
 The console is a `ConsoleCommandSender`, whose `hasPermission` is unconditionally true, so console mail
 gets every group without a special case.
@@ -85,8 +95,9 @@ gets every group without a special case.
 ### Types and files
 
 - **create** `platform/paper-plugin/src/main/java/.../paper/mail/MailFormatting.java`
-  - `PERMISSION_PREFIX`, `record Group(String node, boolean defaultAllowed, TagResolver resolver)`,
-    `List<Group> groups()`, `TagResolver resolverFor(Predicate<String> hasPermission)`,
+  - `PERMISSION_PREFIX`,
+    `record Group(String node, TagResolver resolver)`, `List<Group> groups()`,
+    `TagResolver resolverFor(Predicate<String> hasPermission)`,
     `String sanitize(String raw, TagResolver allowed)` (returns `""` when nothing readable survives).
   - Takes a `Predicate<String>` over permission nodes rather than a `CommandSender`, the same seam
     `MailRecipients` uses for name lookup, so every rule here is unit-testable without a server.
@@ -121,8 +132,9 @@ gets every group without a special case.
 Unit tests (`:platform:paper-plugin:test`), all server-free:
 
 - `MailFormattingTest` — a permitted tag renders as formatting; a denied tag survives as literal text;
-  a denied `click` cannot reach the rendered component; the default groups are the cosmetic ones; the
-  round trip is idempotent (`sanitize(sanitize(x)) == sanitize(x)`).
+  a denied `click` cannot reach the rendered component; a sender granted nothing sends literal text;
+  every group is declared `default: op` in `paper-plugin.yml`; the round trip is idempotent
+  (`sanitize(sanitize(x)) == sanitize(x)`).
 - `MailRecipientsTest` — new cases for the formatter overload: formatter applied to the trimmed
   message; a formatter returning blank yields `InvalidMessage`; the length check still runs on the raw
   message.
@@ -131,7 +143,9 @@ Unit tests (`:platform:paper-plugin:test`), all server-free:
 - `MailSenderTest` — a mail sent as `SERVER_SENDER` stores `"Server"`.
 
 Manual (needs `:platform:paper-plugin:runServer`): console `/mail send`, the console mail appearing as
-"Mail from Server" in `/mail`, a non-op player's `<click>` arriving literal, an op's arriving live.
+"Mail from Server" in `/mail`, a plain player's `<red>` arriving literal (nothing is granted by
+default), the same message arriving coloured once `…format.color` is granted, and a non-op's `<click>`
+arriving literal.
 
 ## Known limitations
 

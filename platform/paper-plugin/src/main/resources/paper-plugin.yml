@@ -40,30 +40,31 @@ permissions:
   playernotifications.command.mail.send:
     description: Send mail with /mail send.
     default: true
-  # One node per MiniMessage tag group in /mail send, split cosmetic vs. active. The default-true
-  # groups can only change how text looks - something a player already controls in chat. The rest can
-  # attach a runnable command or a hover payload to text landing in someone else's inbox, or pull
-  # server-side state into it; font is here because a client-side font can render text misleadingly.
+  # One node per MiniMessage tag group in /mail send. All of them are op: a formatted mail is
+  # something an operator opts a rank into, cosmetic tags included. The split is fine-grained so a
+  # server can grant exactly the cosmetic groups (color, decoration, gradient, rainbow, reset,
+  # newline) without also handing out click and hover events, which attach a runnable command or a
+  # payload to text landing in someone else's inbox, or score/nbt, which pull server-side state in.
   # A tag the sender may not use is left as literal text rather than stripped, and permissions are
   # evaluated once, at send time - see MailFormatting.
   playernotifications.command.mail.format.color:
     description: Use colour and shadow-colour tags in /mail send.
-    default: true
+    default: op
   playernotifications.command.mail.format.decoration:
     description: Use bold, italic, underlined, strikethrough and obfuscated tags in /mail send.
-    default: true
+    default: op
   playernotifications.command.mail.format.gradient:
     description: Use gradient, transition and pride tags in /mail send.
-    default: true
+    default: op
   playernotifications.command.mail.format.rainbow:
     description: Use the rainbow tag in /mail send.
-    default: true
+    default: op
   playernotifications.command.mail.format.reset:
     description: Use the reset tag in /mail send.
-    default: true
+    default: op
   playernotifications.command.mail.format.newline:
     description: Use the newline tag in /mail send.
-    default: true
+    default: op
   playernotifications.command.mail.format.font:
     description: Use the font tag in /mail send.
     default: op

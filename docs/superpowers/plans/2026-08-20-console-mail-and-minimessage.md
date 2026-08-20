@@ -9,12 +9,12 @@
 
 **Interfaces:**
 - `public static final String PERMISSION_PREFIX = "playernotifications.command.mail.format."`
-- `public record Group(String node, boolean defaultAllowed, TagResolver resolver)`
+- `public record Group(String node, TagResolver resolver)`
 - `public static List<Group> groups()`
 - `public static TagResolver resolverFor(Predicate<String> hasPermission)`
 - `public static String sanitize(String raw, TagResolver allowed)`
 
-- [ ] Write the failing test `MailFormattingTest`: `<red>hi` sanitized with an allow-all predicate deserialises to a red component; sanitized with a deny-`click` predicate, `<click:run_command:/op me>x</click>` yields a component whose `clickEvent()` is null and whose flattened text contains `<click:`; `groups()` defaults are exactly `color, decoration, gradient, rainbow, reset, newline` allowed by default; `sanitize` is idempotent.
+- [ ] Write the failing test `MailFormattingTest`: `<red>hi` sanitized with an allow-all predicate deserialises to a red component; sanitized with a deny-`click` predicate, `<click:run_command:/op me>x</click>` yields a component whose `clickEvent()` is null and whose flattened text contains `<click:`; a deny-all predicate leaves the whole message literal; every group is declared `default: op` in `paper-plugin.yml`; `sanitize` is idempotent.
 - [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailFormattingTest"` — expect FAIL: `MailFormatting` does not exist.
 - [ ] Implement `MailFormatting` per the spec's tag-group table, building a `MiniMessage` from the permitted resolver, deserialising, and re-serialising with `MiniMessage.miniMessage()`; catch `RuntimeException` and fall back to `MiniMessage.miniMessage().serialize(Component.text(raw))`.
 - [ ] Run the same command — expect PASS.
@@ -47,14 +47,15 @@
 - [ ] Manual, with `./gradlew :platform:paper-plugin:runServer`:
       1. `mail send <player> <gray>hello` from the console — reply confirms, no "Only players" message.
       2. `/mail` as the recipient shows "Mail from Server" with grey body.
-      3. As a non-op player, `/mail send <other> <click:run_command:/op me>click</click>` — recipient sees the tag as literal text, and clicking does nothing.
-      4. As op, the same message — recipient sees a working click.
-      5. `/mail send <other> <red>` alone — rejected with "Mail cannot be blank."
+      3. As a plain player with no format nodes granted, `/mail send <other> <red>hi` — recipient sees `<red>hi` literally.
+      4. Grant that player `playernotifications.command.mail.format.color`, resend — recipient sees red text; then `<click:run_command:/op me>click</click>` from the same player still arrives literal.
+      5. As op, the click message — recipient sees a working click.
+      6. As op, `/mail send <other> <red>` alone — rejected with "Mail cannot be blank."
 - [ ] Commit.
 
 ## Task 4: documentation
 
 **Files:** modify `CLAUDE.md`
 
-- [ ] Update the "Mail" section: the `/mail send` row noting console support and MiniMessage; the `MailRenderer` paragraph, which currently states the body is *never* MiniMessage — that rule is now inverted and its replacement (authorised at send time, escaped otherwise) must be stated in its place; the permission list; and the "Current state" manual-checklist entry to include Task 3's five items.
+- [ ] Update the "Mail" section: the `/mail send` row noting console support and MiniMessage; the `MailRenderer` paragraph, which currently states the body is *never* MiniMessage — that rule is now inverted and its replacement (authorised at send time, escaped otherwise) must be stated in its place; the permission list; and the "Current state" manual-checklist entry to include Task 3's six items.
 - [ ] Commit.

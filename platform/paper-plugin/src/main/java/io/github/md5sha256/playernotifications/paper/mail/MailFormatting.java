@@ -37,29 +37,35 @@ public final class MailFormatting {
     public static final String PERMISSION_PREFIX = "playernotifications.command.mail.format.";
 
     /**
-     * The tag groups, split cosmetic vs. active. The default-allowed groups can only change how text
-     * looks — something a player already controls in chat. The rest can attach a runnable command or a
-     * hover payload to text landing in someone else's inbox, or pull server-side state into it;
-     * {@code font} is here too, since a client-side font can render text unreadably or misleadingly.
+     * The tag groups. <b>Every one of them is {@code default: op} in {@code paper-plugin.yml}</b> — a
+     * formatted mail is something an operator opts a rank into, cosmetic tags included, so an ordinary
+     * player's message is literal text until a server says otherwise.
+     *
+     * <p>They are split finely all the same, so a server can grant exactly the cosmetic groups
+     * ({@code color}, {@code decoration}, {@code gradient}, {@code rainbow}, {@code reset},
+     * {@code newline}) without also handing out click and hover events, which attach a runnable command
+     * or a payload to text landing in someone else's inbox, or {@code score}/{@code nbt}, which pull
+     * server-side state into it. {@code font} sits with those because a client-side font can render
+     * text misleadingly.
      */
     private static final List<Group> GROUPS = List.of(
-            new Group("color", true, TagResolver.resolver(StandardTags.color(), StandardTags.shadowColor())),
-            new Group("decoration", true, StandardTags.decorations()),
-            new Group("gradient", true, TagResolver.resolver(
+            new Group("color", TagResolver.resolver(StandardTags.color(), StandardTags.shadowColor())),
+            new Group("decoration", StandardTags.decorations()),
+            new Group("gradient", TagResolver.resolver(
                     StandardTags.gradient(), StandardTags.transition(), StandardTags.pride())),
-            new Group("rainbow", true, StandardTags.rainbow()),
-            new Group("reset", true, StandardTags.reset()),
-            new Group("newline", true, StandardTags.newline()),
-            new Group("font", false, StandardTags.font()),
-            new Group("click", false, StandardTags.clickEvent()),
-            new Group("hover", false, StandardTags.hoverEvent()),
-            new Group("insertion", false, StandardTags.insertion()),
-            new Group("keybind", false, StandardTags.keybind()),
-            new Group("translatable", false, TagResolver.resolver(
+            new Group("rainbow", StandardTags.rainbow()),
+            new Group("reset", StandardTags.reset()),
+            new Group("newline", StandardTags.newline()),
+            new Group("font", StandardTags.font()),
+            new Group("click", StandardTags.clickEvent()),
+            new Group("hover", StandardTags.hoverEvent()),
+            new Group("insertion", StandardTags.insertion()),
+            new Group("keybind", StandardTags.keybind()),
+            new Group("translatable", TagResolver.resolver(
                     StandardTags.translatable(), StandardTags.translatableFallback())),
-            new Group("selector", false, StandardTags.selector()),
-            new Group("score", false, StandardTags.score()),
-            new Group("nbt", false, StandardTags.nbt()));
+            new Group("selector", StandardTags.selector()),
+            new Group("score", StandardTags.score()),
+            new Group("nbt", StandardTags.nbt()));
 
     private MailFormatting() {
     }
@@ -112,12 +118,14 @@ public final class MailFormatting {
     }
 
     /**
-     * One permission-gated set of MiniMessage tags.
+     * One permission-gated set of MiniMessage tags. There is deliberately no "granted by default"
+     * component: every group is {@code op}, so the record would carry the same value fifteen times.
+     * {@code MailFormattingTest} asserts that against {@code paper-plugin.yml} directly instead, which
+     * is the file that actually decides it.
      *
-     * @param node           the permission node suffix, appended to {@link #PERMISSION_PREFIX}
-     * @param defaultAllowed whether {@code paper-plugin.yml} grants this node by default
-     * @param resolver       the tags the node unlocks
+     * @param node     the permission node suffix, appended to {@link #PERMISSION_PREFIX}
+     * @param resolver the tags the node unlocks
      */
-    public record Group(@NotNull String node, boolean defaultAllowed, @NotNull TagResolver resolver) {
+    public record Group(@NotNull String node, @NotNull TagResolver resolver) {
     }
 }
