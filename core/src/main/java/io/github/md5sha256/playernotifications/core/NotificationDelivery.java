@@ -38,6 +38,11 @@ import java.util.logging.Logger;
  * <p>Processors are invoked outside any open database transaction, so their side effects (which may
  * marshal onto another thread) do not hold database resources.
  *
+ * <p>Before any of that, {@link #deliver(UUID, Instant)} checks whether the target is globally
+ * muted ({@link NotificationPreferences#isMuted(UUID)}); a muted player's due notifications are left
+ * untouched entirely — not decoded, not dispatched, not marked seen — so the mute gate applies
+ * uniformly to the renderer path and to bespoke processors alike.
+ *
  * <p>Dispatch precedence: an explicitly registered {@link NotificationProcessor} always wins (so
  * bespoke processors keep working unchanged, at the cost of bypassing preferences). Otherwise, if a
  * {@link NotificationRenderer} is registered for the payload class, the notification is dispatched
@@ -94,6 +99,11 @@ public class NotificationDelivery {
      * Delivers every notification due for the given player as of {@code now}.
      */
     public void deliver(@NotNull UUID target, @NotNull Instant now) {
+        if (this.preferences != null && this.preferences.isMuted(target)) {
+            this.logger.fine(() -> "Player " + target + " is muted; skipping delivery");
+            return;
+        }
+
         List<NotificationEntity> due;
         try (SqlSessionWrapper wrapper = database.openSession()) {
             due = wrapper.notificationMapper().selectDueByPlayer(target, now);
