@@ -37,6 +37,7 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 - `./gradlew :platform:discord-adapter:shadowJar` — build the Discord adapter module jar. It must be the **shaded** (`-all`) jar: the module bundles its own relocated JDA, so the plain `jar` output has no Discord library in it at all.
 - `./gradlew test` — run all tests (JUnit 5 / Jupiter).
 - `./gradlew :core:test` — run the `core` persistence tests. **These require a running Docker daemon** — they spin up a real `mariadb:11.7` container via Testcontainers.
+- `./gradlew :platform:essentials-mail-converter:test` — the converter module's tests. Hermetic: **no Docker daemon needed**, because the module owns no schema and every rule it holds was pushed into two plain classes for exactly that reason.
 - `./gradlew :platform:discord-adapter:test` — **also requires a running Docker daemon**, for the same reason: the module owns its own schema, so its migrator, mapper and link store are tested against a real `mariadb:11.7`. The rest of that module's tests are hermetic, but the suite as a whole is not.
 - `./gradlew :core:test --tests "io.github.md5sha256.playernotifications.*SomeTest"` — run a single test class/method.
 - `./gradlew :platform:paper-plugin:runServer` — launch a real Paper 1.21.8 test server with the plugin loaded (via the `xyz.jpenilla.run-paper` plugin). Server files go under `platform/paper-plugin/run/`. Needs a reachable MariaDB (see `database.yml`). It `dependsOn` `installFeatureModules`, so every feature module is built and installed first, and its `downloadPlugins` block fetches DiscordSRV `v1.30.5` from GitHub (the discord adapter's link source — without it `DiscordSrvAccountProvider` reports itself unavailable and the adapter cannot be exercised end to end).
@@ -44,7 +45,7 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 
 ## Module architecture
 
-Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts` includes `api`, `core`, `platform:paper-plugin`, `platform:discord-adapter`). Type-safe project accessors are enabled (`enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")`), so build scripts reference `projects.api`, `projects.core`, etc. Dependency direction flows **platform → core → api**; `api` depends on nothing but Paper.
+Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kts` includes `api`, `core`, `platform:paper-plugin`, `platform:discord-adapter`, `platform:essentials-mail-converter`). Type-safe project accessors are enabled (`enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")`), so build scripts reference `projects.api`, `projects.core`, etc. Dependency direction flows **platform → core → api**; `api` depends on nothing but Paper.
 
 - **`api`** (`io.github.md5sha256.playernotifications.api`) — Public, dependency-light API. Uses `compileOnlyApi` for `paper-api`. Key types:
   - `NotificationService` — entry point: `enqueueNotification`, `resolveNotifications(UUID)` (a pure read — does **not** delete), `clearNotification`/`clearNotifications`, `deleteNotificationTarget(key, UUID)` / `deleteNotificationTargets(key, Collection<UUID>)`, `clearExpiredNotifications`, and `dataTypeRegistry()`.
@@ -66,6 +67,7 @@ Gradle build with `api`, `core`, and two platform modules (`settings.gradle.kts`
 - **`core`** (`io.github.md5sha256.playernotifications.core`) — MyBatis persistence, `DefaultNotificationService`, `NotificationDelivery` (the delivery loop, dispatches directly on `dataType`, with no category resolution), `DatabaseNotificationPreferences` (the persisted, `dataType`-keyed `NotificationPreferences` impl), `category.NotificationCategories` (a read-only display/grouping merge — see "Notification categories"), and `serialize.JacksonPayloadSerializer`. `api("org.mybatis:mybatis")`, `api("org.spongepowered:configurate-yaml")`, `implementation("org.mariadb.jdbc:mariadb-java-client")`, `paper-api` compileOnly **plus `testRuntimeOnly`** (see "Testing gotchas"). See "Persistence layer" below.
 - **`platform:paper-plugin`** (`io.github.md5sha256.playernotifications.paper`) — Paper bootstrap. `PlayerNotificationsPlugin.onEnable` loads config (including `categories.yml`), builds a `MariaDatabase`, runs schema migration, constructs `DefaultNotificationService`, registers it under `NotificationService.class` in the Bukkit `ServicesManager`, builds the `NotificationSinkRegistry` (registering `ChatSink` and `DialogSink`), `DatabaseNotificationPreferences`, and `NotificationCategories`, constructs `NotificationDelivery` with all three, registers the Brigadier commands, an `InboxRouter` with its `InboxQuitListener`, a `PreferenceQuitListener` and a `JoinDeliveryListener`, schedules the async prune task, starts the module system, and finally warns about any `categories.yml` data type with no registered payload mapping. Exposes `database()` / `notificationService()` / `sinkRegistry()` / `preferences()` / `categories()` / `notificationDelivery()` accessors for modules. Applies `shadow` (relocating `org.mariadb`, `org.mybatis`, `org.apache.ibatis`, `org.spongepowered`, `io.leangen.geantyref`, `com.fasterxml.jackson`) and `run-paper`. Also declares `testRuntimeOnly("io.papermc.paper:paper-api")` (see "Testing gotchas") — needed once its own tests started touching Adventure/Bukkit types.
 - **`platform:discord-adapter`** (`io.github.md5sha256.playernotifications.discord`) — a **feature module** that delivers notifications as Discord DMs. `DiscordModule` (the manifest entry class) registers a `DiscordDmSink` under medium key `discord-dm` — a **sink**, not a processor, so (unlike the mail RETAIN processor described under "Mail") it participates in preferences and fan-out like any other notification type. It also **owns its own schema**: the `discord.schema` subpackage holds its migrator, migration script, entity and mappers, and `core` knows nothing of Discord. Applies `paper-adapter` plus `com.gradleup.shadow`, bundling its own relocated JDA. See "Discord adapter" below.
+- **`platform:essentials-mail-converter`** (`io.github.md5sha256.playernotifications.essentials.convert`) — a **feature module** that imports a server's existing EssentialsX mailboxes into first-party mail, once, through `/essmailconvert`. It registers no sink, no processor, no renderer, no category and no schema: it is a migration tool, not an integration, and once an operator has run it the module has no further reason to be installed. Applies `paper-adapter` with `compileOnly` on `net.essentialsx:EssentialsX`. See "EssentialsX mail converter" below.
 
 ### Build conventions
 
@@ -547,6 +549,91 @@ renderable notification enqueued together, delivery runs, and only the non-mail 
 recording sink while the mail's `seenTime` stays null and it is still present in `inbox(player, 1, 10,
 "mail")`).
 
+## EssentialsX mail converter
+
+Design doc: `docs/superpowers/specs/2026-08-20-essentials-mail-converter-design.md`.
+Plan: `docs/superpowers/plans/2026-08-20-essentials-mail-converter.md`.
+
+`platform:essentials-mail-converter` is a **one-shot migration tool**, not an integration: it reads a
+server's existing EssentialsX mailboxes and writes them into first-party mail (see "Mail"), so
+retiring EssentialsX does not throw away everybody's correspondence. It registers nothing in any
+registry — no sink, no processor, no renderer, no category, no schema, no config file — and owns
+exactly one command. Once an operator has run it, the module can be deleted. It is the natural
+successor to the retired `platform:essentials-adapter`, which made Essentials mail a *medium*; this
+one moves the mail out of Essentials instead.
+
+- **`/essmailconvert`** — `preview` (counts, writes nothing) and `confirm` (imports). The bare command
+  imports nothing and prints the usage plus a warning, and `confirm` is a **literal rather than a
+  flag**, because the conversion is deliberately **not idempotent**: the EssentialsX copy is left
+  untouched (so a bad import destroys nothing and can be re-run) and nothing de-duplicates, so running
+  `confirm` twice gives every player two copies of everything. De-duplication was rejected as costing
+  either a fingerprint table or a full scan of every existing mail notification, for a command an
+  operator runs once. An `AtomicBoolean` refuses a second concurrent run rather than queueing it.
+  Console is a valid sender — this operates on server data, not on the player running it.
+- **The permission `essentialsmailconverter.command.convert` is declared nowhere.**
+  `paper-plugin.yml` belongs to the host, and programmatic permission registration is the pattern the
+  Discord adapter was cleaned of. An undeclared permission resolves through Bukkit's default — op only
+  — which is the intended gate.
+- **A module-owned command, reversing the Discord adapter's precedent, and safely.** That retreat was
+  about *teardown*: unregistering a Bukkit command on module stop needed surgery through
+  `Bukkit.getCommandMap().getKnownCommands()`. This module is `reloadable: false` and never
+  unregisters, so `shutdown` is genuinely empty. Registration goes through
+  `LifecycleEvents.COMMANDS` from the module's `initialize` — modules start inside `onEnable`
+  (`startModules()`, after the host's `registerCommands()`) and Paper fires COMMANDS after enable, the
+  same ordering the host already relies on for module-registered link providers.
+- **The entry class names no EssentialsX type, and that is load-bearing** — the same rule the retired
+  adapter's `EssentialsMailBinding` existed to enforce, and it is enforced here by the same split.
+  `EssentialsMailConverterModule` checks `isPluginEnabled("Essentials")` and calls
+  `EssentialsMailBinding.register(plugin)` through an EssentialsX-free signature; the binding and
+  `EssentialsMailReader` are the only classes mentioning `com.earth2me`/`net.essentialsx`. Verifying a
+  method that names an EssentialsX type would force that type to load *before* the guard could run, and
+  the resulting `NoClassDefFoundError` is not caught by `ModuleLoader` — it escapes `onEnable` and takes
+  the whole host plugin down instead of skipping one optional module. Verify with
+  `javap -c -p …/EssentialsMailConverterModule.class | grep -i earth2me` — only string literals should
+  match. EssentialsX absent is logged and returns; it is **not** a `ModuleInitializationException`,
+  because a converter with no source is a no-op, not a breakage.
+- **The read is on the main thread in chunks; the write is not.** `EssentialsMailReader` sweeps
+  `getUsers().getAllUserUUIDs()` at `USERS_PER_TICK = 100` accounts per tick via a `BukkitRunnable`,
+  using `loadUncachedUser` (the method EssentialsX documents for whole-server sweeps, and which does not
+  fill the user cache with accounts read once). EssentialsX user loading is not thread-safe — the same
+  constraint the retired sink marshalled around — but loading thousands of userdata files in one tick
+  would stall a live server for seconds. The finished list then goes to the async executor, because
+  enqueueing is blocking JDBC. One unreadable account is logged against its UUID and skipped.
+- **`ImportedMail` is the seam.** Every EssentialsX `MailMessage` is flattened into a record containing
+  no EssentialsX type, by a static factory parameterised by that message's *fields*. Everything
+  downstream — `EssentialsMailConverter`, which holds every rule — is then a plain unit test with no
+  server and no EssentialsX on the classpath.
+
+The mapping rules, each a decision:
+
+| EssentialsX | Result |
+|---|---|
+| `isExpired()` | skipped — Essentials would not have shown it either |
+| unexpired with a future `timeExpire` | imported with `notifExpiryTime = null`, matching first-party mail; the Essentials expiry is **dropped** |
+| `isLegacy()` | sender unknown by construction (a legacy mail's text *is* the whole formatted line), `§` codes stripped |
+| modern with a null sender UUID | nil-UUID sentinel `ImportedMail.UNKNOWN_SENDER`, real sender name kept |
+| blank message | skipped — `MailPayload` rejects it anyway |
+| over `MailPayload.MAX_MESSAGE_LENGTH` | **imported whole**; 256 is a `/mail send` input rule, not a storage constraint, and truncating an archive is silent data loss |
+| `isRead()` | imported, then `markSeen` — otherwise an archive arrives as hundreds of "unread" mails |
+
+Colour codes are **stripped rather than converted**: `MailRenderer` builds bodies with
+`Component.text(...)` precisely so stored text cannot be interpreted as formatting, and converting on
+import would smuggle formatting into a channel designed to reject it.
+
+**No arrival notice ever fires** — `MailNotifier` is not involved at any point. "You have new mail!"
+for a five-year-old message would be false, and once per imported mail it would flood every Discord DM
+on the server.
+
+**The one host change** is `MailSender.send(…, Instant sentAt)`, the existing four-argument form
+delegating with `Instant.now()`. `sentAt` becomes `notifScheduledTime`, the inbox's primary sort key —
+without it every imported mail would carry the import's timestamp and a decade of correspondence would
+land on top of genuinely new mail in whatever order the sweep visited accounts.
+
+A failed enqueue is counted in `ConversionReport.failed` and does not stop the run. A failed `markSeen`
+is logged but **not** counted a failure: the mail is stored and readable, merely unread, and re-running
+is not an available remedy. The report goes to the sender *and* the log, so a console run and an
+in-game run leave the same record of a non-repeatable operation.
+
 ## Notification inbox
 
 Design doc: `docs/superpowers/specs/2026-08-07-notification-inbox-design.md`.
@@ -972,7 +1059,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 101 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`** — 361 in total, all passing.
+Current baseline: **PLACEHOLDER_COUNTS**
 
 ## Current state
 
@@ -1027,7 +1114,7 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   - **Codes do not survive a restart** (in memory by design), and **one Discord account per player** is
     enforced in the schema.
 - **`notifPayload` is a `JSON` column**, so payloads must be valid JSON. A payload mapped to `String.class` is therefore JSON-encoded on write and arrives at its processor still quoted — the reason every in-tree payload now owns a record instead. `DefaultNotificationService` still pre-registers a `String` serializer and nothing forbids `String.class`, so the trap is still reachable; no registration guard was added (considered and deferred — see the test-notification design doc).
-- **Stored `essentials-mail` *preference* rows are inert.** They predate the Essentials adapter's removal (see "Mail") and named a medium nothing registers any more: the host renders an unregistered medium by its raw key, and `RenderingProcessor` simply skips a preferred medium with no sink. No admin command prunes them; acceptable only because the project has no deployed data to preserve.
+- **Stored `essentials-mail` *preference* rows are inert.** They predate the Essentials adapter's removal (see "Mail") and named a medium nothing registers any more: the host renders an unregistered medium by its raw key, and `RenderingProcessor` simply skips a preferred medium with no sink. No admin command prunes them; acceptable only because the project has no deployed data to preserve. Note this is about the retired *sink*'s medium key, and is unrelated to `platform:essentials-mail-converter`, which registers no medium at all.
 - **Partial delivery is silent** under the MARK_SEEN-wins fan-out, though no longer lossy — see
   "Rendering & delivery media".
 - Target-id allocation via `MAX(id)+1` is not concurrency-safe under parallel enqueues (fine for a plugin's low write volume).
@@ -1056,6 +1143,17 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   covered: `PlayerMuteTest` and `MutedDeliveryTest` (against a real MariaDB — including a case proving
   a *bespoke processor* is gated too), plus `MailNotifierTest`, `JoinDeliveryListenerTest` and
   `PreferenceEditSessionTest`.
+- **The EssentialsX mail converter has never run against a real EssentialsX install.** The pieces that
+  hold decisions are fully unit tested and need neither Docker nor a server (`ImportedMailTest`,
+  `EssentialsMailConverterTest` — 19 tests), and the entry class's EssentialsX-free property is checked
+  with `javap`. What is unverified is everything around them: module loading through the real module
+  class loader, the `isPluginEnabled("Essentials")` guard on a server *without* EssentialsX (the
+  `NoClassDefFoundError` isolation case, which takes the whole host plugin down if it regresses),
+  `EssentialsMailReader`'s chunked sweep against a real `IUserMap`, the Brigadier tree and its op-only
+  gate, and a mail actually landing in `/mail`. **Task 6's 10-item manual checklist in
+  `docs/superpowers/plans/2026-08-20-essentials-mail-converter.md` has not been run** — it needs an
+  EssentialsX jar dropped into `platform/paper-plugin/run/plugins/` by hand, deliberately not added to
+  `downloadPlugins` since the host does not depend on it.
 - **Inbox size is unbounded** and **seen is per player, not per medium** — both accepted; see the design
   doc's "Known limitations".
 - **The orphaned-target leak is fixed.** `deleteExpired`/`deleteByKey`/`deleteByPayloadType`/

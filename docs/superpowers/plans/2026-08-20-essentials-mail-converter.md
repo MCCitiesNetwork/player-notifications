@@ -18,7 +18,7 @@ public @NotNull String send(@NotNull UUID sender, @NotNull String senderName,
                             @NotNull Instant sentAt);
 ```
 
-- [ ] Write the failing test in `MailSenderTest`:
+- [x] Write the failing test in `MailSenderTest`:
 ```java
 @Test
 void storesTheGivenSendTimeAsTheScheduledTime() {
@@ -28,11 +28,11 @@ void storesTheGivenSendTimeAsTheScheduledTime() {
     assertEquals(sentAt, service.last().notifScheduledTime());
 }
 ```
-- [ ] Run `./gradlew :platform:paper-plugin:test --tests "*MailSenderTest"` — expect FAIL: no five-argument `send` exists, so the test does not compile.
-- [ ] Implement: add the five-argument overload using `sentAt` as the `TypedNotification`'s scheduled time; make the existing four-argument form `return send(sender, senderName, recipient, message, Instant.now());`. Javadoc the new parameter with why it exists (inbox ordering).
-- [ ] Run the same command — expect PASS, with the existing `MailSenderTest` cases still passing.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew :platform:paper-plugin:test --tests "*MailSenderTest"` — expect FAIL: no five-argument `send` exists, so the test does not compile.
+- [x] Implement: add the five-argument overload using `sentAt` as the `TypedNotification`'s scheduled time; make the existing four-argument form `return send(sender, senderName, recipient, message, Instant.now());`. Javadoc the new parameter with why it exists (inbox ordering).
+- [x] Run the same command — expect PASS, with the existing `MailSenderTest` cases still passing.
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ## Task 2: the module skeleton, its manifest and its build wiring
 
@@ -45,36 +45,36 @@ void storesTheGivenSendTimeAsTheScheduledTime() {
 
 **Interfaces:**
 ```java
-public final class EssentialsMailConverterModule extends SimplePluginModule<PlayerNotificationsPlugin>
+public final class EssentialsMailConverterModule implements PluginModule<PlayerNotificationsPlugin>
 ```
 
-- [ ] This task has no unit test: it is build wiring plus an entry class whose whole contract is
+- [x] This task has no unit test: it is build wiring plus an entry class whose whole contract is
   "mentions no EssentialsX type", which is a property of the compiled class, not of behaviour.
   Verification is the build plus the byte-level check below.
-- [ ] Implement `build.gradle.kts`, copied from the retired `platform/essentials-adapter` (git
+- [x] Implement `build.gradle.kts`, copied from the retired `platform/essentials-adapter` (git
   `47691c1^`): `plugins { \`paper-adapter\` }`, the `https://repo.essentialsx.net/releases/` repo, and
   `compileOnly("net.essentialsx:EssentialsX:2.21.2")` excluding `org.bukkit:bukkit` and
   `org.spigotmc:spigot-api`.
-- [ ] Implement `module-manifest.yml` with kebab-case keys: `module-name: essentials-mail-converter`,
+- [x] Implement `module-manifest.yml` with kebab-case keys: `module-name: essentials-mail-converter`,
   `entry-class: io.github.md5sha256.playernotifications.essentials.convert.EssentialsMailConverterModule`,
   `author: md5sha256`,
   `expected-plugin-class: io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin`,
   `reloadable: false`.
-- [ ] Implement `EssentialsMailConverterModule.initialize` as: if
+- [x] Implement `EssentialsMailConverterModule.initialize` as: if
   `plugin.getServer().getPluginManager().isPluginEnabled("Essentials")` is false, log INFO
   "EssentialsX is not installed; nothing to convert" and return; else call
   `EssentialsMailBinding.register(plugin)` (added in Task 5 — until then, a `// TODO` is *not*
   acceptable, so land this task with the presence check and an empty else branch that logs, and wire
   the call in Task 5).
-- [ ] Add `include("platform:essentials-mail-converter")` to `settings.gradle.kts`.
-- [ ] Add `featureModules(project(path = ":platform:essentials-mail-converter", configuration = "moduleJar"))`
+- [x] Add `include("platform:essentials-mail-converter")` to `settings.gradle.kts`.
+- [x] Add `featureModules(project(path = ":platform:essentials-mail-converter", configuration = "moduleJar"))`
   to `platform/paper-plugin/build.gradle.kts`.
-- [ ] Run `./gradlew :platform:essentials-mail-converter:build`
-- [ ] Verify the isolation property against the built class:
+- [x] Run `./gradlew :platform:essentials-mail-converter:build`
+- [x] Verify the isolation property against the built class:
   `javap -c -p build/classes/java/main/.../EssentialsMailConverterModule.class | grep -i essentials`
   must show no `com/earth2me` or `net/ess3` reference.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ## Task 3: `ImportedMail` and the legacy flattening rules
 
@@ -100,21 +100,21 @@ public record ImportedMail(@NotNull UUID recipient, @NotNull UUID sender, @NotNu
 `of` is deliberately parameterised by the *fields* of an EssentialsX `MailMessage` rather than taking
 one, so this class and its test never touch EssentialsX.
 
-- [ ] Write the failing test `ImportedMailTest` covering: a legacy mail's sender becomes
+- [x] Write the failing test `ImportedMailTest` covering: a legacy mail's sender becomes
   `UNKNOWN_SENDER`/`"Unknown"` and its message keeps the text with `§6[§rBob§6]§r hi` reduced to
   `[Bob] hi`; a modern mail with a null sender UUID keeps its real `senderName` but takes
   `UNKNOWN_SENDER`; `timeExpire == 0` is never expired; `timeExpire` in the past relative to the
   supplied `now` is `expired`; `timeExpire` in the future is not; `sentAt` equals
   `Instant.ofEpochMilli(timeSent)`; a message with no `§` is returned unchanged; a trailing lone `§`
   does not throw.
-- [ ] Run `./gradlew :platform:essentials-mail-converter:test --tests "*ImportedMailTest"` — expect FAIL: `ImportedMail` does not exist.
-- [ ] Implement `ImportedMail`. `stripColourCodes` removes `§` followed by any single character
+- [x] Run `./gradlew :platform:essentials-mail-converter:test --tests "*ImportedMailTest"` — expect FAIL: `ImportedMail` does not exist.
+- [x] Implement `ImportedMail`. `stripColourCodes` removes `§` followed by any single character
   (matching Bukkit's legacy code alphabet loosely on purpose: an unrecognised code is still noise).
   `of` blanks nothing and rejects nothing — filtering is the converter's job, so the record's own
   compact constructor must not reject a blank message the way `MailPayload` does.
-- [ ] Run the same command — expect PASS
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run the same command — expect PASS
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ## Task 4: `EssentialsMailConverter` — the mapping rules
 
@@ -137,7 +137,7 @@ public final class EssentialsMailConverter {
 }
 ```
 
-- [ ] Write the failing test `EssentialsMailConverterTest` against a recording `NotificationService`
+- [x] Write the failing test `EssentialsMailConverterTest` against a recording `NotificationService`
   (following `MailSenderTest`'s existing fake), covering: an expired mail is skipped and counted in
   `skippedExpired` with nothing enqueued; a blank message is skipped into `skippedBlank`; a message
   longer than `MailPayload.MAX_MESSAGE_LENGTH` is enqueued **whole**, character for character; a
@@ -147,12 +147,12 @@ public final class EssentialsMailConverter {
   `enqueueNotification` that throws increments `failed` and the following mail is still imported; a
   `markSeen` that throws leaves the mail counted in `imported`, not in `failed`; and `preview`
   produces the same counts as `convert` while enqueueing nothing.
-- [ ] Run `./gradlew :platform:essentials-mail-converter:test --tests "*EssentialsMailConverterTest"` — expect FAIL: `EssentialsMailConverter` does not exist.
-- [ ] Implement, sharing one classification method between `preview` and `convert` so the two cannot
+- [x] Run `./gradlew :platform:essentials-mail-converter:test --tests "*EssentialsMailConverterTest"` — expect FAIL: `EssentialsMailConverter` does not exist.
+- [x] Implement, sharing one classification method between `preview` and `convert` so the two cannot
   report different numbers.
-- [ ] Run the same command — expect PASS
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run the same command — expect PASS
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ## Task 5: the EssentialsX-facing half and the command
 
@@ -181,31 +181,31 @@ public final class ConvertMailCommand {
 }
 ```
 
-- [ ] **No unit test — this task is the live-server exception.** Every class here needs either an
+- [x] **No unit test — this task is the live-server exception.** Every class here needs either an
   EssentialsX `IUserMap`, the Bukkit scheduler or a Brigadier registrar. The logic that *can* be
   tested was pushed into `ImportedMail` and `EssentialsMailConverter` in Tasks 3 and 4 precisely so
   this task holds nothing but wiring. Manual verification is the checklist in Task 6.
-- [ ] Implement `EssentialsMailReader`: `getUsers().getAllUserUUIDs()` into an `ArrayList`, then a
+- [x] Implement `EssentialsMailReader`: `getUsers().getAllUserUUIDs()` into an `ArrayList`, then a
   repeating task (`runTaskTimer`, period 1 tick) taking `USERS_PER_TICK = 100` per run,
   `loadUncachedUser(uuid)`, `getMailMessages()`, mapping through `ImportedMail.of` with
   `Instant.now()` as the expiry reference; each user wrapped in try/catch logging a `WARNING` naming
   the UUID and continuing; on exhaustion cancel the task and invoke `onComplete`.
-- [ ] Implement `ConvertMailCommand` with `requires(src -> src.getSender().hasPermission(PERMISSION))`,
+- [x] Implement `ConvertMailCommand` with `requires(src -> src.getSender().hasPermission(PERMISSION))`,
   literals `preview` and `confirm`, an `AtomicBoolean` in-flight guard refusing a concurrent run, and
   a bare-command reply naming both subcommands and stating that `confirm` is **not** idempotent.
   Both subcommands: `reader.readAsync(mail -> asyncExecutor.execute(() -> { … report … }))`, so the
   EssentialsX read is on the main thread and the JDBC write is not.
-- [ ] Implement `EssentialsMailBinding.register`: cast the `Essentials` plugin to `IEssentials`,
+- [x] Implement `EssentialsMailBinding.register`: cast the `Essentials` plugin to `IEssentials`,
   build reader + `EssentialsMailConverter`, and
   `plugin.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
   event.registrar().register(ConvertMailCommand.create(...), DESCRIPTION));`
-- [ ] Replace the Task 2 placeholder branch in `EssentialsMailConverterModule` with the
+- [x] Replace the Task 2 placeholder branch in `EssentialsMailConverterModule` with the
   `EssentialsMailBinding.register(plugin)` call.
-- [ ] Run `./gradlew :platform:essentials-mail-converter:build`
-- [ ] Re-run the Task 2 `javap` isolation check on `EssentialsMailConverterModule.class` — it must
+- [x] Run `./gradlew :platform:essentials-mail-converter:build`
+- [x] Re-run the Task 2 `javap` isolation check on `EssentialsMailConverterModule.class` — it must
   still show no EssentialsX reference now that the binding call is wired in.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Run `./gradlew build`
+- [x] Commit
 
 ## Task 6: manual verification on a live server
 
@@ -237,12 +237,26 @@ hand; it is deliberately not added to `downloadPlugins`, since the host does not
 
 **Files:** modify `CLAUDE.md`
 
-- [ ] Add an "EssentialsX mail converter" subsection under the module documentation covering: what it
+- [x] Add an "EssentialsX mail converter" subsection under the module documentation covering: what it
   is, that it is a one-shot migration and not an integration, the non-idempotency, the mapping rules
   table in brief, the `MailSender` overload, and the class-isolation rule for the entry class.
-- [ ] Update the Overview's module list, "Build & run" (the new `:platform:essentials-mail-converter`
+- [x] Update the Overview's module list, "Build & run" (the new `:platform:essentials-mail-converter`
   test task, which needs **no** Docker daemon), and `settings.gradle.kts`'s include list.
-- [ ] Update the test baseline counts in "Testing gotchas" with fresh `./gradlew test` output.
-- [ ] Update "Current state" with the verified/unverified split from Task 6.
-- [ ] Run `./gradlew build`
-- [ ] Commit
+- [x] Update the test baseline counts in "Testing gotchas" with fresh `./gradlew test` output.
+- [x] Update "Current state" with the verified/unverified split from Task 6.
+- [x] Run `./gradlew build`
+- [x] Commit
+
+## As built
+
+Two deviations from the plan above, both recorded rather than silently absorbed:
+
+- **The entry class landed in Task 5, not Task 2.** Task 2 as written would have committed a manifest
+  pointing at a class that did not exist, or an entry class with a placeholder branch. Task 2 therefore
+  covers build wiring and the manifest only, and `EssentialsMailConverterModule` was committed together
+  with `EssentialsMailBinding`, so every commit on the branch compiles.
+- **`ConvertMailCommand.create` takes a `Logger`** as well as the three arguments the plan listed: the
+  report is written to the log as well as to the sender, so a console run and an in-game run leave the
+  same record.
+
+Task 6 (the live-server checklist) is **not run** — it needs an EssentialsX jar and a running server.
