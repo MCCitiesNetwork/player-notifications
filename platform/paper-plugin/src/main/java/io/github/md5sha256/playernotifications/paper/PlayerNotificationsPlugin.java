@@ -120,6 +120,14 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * Resolves a registered {@code dataType} to every player-facing category (config- and
      * code-claimed) that claims it.
      */
+    /**
+     * How many inbox entries one page holds, from {@code settings.yml} and re-read on reload. Exposed
+     * so a feature module paging the inbox itself agrees with the in-game screens.
+     */
+    public int inboxPageSize() {
+        return this.inboxPageSize;
+    }
+
     @NotNull
     public NotificationCategories categories() {
         return this.categories;
@@ -196,6 +204,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationService.dataTypeRegistry().registerProcessor(MailPayload.class,
                 (payload, target) -> NotificationDisposition.RETAIN);
 
+        this.inboxPageSize = pluginSettings.inboxPageSize();
         registerCommands(pluginSettings.inboxPageSize());
 
         // Always registered, gated internally: /notifications reload can then flip deliver-on-join
@@ -230,6 +239,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * theirs. A standing misconfiguration an operator should fix, not a startup-order race — modules
      * that register later than this check will simply be caught on the next server restart.
      */
+    /**
+     * Read by feature modules that page the inbox themselves. Volatile because {@code reload} replaces
+     * it while a module holds a reference — the same idiom as the routers' own reloadable page size.
+     */
+    private volatile int inboxPageSize = 7;
+
     private InboxRouter inboxRouter;
     private InboxRouter mailRouter;
     private MailNotifier mailNotifier;
@@ -327,6 +342,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.preferences.reloadDefaultMedia(newSettings.defaultMedia());
         this.joinDeliveryListener.reloadSettings(
                 newSettings.deliverOnJoin(), newSettings.joinDeliveryDelaySeconds());
+        this.inboxPageSize = newSettings.inboxPageSize();
         this.inboxRouter.reloadPageSize(newSettings.inboxPageSize());
         this.mailRouter.reloadPageSize(newSettings.inboxPageSize());
         reschedulePruneTask(newSettings.pruneIntervalSeconds());

@@ -26,6 +26,13 @@ import java.util.concurrent.Executor;
  * <p>Because {@link #register} is only ever called through its EssentialsX-free signature, this class is
  * not loaded until control actually reaches the call — after the caller has confirmed EssentialsX is
  * enabled.
+ *
+ * <p>That guard proves EssentialsX is <em>enabled</em>, not that its classes are <em>reachable</em>:
+ * a feature module's class loader is parent-first onto the host's, and Paper isolates plugin class
+ * loaders, so resolving {@link IEssentials} here depends on the host's {@code paper-plugin.yml}
+ * declaring {@code Essentials} with {@code join-classpath: true}. Without it this method throws
+ * {@code NoClassDefFoundError} on a server running EssentialsX perfectly well. The caller catches
+ * {@link LinkageError} for that reason.
  */
 final class EssentialsMailBinding {
 

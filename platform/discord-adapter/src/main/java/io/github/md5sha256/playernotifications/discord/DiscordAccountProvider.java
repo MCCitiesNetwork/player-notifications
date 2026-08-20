@@ -33,6 +33,20 @@ public interface DiscordAccountProvider {
     @NotNull Optional<Long> discordIdFor(@NotNull UUID playerUuid);
 
     /**
+     * The player linked to the given Discord user id, or empty if this provider knows of no link.
+     *
+     * <p>The reverse of {@link #discordIdFor(UUID)}, and the lookup every Discord-side slash command
+     * starts with. A {@code default} returning empty rather than an abstract method, so a provider
+     * written before this existed still compiles and simply answers nothing — it stays usable for
+     * delivery, which is what it was written for.
+     *
+     * <p>May block; callers are expected to be off the main thread.
+     */
+    default @NotNull Optional<UUID> playerFor(long discordId) {
+        return Optional.empty();
+    }
+
+    /**
      * Whether this provider can currently answer at all — typically "the backing plugin is installed
      * and enabled". An unavailable provider is skipped without being queried, so an optional
      * dependency being absent costs nothing per lookup.

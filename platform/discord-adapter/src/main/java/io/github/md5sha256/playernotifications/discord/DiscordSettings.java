@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.discord;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.configurate.objectmapping.ConfigSerializable;
 import org.spongepowered.configurate.objectmapping.meta.Required;
 import org.spongepowered.configurate.objectmapping.meta.Setting;
@@ -24,6 +25,10 @@ import java.util.List;
  * @param deliveryTimeoutSeconds  how long a single DM send may block before it counts as unreachable
  * @param linkProviders           ordered {@link DiscordAccountProvider} keys forming the lookup chain
  * @param linkCodeExpirySeconds   how long a {@code /notifications link discord} code stays redeemable
+ * @param commandsEnabled         whether the bot registers {@code /mail} and {@code /notifications};
+ *                                boxed, and so deliberately not {@code @Required}, because an absent
+ *                                key must be distinguishable from an explicit {@code false} — see
+ *                                {@link #commandsEnabled()}
  */
 @ConfigSerializable
 public record DiscordSettings(
@@ -47,7 +52,10 @@ public record DiscordSettings(
         List<String> linkProviders,
 
         @Setting("link-code-expiry-seconds")
-        long linkCodeExpirySeconds
+        long linkCodeExpirySeconds,
+
+        @Setting("commands-enabled")
+        @Nullable Boolean commandsEnabled
 ) {
 
     /** Discord's own "blurple", used when {@code embed-color} cannot be parsed. */
@@ -66,6 +74,16 @@ public record DiscordSettings(
         if (linkCodeExpirySeconds <= 0) {
             linkCodeExpirySeconds = DEFAULT_LINK_CODE_EXPIRY_SECONDS;
         }
+    }
+
+    /**
+     * Whether the bot registers {@code /mail} and {@code /notifications}, defaulting to {@code true}.
+     *
+     * <p>{@code false} leaves {@code /link} registered, so a server that wants Discord as a delivery
+     * medium only can have that without also exposing mail sending from Discord.
+     */
+    public boolean resolvedCommandsEnabled() {
+        return this.commandsEnabled == null || this.commandsEnabled;
     }
 
     /** How long an issued {@code /notifications link discord} code stays redeemable. */

@@ -38,4 +38,9 @@ public final class EmbeddedDiscordAccountProvider implements DiscordAccountProvi
         // it, and tries the next one, which is the behaviour we want here.
         return this.store.discordIdFor(playerUuid);
     }
+
+    @Override
+    public @NotNull Optional<UUID> playerFor(long discordId) {
+        return this.store.playerFor(discordId);
+    }
 }

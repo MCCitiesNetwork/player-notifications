@@ -53,14 +53,25 @@ public final class DiscordSrvAccountProvider implements DiscordAccountProvider {
     }
 
     @Override
-    public @NotNull Optional<Long> discordIdFor(@NotNull UUID playerUuid) {
-        AccountLinkManager links;
-        try {
-            links = DiscordSRV.getPlugin().getAccountLinkManager();
-        } catch (LinkageError error) {
-            this.logger.fine("DiscordSRV classes are not loadable: " + error);
+    public @NotNull Optional<UUID> playerFor(long discordId) {
+        AccountLinkManager links = accountLinks();
+        if (links == null) {
             return Optional.empty();
         }
+
+        String id = Long.toString(discordId);
+        // The cache first, then the blocking lookup — the same order discordIdFor uses, and for the same
+        // reason: every caller of this is already off the main thread.
+        UUID player = links.getUuidFromCache(id);
+        if (player == null) {
+            player = links.getUuid(id);
+        }
+        return Optional.ofNullable(player);
+    }
+
+    @Override
+    public @NotNull Optional<Long> discordIdFor(@NotNull UUID playerUuid) {
+        AccountLinkManager links = accountLinks();
         if (links == null) {
             return Optional.empty();
         }
@@ -81,6 +92,16 @@ public final class DiscordSrvAccountProvider implements DiscordAccountProvider {
             this.logger.log(Level.WARNING, "DiscordSRV returned an unparseable Discord id '"
                     + discordId + "' for " + playerUuid, exception);
             return Optional.empty();
+        }
+    }
+
+    /** DiscordSRV's link manager, or {@code null} when its classes are absent or it has none. */
+    private AccountLinkManager accountLinks() {
+        try {
+            return DiscordSRV.getPlugin().getAccountLinkManager();
+        } catch (LinkageError error) {
+            this.logger.fine("DiscordSRV classes are not loadable: " + error);
+            return null;
         }
     }
 }

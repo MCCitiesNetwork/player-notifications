@@ -341,9 +341,11 @@ single preference row.
   - **The class being loaded is irrelevant** — JDA only appears because a gateway reconnect (which
     Discord initiates on its own, hence "I wasn't doing anything") was the next thing needing a class
     not yet loaded. It breaks host-class loads the same way, and keeps firing on every reconnect.
-  - **Fix: remove the DiscordSRV jar from `plugins/`.** DiscordSRV is now the only `dependencies:
-    server:` entry in `paper-plugin.yml`, and so the only source of this exposure — the Essentials
-    entry that used to carry the identical risk was removed with the Essentials adapter (see "Mail").
+  - **Fix: remove the DiscordSRV jar from `plugins/`.** Note `paper-plugin.yml` now carries **two**
+    `dependencies: server:` entries, DiscordSRV and Essentials (the latter re-added for the mail
+    converter — see "EssentialsX mail converter"), so both are sources of this exposure: an unloaded
+    *Essentials* poisons module class loading in exactly the same way, and its trace will likewise blame
+    whatever class was being loaded rather than Essentials.
   - Two code fixes were designed and **deliberately not taken**: dropping `join-classpath` and driving
     `DiscordSrvAccountProvider` reflectively through DiscordSRV's own plugin loader (the only fix that
     covers host-class loads too — the surface is three calls returning `String`/`UUID`, so it is cheap),
@@ -357,16 +359,87 @@ single preference row.
 - **`discord.yml`** (bundled in the *module* jar, written to `<dataFolder>/modules/discord.yml`):
   `bot-token` (blank refuses module startup), `message-format`, `embed-color` (`#RRGGBB`),
   `delivery-timeout-seconds` (`long`, not a `Duration`), `link-providers`, `link-code-expiry-seconds`
-  (`long`, default 600, clamped like the timeout). Loaded by `ModuleConfigs`, which reproduces the host's
+  (`long`, default 600, clamped like the timeout), `commands-enabled` (boxed `Boolean`, default `true` —
+  see "Discord slash commands"). Loaded by `ModuleConfigs`, which reproduces the host's
   copy-defaults-then-merge idiom because `PlayerNotificationsPlugin.copyDefaultsYaml` is private and reads
   the *host* jar's resources. Because merge only *adds* absent keys, an existing install keeps its old
   `link-providers` — an upgrade does not silently switch a server onto `embedded`.
 - **Untested by automated tests:** `DiscordBot`, `JdaDiscordMessenger`, `DiscordSrvAccountProvider`,
-  `DiscordModule` and `LinkSlashCommandListener` — they need a live server, a real bot token and a Discord account.
-  Two manual checklists exist and **neither has been run**: Task 8 of
-  `docs/superpowers/plans/2026-07-29-discord-adapter.md` and Task 7 of
-  `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`. Everything else in the module is unit
-  tested — including `DiscordLinkFlow`, which is where the link logic deliberately lives for that reason.
+  `DiscordModule`, `LinkSlashCommandListener`, and every `command` class that touches a JDA event —
+  `SlashCommandRegistrar.onReady`, `MailCommandListener`, `NotificationsCommandListener`,
+  `InboxInteractionListener`, `PreferenceInteractionListener`. They need a live server, a real bot token
+  and a Discord account. Three manual checklists exist and **none has been run**: Task 8 of
+  `docs/superpowers/plans/2026-07-29-discord-adapter.md`, Task 7 of
+  `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`, and Task 13 of
+  `docs/superpowers/plans/2026-08-20-discord-slash-commands.md`. Everything else in the module is unit
+  tested — including `DiscordLinkFlow` and every `command` view class, which is where the logic
+  deliberately lives for that reason.
+
+### Discord slash commands
+
+Design doc: `docs/superpowers/specs/2026-08-20-discord-slash-commands-design.md`.
+Plan: `docs/superpowers/plans/2026-08-20-discord-slash-commands.md`.
+
+A linked player can read and send mail, read and dismiss notifications, and edit their delivery
+preferences from Discord. Package `discord.command`. This is a **second client** onto the same host
+APIs the Paper command layer drives — not a registry extension — so it follows the rule linking already
+established: every decision in a plain class (`InboxView`, `DiscordMailService`, `PreferenceView`,
+`ComponentIds`, `DiscordUserResolver`, `InboxReplies` and both message factories, all unit tested), with
+the JDA listeners over them logic-free.
+
+- **Registration has exactly one owner, and that is load-bearing.** `JDA#updateCommands()` *replaces*
+  the whole global command set, so a second registering listener would silently delete the first's
+  commands, with the loser decided by event ordering. `SlashCommandRegistrar` owns `onReady` and the
+  single `updateCommands()` call for `/link`, `/mail` and `/notifications`; `LinkSlashCommandListener`
+  keeps only its interaction branch. **Do not add an `onReady` anywhere else in this module.**
+- **The command names match the in-game ones** — no root literal. `/mail send|compose|list|read|dismiss|clear`
+  and `/notifications list|read|dismiss|clear|prefs|mute|unmute`, every reply ephemeral, all with
+  `setContexts(BOT_DM, GUILD)`.
+- **Entry indexing is stateless.** `page` is an explicit slash option defaulting to 1, and a component's
+  custom id carries its own page and notification key (`ComponentIds`, format `pn|surface|action|args`,
+  capped at Discord's 100 characters). There is no per-player cursor, so the stale-cursor class of bug
+  `InboxRouter` guards against cannot arise here, and there is nothing to drop on disconnect. An
+  out-of-range `entry` is **rejected naming the page's real size**, not clamped: it means the inbox
+  changed under the player, and acting on the wrong mail is worse than a second command.
+- **`InboxView` is constructed twice**, filtered to `mail`/"Mail" and unfiltered/"Notifications" — the
+  same shape as the host's two `InboxRouter`s, and for the same reason. The surface key (`inbox` vs
+  `inbox-mail`) is in every component id, so a click on a mail listing can never be answered by the
+  unfiltered view. Its page size is an `IntSupplier` over the host's new
+  `PlayerNotificationsPlugin#inboxPageSize()`, so `/notifications reload` reaches it.
+- **Mail sent from Discord is always plain text.** `DiscordMailService` passes `MiniMessage#escapeTags`
+  as `MailRecipients.resolve`'s formatter — the EssentialsX importer's rule, for the same reason: the
+  text passed through no permission gate, so it must be able to render only as the literal text it was.
+  `MailFormatting` and its fifteen `…format.*` permissions are **not** consulted; there is no
+  `CommandSender` in Discord to check them against. Recipient resolution matches `MailCommand`,
+  `hasPlayedBefore()` included, and the arrival notice fires through `MailNotifier` unchanged — but only
+  *after* the enqueue succeeds, since announcing mail that was never stored sends the recipient to an
+  empty inbox.
+- **Preferences are components, not a modal.** A modal opens only in response to an interaction and
+  submits once, so it cannot re-render as a player toggles: it would mean either no staging, or asking
+  players to type medium keys as free text where a typo is silent. `/notifications prefs` posts an
+  ephemeral message with a data-type select, a media multi-select (min 0 — ticking nothing is how a
+  player mutes one type) and Apply / Discard / Mute everything. Modals carry only prose: the
+  `/mail compose` body. A *Reply* button is deliberately absent — `InboxView.Row` carries the rendered
+  title, not the sender's name.
+- **The staged session is the host's `PreferenceEditSession` in a session manager this module owns.**
+  Not the host's: the dialogs' "Back abandons this screen's checkboxes" semantics assume one owner, and
+  an Apply from Discord would otherwise commit a half-finished in-game edit with nothing on the player's
+  screen saying so. Consequence, accepted: a staged edit on one surface is invisible on the other, and
+  last Apply wins. Apply calls `applyChanges(player, changes, Set.of(), stagedMute)` — an always-empty
+  reset set, since there is no player-facing way back to the server default here either.
+  `/notifications mute|unmute` stay immediate, as in game.
+- **The reverse lookup is on the provider chain, not the store.** `DiscordAccountProvider` carries a
+  `default playerFor(long)` returning empty (a `default`, so a provider compiled against the old
+  interface still builds), implemented by both shipped providers and chained exactly as `discordIdFor`
+  is. That is what makes the commands work on a `link-providers: [discordsrv]` server instead of being
+  silently dead there. An unresolved user is told to run `/notifications link discord`.
+- **`commands-enabled: false` leaves `/link` registered** and withholds the other two, for a server that
+  wants Discord as a delivery medium only.
+- **Discord's 25-option select cap** truncates the data-type and media lists, with a warning naming the
+  overflow. An empty page carries no components at all, because Discord rejects an empty select outright
+  — the same shape of bug as vanilla's empty `multiAction` dialog. A listing or preference message stops
+  working when its interaction token expires (15 minutes) and answers a click with "This message has
+  expired; run the command again."
 
 ## Mail
 
@@ -570,6 +643,24 @@ one moves the mail out of Essentials instead.
   either a fingerprint table or a full scan of every existing mail notification, for a command an
   operator runs once. An `AtomicBoolean` refuses a second concurrent run rather than queueing it.
   Console is a valid sender — this operates on server data, not on the player running it.
+- **The host declares `Essentials` in `paper-plugin.yml`, `required: false`, `join-classpath: true`
+  — and the module does not work without it.** `EssentialsMailBinding` names `com.earth2me` types, and
+  a feature module's `URLClassLoader` is parent-first onto the *host's* loader, so with Paper's default
+  classloader isolation those classes are simply unreachable: `register` dies on
+  `NoClassDefFoundError: com/earth2me/essentials/IEssentials` at its `instanceof`, on a server where
+  EssentialsX is installed **and enabled**. This hid for a while because DiscordSRV's own
+  `join-classpath: true` entry plus its Essentials hook drags Essentials' loader into our classloader
+  group — so the module worked by accident on any server that also ran DiscordSRV, and only failed
+  where it did not. Read a `NoClassDefFoundError` here as a *missing declared route*, not as the
+  `isPluginEnabled` guard leaking: the guard sits in the entry class and a failure inside
+  `EssentialsMailBinding` proves it already passed. The cost of the entry is the exposure described
+  under "Discord adapter" — an *unloaded* Essentials now poisons module class loading too. The entry
+  can be deleted once every server has converted, along with the module.
+- **A `LinkageError` from the binding is caught and the module skipped**, not allowed to escape.
+  `ModuleLoader` catches only `ModuleLoadException`, so before this the error above propagated out of
+  `startModules()` → `onEnable` and **disabled the entire host plugin** — notifications, mail and
+  Discord all down because an optional one-shot migration tool could not resolve a class. It now logs
+  at `SEVERE` and returns, leaving `/essmailconvert` unregistered and everything else running.
 - **The permission `essentialsmailconverter.command.convert` is declared nowhere.**
   `paper-plugin.yml` belongs to the host, and programmatic permission registration is the pattern the
   Discord adapter was cleaned of. An undeclared permission resolves through Bukkit's default — op only
@@ -1067,7 +1158,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 122 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 384 in total, all passing.
+Current baseline: **108 tests in `:core:test`, 30 in `:api:test`, 103 in `:platform:paper-plugin:test`, 204 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 466 in total, all passing.
 
 ## Current state
 
@@ -1105,6 +1196,11 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   the Brigadier `test` subcommand, the permission gate, and the `test` type appearing in the preference
   dialogs all need a live server. The path underneath them (`registerJsonRenderable` → enqueue →
   `deliver` → render → sink fan-out → prune) **is** covered, by `core`'s `RenderedDeliveryTest`.
+- **The Discord slash-command surface has never run against a live bot.** Every view class is unit
+  tested (82 new tests), but slash-command registration, the compose modal, component interactions and
+  the ephemeral-message editing all need a real bot token and a linked account. **Task 13's 19-item
+  manual checklist in `docs/superpowers/plans/2026-08-20-discord-slash-commands.md` has not been run.**
+  See "Discord slash commands".
 - **Discord linking exists but its end-to-end path has never been run.** `embedded` + `/notifications link discord` +
   the Discord `/link` slash command are implemented and unit tested where testable, but JDA slash-command
   registration, the DM interaction, and a row actually landing need a live server, a bot token and a

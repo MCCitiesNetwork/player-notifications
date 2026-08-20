@@ -54,3 +54,10 @@ link-providers:
 # Codes are held in memory and do not survive a restart — a code's whole purpose is to be transient, and
 # a player who loses one simply runs /notifications link discord again.
 link-code-expiry-seconds: 600
+
+# Whether the bot registers the /mail and /notifications slash commands, letting a linked player read
+# and send mail and manage their notifications from Discord.
+#
+# Setting this to false leaves /link registered — a server that wants Discord as a delivery medium only
+# still needs players to be able to link their account.
+commands-enabled: true

@@ -6,6 +6,7 @@ import io.github.md5sha256.playernotifications.paper.PlayerNotificationsPlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
+import java.util.logging.Level;
 
 /**
  * A one-shot migration tool: imports a server's existing EssentialsX mailboxes into first-party mail,
@@ -32,7 +33,21 @@ public final class EssentialsMailConverterModule implements PluginModule<PlayerN
         // Every EssentialsX-typed reference lives in EssentialsMailBinding, so this method verifies
         // without loading a single EssentialsX class and the guard above is actually reachable. See that
         // class for why touching them here would take the whole host plugin down.
-        EssentialsMailBinding.register(plugin);
+        try {
+            EssentialsMailBinding.register(plugin);
+        } catch (LinkageError error) {
+            // The guard above only proves EssentialsX is *enabled*, not that its classes are *reachable*
+            // from this module's loader: that needs the Essentials entry in the host's paper-plugin.yml,
+            // and a server whose EssentialsX was unloaded rather than merely disabled can also fail here.
+            // ModuleLoader catches only ModuleLoadException, so without this the error escapes onEnable
+            // and disables the entire host plugin — taking notifications, mail and Discord down for a
+            // one-shot migration tool nobody was running.
+            plugin.getLogger().log(Level.SEVERE,
+                    "EssentialsX is enabled but its classes are not reachable from this module;"
+                            + " the mail converter is unavailable and /essmailconvert will not exist."
+                            + " Everything else in PlayerNotifications is unaffected.", error);
+            return;
+        }
         plugin.getLogger().info("EssentialsX mail converter ready; run /essmailconvert");
     }
 

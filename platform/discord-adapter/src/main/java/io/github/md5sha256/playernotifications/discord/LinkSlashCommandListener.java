@@ -1,12 +1,8 @@
 package io.github.md5sha256.playernotifications.discord;
 
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
-import net.dv8tion.jda.api.interactions.commands.OptionType;
-import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.Executor;
@@ -21,6 +17,11 @@ import java.util.logging.Logger;
  * privileged {@code MESSAGE_CONTENT} intent while interactions need no intent at all. That keeps
  * {@link DiscordBot} on {@code createLight} with an empty intent set, and spares the operator a toggle in
  * the Discord developer portal.
+ *
+ * <p>The command itself is declared and registered by
+ * {@link io.github.md5sha256.playernotifications.discord.command.SlashCommandRegistrar}, not here:
+ * {@code updateCommands()} replaces the whole global command set, so registration has to have exactly
+ * one owner. This class handles the interaction only.
  *
  * <p>A thin adapter over {@link DiscordLinkFlow}, which holds every decision — this class cannot be unit
  * tested without a live bot, so it deliberately contains no logic beyond mapping a
@@ -44,25 +45,6 @@ public final class LinkSlashCommandListener extends ListenerAdapter {
         this.flow = flow;
         this.asyncExecutor = asyncExecutor;
         this.logger = logger;
-    }
-
-    @Override
-    public void onReady(@NotNull ReadyEvent event) {
-        // Registered from onReady because awaitReady() is never called, so this is the only point at which
-        // the connection is known to be up. Globally, and with the bot-DM context included, since players
-        // link from a DM with the bot rather than in a guild channel.
-        event.getJDA().updateCommands()
-                .addCommands(Commands.slash(COMMAND_NAME, "Link your Minecraft account to this Discord account")
-                        .addOption(OptionType.STRING, CODE_OPTION,
-                                "The code shown by " + DiscordLinkFlow.LINK_COMMAND + " in game", true)
-                        .setContexts(InteractionContextType.BOT_DM, InteractionContextType.GUILD))
-                .queue(
-                        success -> this.logger.info("Registered the Discord /" + COMMAND_NAME
-                                + " slash command for account linking"),
-                        // A failure here leaves DMs working for players who are already linked, so it is a
-                        // warning rather than a module failure.
-                        failure -> this.logger.log(Level.WARNING, "Could not register the Discord /"
-                                + COMMAND_NAME + " slash command; in-game linking will not work", failure));
     }
 
     @Override
