@@ -37,7 +37,7 @@ public final class TestNotificationSender {
 
     private static final Component SEPARATOR = Component.text(", ", NamedTextColor.GRAY);
 
-    /** The one thing a player can do about either "nothing was sent" case, so both replies end with it. */
+    /** The one thing a player can do about either not-delivered case, so both replies end with it. */
     private static final Component USE_PREFERENCES = Component.text()
             .append(Component.text("Use ", NamedTextColor.GRAY))
             .append(Component.text("/notifications preferences", NamedTextColor.WHITE))
@@ -117,7 +117,7 @@ public final class TestNotificationSender {
      */
     private @NotNull Component report(@NotNull UUID target) {
         if (this.preferences.isMuted(target)) {
-            return Component.text("Your notifications are muted, so nothing was sent. ",
+            return Component.text("Your notifications are muted, so it was suppressed. ",
                             NamedTextColor.YELLOW)
                     .append(USE_UNMUTE);
         }
@@ -126,7 +126,7 @@ public final class TestNotificationSender {
                 target, TestNotificationPayload.TEST_DATA_TYPE);
 
         if (media.contains(NotificationPreferences.MUTED_MEDIUM)) {
-            return Component.text("Test notifications are muted for you, so nothing was sent. ",
+            return Component.text("Test notifications are muted for you, so it was suppressed. ",
                             NamedTextColor.YELLOW)
                     .append(USE_PREFERENCES);
         }
