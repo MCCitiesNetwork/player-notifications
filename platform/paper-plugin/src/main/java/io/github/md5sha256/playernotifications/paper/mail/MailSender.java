@@ -17,6 +17,16 @@ import java.util.UUID;
  */
 public final class MailSender {
 
+    /**
+     * The sender UUID a console-sent mail is attributed to. {@code MailPayload.sender} is
+     * {@code @NotNull} and the console has no UUID, so it sends as the nil UUID rather than the API
+     * record being widened for it; a nil UUID cannot collide with a real player's.
+     */
+    public static final UUID SERVER_SENDER = new UUID(0, 0);
+
+    /** The sender name a console-sent mail is attributed to: the recipient reads "Mail from Server". */
+    public static final String SERVER_NAME = "Server";
+
     private final NotificationService service;
 
     public MailSender(@NotNull NotificationService service) {

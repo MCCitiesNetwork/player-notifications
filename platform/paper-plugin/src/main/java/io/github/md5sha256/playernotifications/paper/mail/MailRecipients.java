@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 /**
  * The testable half of {@code /mail send}'s argument handling: resolving a recipient name to a UUID and
@@ -29,6 +30,23 @@ public final class MailRecipients {
     @NotNull
     public static Result resolve(@NotNull String name, @NotNull String message,
                                  @NotNull Function<String, UUID> resolver) {
+        return resolve(name, message, resolver, UnaryOperator.identity());
+    }
+
+    /**
+     * As {@link #resolve(String, String, Function)}, additionally passing the trimmed message through
+     * {@code formatter} — in production {@code MailFormatting.sanitize}, which turns the typed text into
+     * the canonical MiniMessage document stored in the payload.
+     *
+     * <p>The formatter runs <b>after</b> the length check, so the limit bounds what the sender typed
+     * rather than what it serialises to; a heavily-tagged message must not be rejected for the size of
+     * its own escaping. A formatter that returns blank — {@code "<red>"} carries no readable text — is
+     * rejected as a blank message, since {@code MailPayload} refuses one.
+     */
+    @NotNull
+    public static Result resolve(@NotNull String name, @NotNull String message,
+                                 @NotNull Function<String, UUID> resolver,
+                                 @NotNull UnaryOperator<String> formatter) {
         String trimmed = message.trim();
         if (trimmed.isEmpty()) {
             return new Result.InvalidMessage("Mail cannot be blank.");
@@ -37,11 +55,15 @@ public final class MailRecipients {
             return new Result.InvalidMessage(
                     "Mail must be at most " + MailPayload.MAX_MESSAGE_LENGTH + " characters.");
         }
+        String formatted = formatter.apply(trimmed);
+        if (formatted.isBlank()) {
+            return new Result.InvalidMessage("Mail cannot be blank.");
+        }
         UUID recipient = resolver.apply(name);
         if (recipient == null) {
             return new Result.UnknownPlayer(name);
         }
-        return new Result.Ok(recipient, trimmed);
+        return new Result.Ok(recipient, formatted);
     }
 
     public sealed interface Result {

@@ -109,9 +109,12 @@ gets every group without a special case.
   existing "Mail cannot be blank." reply. `sanitize` judges that on the *rendered* text and returns
   `""`, because `<red>` alone parses to an empty component that still serialises back to `<red>` — a
   blankness check on the stored string would let it through and then trip `MailPayload`'s constructor.
-- Malformed MiniMessage (`<red` unclosed) is not an error in MiniMessage — it renders literally.
-  `sanitize` still wraps deserialisation and, on any `RuntimeException`, falls back to the raw text as
-  a literal component, so a parser edge case cannot fail a send.
+- Malformed MiniMessage (`<red` unclosed) is not an error in MiniMessage — it renders literally. A
+  **legacy section-sign code is**: MiniMessage throws `ParsingException` on `§c` rather than ignoring
+  it. Both `sanitize` and `MailRenderer` therefore catch `RuntimeException` and fall back to the text
+  as a literal component. The renderer needs its own guard, not just the sender's: a mail stored before
+  this change, or one whose sanitising already fell back, can contain a `§`, and an old mail must never
+  fail to render — falling back reproduces exactly how it read before.
 
 ## Testing strategy
 

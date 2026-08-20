@@ -170,4 +170,20 @@ class MailSenderTest {
 
         Assertions.assertNotEquals(first, second);
     }
+
+    @Test
+    @DisplayName("the console sends as the reserved server identity")
+    void consoleSendsAsServer() {
+        RecordingService service = new RecordingService();
+        MailSender sender = new MailSender(service);
+        UUID recipient = UUID.randomUUID();
+
+        sender.send(MailSender.SERVER_SENDER, MailSender.SERVER_NAME, recipient, "an announcement");
+
+        TypedNotification<?> notification = service.enqueued.get(0);
+        MailPayload payload = (MailPayload) notification.notifPayload();
+        Assertions.assertEquals("Server", payload.senderName());
+        Assertions.assertEquals(new UUID(0, 0), payload.sender());
+        Assertions.assertEquals(MailSender.SERVER_SENDER, payload.sender());
+    }
 }
