@@ -25,8 +25,8 @@ import java.util.function.Consumer;
  * the same shape as {@code PreferenceDialogRouter}, and for the same reason: {@link NotificationService}
  * does blocking JDBC while {@code Player#showDialog} must run on the main thread.
  *
- * <p>The cursor also backs the chat fallback: {@code /notifications read <n>} and
- * {@code … dismiss <n>} index the page most recently listed for that player.
+ * <p>The cursor also backs the chat fallback: {@code /notifications read <entry>} and
+ * {@code … dismiss <entry>} index the page most recently listed for that player.
  */
 public final class InboxRouter {
 
@@ -39,6 +39,8 @@ public final class InboxRouter {
     private final InboxEntryRenderer renderer;
     private final InboxDialog listDialog;
     private final InboxDetailDialog detailDialog;
+    /** The screen's own name, so the chat fallback's header matches the dialog's title. */
+    private final Component title;
 
     /**
      * The data type this screen is restricted to, or {@code null} for unfiltered. Threaded into every
@@ -47,9 +49,16 @@ public final class InboxRouter {
      */
     private final String dataTypeFilter;
 
+    /**
+     * The command this screen belongs to ({@code notifications} or {@code mail}), used to word the chat
+     * fallback's hint. Hardcoding {@code /notifications} there told a {@code /mail list} reader to run a
+     * command that resolves against the other router's page.
+     */
+    private final String commandLabel;
+
     /** The last page each player looked at. Dropped on quit by {@code InboxQuitListener}. */
     private final Map<UUID, PageBounds> cursors = new ConcurrentHashMap<>();
-    /** The entries of that page, so a chat {@code read <n>}/{@code dismiss <n>} can resolve n. */
+    /** The entries of that page, so a chat {@code read <entry>}/{@code dismiss <entry>} can resolve the index. */
     private final Map<UUID, List<InboxEntry>> lastListed = new ConcurrentHashMap<>();
 
     private volatile int pageSize;
@@ -59,12 +68,15 @@ public final class InboxRouter {
                        @NotNull InboxEntryRenderer renderer,
                        int pageSize,
                        @Nullable String dataTypeFilter,
+                       @NotNull String commandLabel,
                        @NotNull Component title) {
         this.plugin = plugin;
         this.service = service;
         this.renderer = renderer;
         this.pageSize = pageSize;
         this.dataTypeFilter = dataTypeFilter;
+        this.commandLabel = commandLabel;
+        this.title = title;
         this.listDialog = new InboxDialog(this, title);
         this.detailDialog = new InboxDetailDialog(this);
     }
@@ -153,7 +165,7 @@ public final class InboxRouter {
      * composed from exactly those two service calls rather than a new one, so it dismisses by deleting
      * target rows like every other dismissal and needs no extra query.
      *
-     * <p>The cursor is dropped afterwards, so a stale {@code read <n>}/{@code dismiss <n>} cannot resolve
+     * <p>The cursor is dropped afterwards, so a stale {@code read <entry>}/{@code dismiss <entry>} cannot resolve
      * against entries that no longer exist.
      */
     public void clearInChat(@NotNull Player player) {
@@ -180,8 +192,9 @@ public final class InboxRouter {
                 player.sendMessage(EMPTY_MESSAGE);
                 return;
             }
-            player.sendMessage(Component.text("Notifications — page " + read.page() + " of "
-                    + read.totalPages() + " (" + read.unreadCount() + " unread)", NamedTextColor.GOLD));
+            player.sendMessage(this.title.colorIfAbsent(NamedTextColor.GOLD)
+                    .append(Component.text(" — page " + read.page() + " of " + read.totalPages()
+                            + " (" + read.unreadCount() + " unread)", NamedTextColor.GOLD)));
             int index = 1;
             for (InboxEntry entry : read.entries()) {
                 var rendered = this.renderer.render(entry, player.getUniqueId());
@@ -191,12 +204,12 @@ public final class InboxRouter {
                                 entry.unread() ? NamedTextColor.WHITE : NamedTextColor.GRAY)));
                 index++;
             }
-            player.sendMessage(Component.text(
-                    "Use /notifications read <n> or /notifications dismiss <n>.", NamedTextColor.GRAY));
+            player.sendMessage(Component.text("Use /" + this.commandLabel + " read <entry> or /"
+                    + this.commandLabel + " dismiss <entry>.", NamedTextColor.GRAY));
         });
     }
 
-    /** {@code /notifications read <n>}: shows entry n of the last listed page in chat, marking it seen. */
+    /** {@code /notifications read <entry>}: shows entry n of the last listed page in chat, marking it seen. */
     public void readInChat(@NotNull Player player, int index) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             InboxEntry entry = indexed(player, index);
@@ -210,7 +223,7 @@ public final class InboxRouter {
         });
     }
 
-    /** {@code /notifications dismiss <n>}: removes entry n of the last listed page. */
+    /** {@code /notifications dismiss <entry>}: removes entry n of the last listed page. */
     public void dismissInChat(@NotNull Player player, int index) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             InboxEntry entry = indexed(player, index);

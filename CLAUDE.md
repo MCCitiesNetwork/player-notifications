@@ -471,8 +471,8 @@ all branches player-only, dispatched off the main thread):
 | `/mail` | opens the mail inbox dialog (filtered `InboxDialog`, titled "Mail") |
 | `/mail send <player> <message>` | sends mail (`<message>` is a greedy string) and fires the notice |
 | `/mail list [page]` | chat fallback list |
-| `/mail read <n>` | reads entry `n` of the last-listed page; marks it seen |
-| `/mail dismiss <n>` | dismisses entry `n` |
+| `/mail read <entry>` | reads entry `<entry>` of the last-listed page; marks it seen |
+| `/mail dismiss <entry>` | dismisses entry `<entry>` |
 | `/mail clear` | `markAllSeen` + `dismissSeen`, both filtered to `mail` |
 
 Two permissions, both `default: true`: `playernotifications.command.mail` gates the root
@@ -607,14 +607,14 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications` (alias `/notifs`) — **opens the player's inbox** (`paper.inbox.InboxDialog`). The name
   was reserved for exactly this; the preference subcommands sit under `preferences` so the top level
   stays clear for the inbox's own verbs, which would otherwise collide with a name like `mute`.
-- `/notifications list [page]` / `/notifications read <n>` / `/notifications dismiss <n>` — the **chat
-  fallback** for clients where the dialog does not render. `<n>` indexes the page most recently listed
+- `/notifications list [page]` / `/notifications read <entry>` / `/notifications dismiss <entry>` — the **chat
+  fallback** for clients where the dialog does not render. `<entry>` indexes the page most recently listed
   for that player, held in `InboxRouter`. All three are player-only, under the same
   `playernotifications.command.preferences` permission, and dispatch off the main thread.
 - `/notifications clear` — empties the inbox outright, **unread entries included**, as a shorthand for
   the list screen's "Mark all read" then "Dismiss all read". Composed from `markAllSeen` +
   `dismissSeen` rather than a new service method, and drops the player's page cursor so a stale
-  `read <n>`/`dismiss <n>` cannot resolve. Same permission, player-only, async.
+  `read <entry>`/`dismiss <entry>` cannot resolve. Same permission, player-only, async.
 - `/notifications preferences` — opens the root preferences dialog.
 - `/notifications preferences media` — jumps straight to the "Delivery methods" picker.
 - `/notifications preferences types` — jumps straight to the "Notification types" picker.
