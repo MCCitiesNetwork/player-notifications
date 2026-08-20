@@ -76,7 +76,7 @@ public final class NotificationsCommand {
             Component.text("Only players have notification preferences.", NamedTextColor.RED);
 
     private static final String PAGE_ARGUMENT = "page";
-    private static final String INDEX_ARGUMENT = "n";
+    private static final String INDEX_ARGUMENT = "entry";
 
     private NotificationsCommand() {
     }

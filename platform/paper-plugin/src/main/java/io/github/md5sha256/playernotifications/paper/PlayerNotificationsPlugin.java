@@ -257,13 +257,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         InboxEntryRenderer inboxRenderer = new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger());
         this.inboxRouter = new InboxRouter(
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                null, Component.text("Notifications"));
+                null, "notifications", Component.text("Notifications"));
         // A second, mail-filtered InboxRouter instance rather than one shared router with a per-call
         // filter: the cursor and last-listed maps are per-screen state, and /mail list 2 must not make
         // /notifications read 1 resolve against the mail page.
         this.mailRouter = new InboxRouter(
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                MailPayload.DATA_TYPE, Component.text("Mail"));
+                MailPayload.DATA_TYPE, "mail", Component.text("Mail"));
         getServer().getPluginManager().registerEvents(
                 new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
         this.mailNotifier = new MailNotifier(this.sinkRegistry, this.preferences, getLogger());

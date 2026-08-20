@@ -51,7 +51,7 @@ public final class MailCommand {
             Component.text("Only players can use mail.", NamedTextColor.RED);
 
     private static final String PAGE_ARGUMENT = "page";
-    private static final String INDEX_ARGUMENT = "n";
+    private static final String INDEX_ARGUMENT = "entry";
     private static final String PLAYER_ARGUMENT = "player";
     private static final String MESSAGE_ARGUMENT = "message";
 
