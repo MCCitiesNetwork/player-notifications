@@ -368,7 +368,8 @@ single preference row.
   `DiscordModule`, `LinkSlashCommandListener`, and every `command` class that touches a JDA event —
   `SlashCommandRegistrar.onReady`, `MailCommandListener`, `NotificationsCommandListener`,
   `InboxInteractionListener`, `PreferenceInteractionListener`. They need a live server, a real bot token
-  and a Discord account. Three manual checklists exist and **none has been run**: Task 8 of
+  and a Discord account — which includes the arrival notice's "Read mail" button actually arriving on a
+  DM and opening the mail; only the row it posts (`MailNoticeButton`) is unit tested. Three manual checklists exist and **none has been run**: Task 8 of
   `docs/superpowers/plans/2026-07-29-discord-adapter.md`, Task 7 of
   `docs/superpowers/plans/2026-07-30-embedded-discord-linking.md`, and Task 13 of
   `docs/superpowers/plans/2026-08-20-discord-slash-commands.md`. Everything else in the module is unit
@@ -426,6 +427,14 @@ the JDA listeners over them logic-free.
   `hasPlayedBefore()` included, and the arrival notice fires through `MailNotifier` unchanged — but only
   *after* the enqueue succeeds, since announcing mail that was never stored sends the recipient to an
   empty inbox.
+- **The mail arrival notice's DM carries a "Read mail" button**, a shortcut for `/mail read 1`.
+  `command.MailNoticeButton` builds the one-button row, `DiscordDmSink` adds it to the message the
+  factory already built, and nothing else in the message changes. It is Discord-only by construction —
+  a JDA component exists because a Discord message can carry one — so the notice itself stays
+  medium-neutral and no other sink learns anything. The button's id is
+  `pn|inbox-mail|read|1|1`, and **`read` is the one button action answered with a new ephemeral reply
+  rather than `deferEdit`**: it sits on an ordinary DM rather than on a listing this module posted, so
+  editing would consume the notice, and a player with several unread mails still wants it there.
 - **Preferences are components, not a modal.** A modal opens only in response to an interaction and
   submits once, so it cannot re-render as a player toggles: it would mean either no staging, or asking
   players to type medium keys as free text where a typo is silent. `/notifications prefs` posts an
@@ -533,7 +542,12 @@ deliver my mail", since mail is never delivered to begin with.
 It is **not** a notification — never enqueued, never stored (a stored notice would sit in the inbox as
 a second row announcing the first) — but it *is* routed through the ordinary sink machinery, so it
 reaches whatever media the recipient prefers for `mail`. `paper.mail.MailNotifier` is the whole of
-this: it returns immediately when the recipient is **globally muted**
+this, and the single instance it ever delivers is published as `MailNotifier.ARRIVAL_NOTICE` so a sink
+can recognise it and add an affordance of its own — the Discord adapter puts a **"Read mail" button**
+under it (see "Discord slash commands"). Recognition is an **identity** check against that constant, not
+a comparison of its wording: matching the text would mean rewording the notice silently dropped whatever
+a sink had attached, and would decorate any notification that happened to render the same way. It
+returns immediately when the recipient is **globally muted**
 (`NotificationPreferences#isMuted`), and otherwise resolves
 `preferences.preferredMedia(recipient, MailPayload.DATA_TYPE)`, drops
 `NotificationPreferences.SILENCED_MEDIUM`, and delivers a fixed `RenderableNotification` to each medium's
@@ -1227,7 +1241,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 113 in `:platform:paper-plugin:test`, 210 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 485 in total, all passing.
+Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 113 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 488 in total, all passing.
 
 ## Current state
 

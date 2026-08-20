@@ -44,8 +44,13 @@ public final class InboxInteractionListener extends ListenerAdapter {
         if (parsed.isEmpty()) {
             return;
         }
-        handle(event.getHook(), parsed.get(), event.getUser().getIdLong(), null,
-                () -> event.deferEdit().queue());
+        // The "Read mail" button under a mail arrival notice sits on an ordinary DM rather than on a
+        // listing this module posted, so it answers with a new ephemeral reply: editing would consume
+        // the notice, and a player with several unread mails still wants it there.
+        Runnable defer = "read".equals(parsed.get().action())
+                ? () -> event.deferReply(true).queue()
+                : () -> event.deferEdit().queue();
+        handle(event.getHook(), parsed.get(), event.getUser().getIdLong(), null, defer);
     }
 
     @Override
@@ -105,6 +110,18 @@ public final class InboxInteractionListener extends ListenerAdapter {
                     InteractionSupport.edit(hook,
                             this.messages.listing(view.page(player.get(), 1), parsed.surface()),
                             this.logger);
+                }
+                case "read" -> {
+                    InboxView.ReadResult result = view.read(player.get(),
+                            parsed.intArg(0).orElse(1), parsed.intArg(1).orElse(1));
+                    if (result instanceof InboxView.ReadResult.Ok ok) {
+                        InteractionSupport.reply(hook, this.messages.detail(ok.row(), parsed.surface()),
+                                this.logger);
+                    } else {
+                        InboxView.ReadResult.OutOfRange range = (InboxView.ReadResult.OutOfRange) result;
+                        InteractionSupport.reply(hook,
+                                InboxReplies.outOfRange(range.entry(), range.rowCount()), this.logger);
+                    }
                 }
                 case "delete" -> {
                     parsed.arg(0).ifPresent(key -> view.dismissByKey(player.get(), key));

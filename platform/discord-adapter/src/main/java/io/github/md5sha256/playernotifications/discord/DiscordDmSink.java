@@ -3,6 +3,8 @@ package io.github.md5sha256.playernotifications.discord;
 import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import io.github.md5sha256.playernotifications.discord.command.MailNoticeButton;
+import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -94,7 +96,7 @@ public final class DiscordDmSink implements NotificationSink {
             return DeliveryResult.UNSUPPORTED;
         }
 
-        MessageCreateData message = this.factory.create(notification);
+        MessageCreateData message = withMailNoticeButton(this.factory.create(notification), notification);
         try {
             return this.messenger.send(discordId.get(), message);
         } catch (RuntimeException exception) {
@@ -103,6 +105,18 @@ public final class DiscordDmSink implements NotificationSink {
                     "Failed to send a Discord DM to " + target, exception);
             return DeliveryResult.UNREACHABLE;
         }
+    }
+
+    /**
+     * Adds the "Read mail" button when this is the mail arrival notice, leaving every other message
+     * exactly as the factory built it. The button is a Discord affordance for a medium-neutral notice —
+     * see {@link io.github.md5sha256.playernotifications.discord.command.MailNoticeButton}.
+     */
+    private static @NotNull MessageCreateData withMailNoticeButton(@NotNull MessageCreateData message,
+                                                                   @NotNull RenderableNotification notification) {
+        return MailNoticeButton.forNotification(notification)
+                .map(row -> MessageCreateBuilder.from(message).addComponents(row).build())
+                .orElse(message);
     }
 
     /**

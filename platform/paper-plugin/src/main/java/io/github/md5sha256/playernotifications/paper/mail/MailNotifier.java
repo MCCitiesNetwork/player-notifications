@@ -31,7 +31,17 @@ public final class MailNotifier {
 
     private static final Component NOTICE_TITLE = Component.text("You have new mail!");
     private static final Component NOTICE_BODY = Component.text("Use /mail to read it.");
-    private static final RenderableNotification NOTICE = new RenderableNotification(NOTICE_TITLE, NOTICE_BODY);
+
+    /**
+     * The one notice this class ever delivers, published so that a sink can recognise it and offer an
+     * affordance of its own — the Discord adapter puts a "Read mail" button under it.
+     *
+     * <p>It is a <strong>singleton instance</strong>, and recognising it is an identity check rather
+     * than a comparison of its wording: rewording the notice would otherwise silently drop whatever a
+     * sink had attached to it, and an equal-looking notification built elsewhere is not this notice.
+     */
+    public static final RenderableNotification ARRIVAL_NOTICE =
+            new RenderableNotification(NOTICE_TITLE, NOTICE_BODY);
 
     private final NotificationSinkRegistry sinks;
     private final NotificationPreferences preferences;
@@ -76,7 +86,7 @@ public final class MailNotifier {
 
     private void deliverSafely(@NotNull NotificationSink sink, @NotNull UUID recipient) {
         try {
-            DeliveryResult result = sink.deliver(NOTICE, recipient);
+            DeliveryResult result = sink.deliver(ARRIVAL_NOTICE, recipient);
             if (result != DeliveryResult.DELIVERED) {
                 this.logger.fine(() -> "Mail arrival notice not delivered via '" + sink.mediumKey()
                         + "' for " + recipient + ": " + result);

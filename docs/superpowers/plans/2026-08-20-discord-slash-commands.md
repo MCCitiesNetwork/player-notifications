@@ -390,6 +390,8 @@ Constructs, guarded by `settings.commandsEnabled()`: an `InboxEntryRenderer` ove
       rejected (both reported on modal submit, since the recipient is only checked then)
 - [ ] A modal body of `<red>hi` arrives as the literal text `<red>hi`, not coloured
 - [ ] A modal body of `<click:run_command:/op me>x` arrives literal and is not clickable in game
+- [ ] A mail arrival DM carries a *Read mail* button; clicking it opens the first mail as a new
+      ephemeral reply and leaves the notice in place
 - [ ] Opening an entry, then *Mark as unread*, returns to the listing with the row unread again
 - [ ] A `/notifications` entry marked unread is delivered again on the player's next join
 - [ ] The recipient's mail arrival notice reaches their preferred media, including a Discord DM
