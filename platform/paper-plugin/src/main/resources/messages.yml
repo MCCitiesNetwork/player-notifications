@@ -1,0 +1,106 @@
+# Player-facing text for PlayerNotifications.
+#
+# Every value is MiniMessage: https://docs.advntr.dev/minimessage/format.html
+# <prefix> resolves to the "prefix" key below and may be used in any other message.
+# Placeholders written as <name> are filled in by the plugin; the ones each message
+# accepts are listed in the comment above it. A placeholder the plugin does not
+# supply is left in the text as-is, so a typo shows up in game rather than silently
+# blanking the line.
+#
+# Keys are matched exactly. A key that is missing or renamed renders as its own name
+# (you would see "mail.sent" in chat), so remove a line only if you mean to.
+#
+# Escaped tags such as \<entry\> are literal text a player is meant to read, not
+# placeholders — leave the backslashes in place.
+
+prefix: '<gray>[<aqua>Notifications<gray>]<reset> '
+
+common:
+  # <error> is not supplied: the underlying failure is logged, never shown to a player.
+  error: '<red>Something went wrong — try again shortly.</red>'
+
+notifications:
+  players-only: '<red>Only players have notification preferences.</red>'
+
+mail:
+  players-only: '<red>Only players can use mail.</red>'
+  # <recipient>
+  sent: '<green>Mail sent to <recipient>.</green>'
+  # <name>
+  unknown-player: '<red>Player <name> has never played on this server.</red>'
+  blank-message: '<red>Mail cannot be blank.</red>'
+  # <max>
+  message-too-long: '<red>Mail must be at most <max> characters.</red>'
+  row:
+    # One row of /mail list. Assembled from these three keys in order.
+    # <entry> <time>
+    prefix: '<dark_gray>#<entry> </dark_gray><gray>[<time>] </gray>'
+    # <sender>
+    sender: '<aqua>[<sender>] </aqua>'
+    # <content> — the message preview, or the rendered title when the payload will not decode.
+    # Two keys so unread and already-read mail can be styled apart.
+    content-unread: '<white><content></white>'
+    content-read: '<gray><content></gray>'
+
+broadcast:
+  # The title every broadcast is delivered under.
+  title: 'Broadcast'
+  no-audience: '<red>No online player matched those permissions.</red>'
+  nothing-enabled: '<red>No recipient had broadcasts enabled. Use --bypass to deliver regardless.</red>'
+  blank-content: '<red>Broadcast content cannot be blank.</red>'
+  # <flag>
+  flag-missing-value: '<red><flag> requires a value.</red>'
+  # <token>
+  unrecognised-token: '<red>Unrecognised token: <token></red>'
+
+join:
+  # Sent on join, outside the deliver-on-join setting: a player who turned push off
+  # still needs to know something arrived. A muted player is sent none of these.
+  unread-one: '<yellow>You have 1 unread notification. </yellow><gray>Use /notifications to read them.</gray>'
+  # <count>
+  unread-many: '<yellow>You have <count> unread notifications. </yellow><gray>Use /notifications to read them.</gray>'
+  unread-mail: '<yellow>You have unread mail. </yellow><gray>Use /mail to read it.</gray>'
+
+inbox:
+  # Shared by the dialog and the chat listing, so the two cannot word it differently.
+  empty: '<gray>Your inbox is empty.</gray>'
+  already-empty: '<gray>Your inbox is already empty.</gray>'
+  gone: '<red>That notification is no longer in your inbox.</red>'
+  cleared-one: '<green>Cleared 1 notification.</green>'
+  # <count>
+  cleared-many: '<green>Cleared <count> notifications.</green>'
+  # <title> <page> <total-pages> <unread>
+  header: '<gold><title> — page <page> of <total-pages> (<unread> unread)</gold>'
+  # <command> — "notifications" or "mail", depending on which listing this is.
+  usage: '<gray>Use /<command> read \<entry\> or /<command> delete \<entry\>.</gray>'
+  # <title>
+  deleted: '<green>Deleted: <title></green>'
+  # <command>
+  list-first: '<red>Run /<command> list first.</red>'
+  # <entry>
+  no-entry: '<red>No entry <entry> on that page.</red>'
+  # Hover text on a listing row. <command> is the full command clicking the row runs.
+  row-hover: '<gray>Click to run <command></gray>'
+  row:
+    # One row of /notifications list. <entry> <title>
+    title-only-unread: '<white><entry>. <title></white>'
+    title-only-read: '<gray><entry>. <title></gray>'
+
+link:
+  none-available: '<yellow>There is no account linking available on this server.</yellow>'
+  header: '<green>Accounts you can link:</green>'
+  # One line per linkable account. <name> <key>
+  entry: '  <gold><name></gold><gray> — run </gray><aqua>/notifications link <key></aqua>'
+  # <name>
+  unavailable: '<gold><name></gold><yellow> linking is not available on this server.</yellow>'
+
+test:
+  # The reply to /notifications test. <media> is the list of media delivery was attempted on.
+  sent: '<green>Test notification sent. Delivery attempted via: </green><media>'
+  # What joins two media in that list.
+  separator: '<gray>, </gray>'
+  muted: '<yellow>Your notifications are muted, so it was suppressed. </yellow><gray>Use </gray><white>/notifications unmute</white><gray> to receive notifications again.</gray>'
+  silenced: '<yellow>Test notifications are silenced for you, so it was suppressed. </yellow><gray>Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
+  no-media: '<yellow>Nothing was sent: you have no delivery methods chosen for test notifications. </yellow><gray>Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
+  # <media> — the preferred media that no installed module provides a sink for.
+  no-sink: '<yellow>Not set up on this server, so it was skipped: <media></yellow>'

@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.paper;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLifecycleManager;
 import com.minecraftcitiesnetwork.pluginInfrastructure.modules.ModuleLoader;
 import io.github.md5sha256.playernotifications.api.NotificationService;
@@ -77,6 +78,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
+    /**
+     * Player-facing text from {@code messages.yml}.
+     *
+     * <p>Final and reloaded <em>in place</em>, never replaced: every command and listener takes this
+     * reference at construction and holds it for the plugin's lifetime, so {@code /notifications
+     * reload} reaches all of them without re-registering anything — the same idiom
+     * {@link DatabaseNotificationPreferences#reloadDefaultMedia} uses for {@code default-media}.
+     */
+    private final MessageContainer messages = new MessageContainer();
     private PreferenceDialogRouter preferenceDialogRouter;
     private BukkitTask pruneTask;
     private JoinDeliveryListener joinDeliveryListener;
@@ -141,6 +151,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         return this.categories;
     }
 
+    /** Player-facing text from {@code messages.yml}, reloaded in place by {@link #reload}. */
+    @NotNull
+    public MessageContainer messages() {
+        return this.messages;
+    }
+
     @Override
     public void onEnable() {
         DatabaseSettings databaseSettings;
@@ -178,6 +194,16 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             this.categories = loadCategories();
         } catch (IOException ex) {
             getLogger().log(Level.SEVERE, "Failed to load categories.yml; disabling plugin.", ex);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        // Before registerCommands(): every command class takes the container as a constructor
+        // argument, so an unloaded one would leave the whole tree replying with bare key names.
+        try {
+            reloadMessages();
+        } catch (IOException ex) {
+            getLogger().log(Level.SEVERE, "Failed to load messages.yml; disabling plugin.", ex);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -345,6 +371,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         try {
             newCategories = loadCategories();
             newSettings = loadPluginSettings();
+            // In place, so every command and listener holding the container sees the new wording.
+            reloadMessages();
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to reload configuration.", ex);
             sender.sendMessage(Component.text(
@@ -480,6 +508,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             throw new IOException("settings.yml could not be deserialized into PluginSettings");
         }
         return settings;
+    }
+
+    /**
+     * Reloads {@code messages.yml} into the existing container. {@code copyDefaultsYaml} merges in
+     * keys absent from the operator's file, so an upgrade that adds a message gains its default
+     * without discarding any wording they have already changed.
+     */
+    private void reloadMessages() throws IOException {
+        this.messages.load(copyDefaultsYaml("messages"));
     }
 
     private NotificationCategories loadCategories() throws IOException {

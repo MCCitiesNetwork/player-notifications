@@ -274,9 +274,11 @@ Nothing here needs Docker or a live server.
   and every command branch run off the main thread; a reload calls `clear()` then repopulates. A
   reader racing a reload can observe a missing key and print the key itself. realty has the same
   exposure and has not hit it — a reload is a rare, operator-initiated event and the window is
-  microseconds. Accepted, not solved. **Verify the field's actual type during Task 1**; if it is a
-  plain `HashMap` rather than a concurrent map, the failure mode is worse than a stale read and this
-  entry must be upgraded to a fix.
+  microseconds. **Verified during implementation:** `rawMessages` is a `ConcurrentHashMap`
+  (`javap -c` on the constructor), so the worst case really is a stale read — one message printing
+  as its own key — and not a corrupted map or an infinite loop. Accepted on that basis. If a future
+  version of `plugin-infrastructure` changes that field, this entry expires and the wiring should
+  load into a fresh container swapped behind a `volatile` field instead.
 - **Dialogs are out of scope** — the six preference screens, both inbox dialogs, and
   `ui/PagedDialogs`. Adding them is additive, but `paper.ui` must import nothing from this plugin
   (CLAUDE.md records the rule and the `grep` that checks it), so its three strings have to arrive as
