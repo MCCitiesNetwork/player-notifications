@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.paper.command;
 
 import io.github.md5sha256.playernotifications.api.link.AccountLinkProvider;
 import io.github.md5sha256.playernotifications.api.link.AccountLinkRegistry;
+import io.github.md5sha256.playernotifications.paper.localisation.TestMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.jetbrains.annotations.NotNull;
@@ -92,7 +93,7 @@ class AccountLinkDispatcherTest {
         for (AccountLinkProvider provider : providers) {
             registry.registerProvider(provider);
         }
-        return new AccountLinkDispatcher(registry, LOGGER);
+        return new AccountLinkDispatcher(TestMessages.shipped(), registry, LOGGER);
     }
 
     @Test
@@ -182,11 +183,25 @@ class AccountLinkDispatcherTest {
         // The Brigadier node is built when Paper fires the COMMANDS event; a module registering after
         // that must still be reachable and suggestible.
         AccountLinkRegistry registry = new AccountLinkRegistry();
-        AccountLinkDispatcher dispatcher = new AccountLinkDispatcher(registry, LOGGER);
+        AccountLinkDispatcher dispatcher = new AccountLinkDispatcher(TestMessages.shipped(), registry, LOGGER);
         Assertions.assertTrue(dispatcher.suggestions().isEmpty());
 
         registry.registerProvider(new RecordingProvider("discord"));
 
         Assertions.assertEquals(Set.of("discord"), Set.copyOf(dispatcher.suggestions()));
+    }
+
+    @Test
+    @DisplayName("A provider's line names the command that starts its link")
+    void providerLineNamesTheCommandThatStartsTheLink() {
+        AccountLinkRegistry registry = new AccountLinkRegistry();
+        registry.registerProvider(new RecordingProvider("discord"));
+        AccountLinkDispatcher dispatcher =
+                new AccountLinkDispatcher(TestMessages.shipped(), registry, LOGGER);
+
+        String reply = PlainTextComponentSerializer.plainText().serialize(dispatcher.listProviders());
+
+        Assertions.assertTrue(reply.contains("Accounts you can link:"), reply);
+        Assertions.assertTrue(reply.contains("/notifications link discord"), reply);
     }
 }

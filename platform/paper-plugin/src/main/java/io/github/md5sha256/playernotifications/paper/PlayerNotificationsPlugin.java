@@ -333,13 +333,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         // Built here, resolved per dispatch: modules register their providers during startModules(),
         // which runs after this method but before Paper fires the COMMANDS event.
         AccountLinkDispatcher linkDispatcher =
-                new AccountLinkDispatcher(this.accountLinkRegistry, getLogger());
+                new AccountLinkDispatcher(this.messages, this.accountLinkRegistry, getLogger());
         Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
         Broadcaster broadcaster = new Broadcaster(this.sinkRegistry, this.preferences, getLogger());
         OnlineBroadcastAudience broadcastAudience = new OnlineBroadcastAudience(getServer());
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(
-                    NotificationsCommand.create(this.preferenceDialogRouter, this.inboxRouter,
+                    NotificationsCommand.create(this.messages, this.preferenceDialogRouter, this.inboxRouter,
                             this::reload, testSender,
                             linkDispatcher, asyncExecutor),
                     NotificationsCommand.DESCRIPTION,

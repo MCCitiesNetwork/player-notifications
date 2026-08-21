@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.paper.command;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -9,11 +10,11 @@ import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import io.github.md5sha256.playernotifications.paper.preferences.PreferenceDialogRouter;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -73,9 +74,6 @@ public final class NotificationsCommand {
      */
     public static final String DESCRIPTION = "Manage your notifications";
 
-    private static final Component PLAYERS_ONLY =
-            Component.text("Only players have notification preferences.", NamedTextColor.RED);
-
     private static final String PAGE_ARGUMENT = "page";
     private static final String INDEX_ARGUMENT = "entry";
 
@@ -83,7 +81,8 @@ public final class NotificationsCommand {
     }
 
     @NotNull
-    public static LiteralCommandNode<CommandSourceStack> create(@NotNull PreferenceDialogRouter router,
+    public static LiteralCommandNode<CommandSourceStack> create(@NotNull MessageContainer messages,
+                                                                @NotNull PreferenceDialogRouter router,
                                                                 @NotNull InboxRouter inboxRouter,
                                                                 @NotNull Consumer<CommandSender> reloadAction,
                                                                 @NotNull TestNotificationSender testSender,
@@ -91,38 +90,38 @@ public final class NotificationsCommand {
                                                                 @NotNull Executor asyncExecutor) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
-                .executes(context -> run(context, player -> inboxRouter.openInbox(player, 1)))
+                .executes(context -> run(messages, context, player -> inboxRouter.openInbox(player, 1)))
                 .then(Commands.literal("list")
-                        .executes(context -> run(context, player -> inboxRouter.listInChat(player, 1)))
+                        .executes(context -> run(messages, context, player -> inboxRouter.listInChat(player, 1)))
                         .then(Commands.argument(PAGE_ARGUMENT, IntegerArgumentType.integer(1))
-                                .executes(context -> run(context, player -> inboxRouter.listInChat(
+                                .executes(context -> run(messages, context, player -> inboxRouter.listInChat(
                                         player, IntegerArgumentType.getInteger(context, PAGE_ARGUMENT))))))
                 .then(Commands.literal("read")
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
-                                .executes(context -> run(context, player -> inboxRouter.readInChat(
+                                .executes(context -> run(messages, context, player -> inboxRouter.readInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
                 .then(Commands.literal("delete")
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
-                                .executes(context -> run(context, player -> inboxRouter.dismissInChat(
+                                .executes(context -> run(messages, context, player -> inboxRouter.dismissInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
                 .then(Commands.literal("clear")
-                        .executes(context -> run(context, inboxRouter::clearInChat)))
+                        .executes(context -> run(messages, context, inboxRouter::clearInChat)))
                 .then(Commands.literal("preferences")
-                        .executes(context -> run(context, router::openRoot))
-                        .then(Commands.literal("media").executes(context -> run(context, router::openMediaPicker)))
-                        .then(Commands.literal("types").executes(context -> run(context, router::openCategoryPicker)))
-                        .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
-                        .then(Commands.literal("unmute").executes(context -> run(context, router::unmuteImmediately))))
-                .then(Commands.literal("mute").executes(context -> run(context, router::muteImmediately)))
-                .then(Commands.literal("unmute").executes(context -> run(context, router::unmuteImmediately)))
-                .then(linkNode(linkDispatcher, asyncExecutor))
-                .then(unlinkNode(linkDispatcher, asyncExecutor))
+                        .executes(context -> run(messages, context, router::openRoot))
+                        .then(Commands.literal("media").executes(context -> run(messages, context, router::openMediaPicker)))
+                        .then(Commands.literal("types").executes(context -> run(messages, context, router::openCategoryPicker)))
+                        .then(Commands.literal("mute").executes(context -> run(messages, context, router::muteImmediately)))
+                        .then(Commands.literal("unmute").executes(context -> run(messages, context, router::unmuteImmediately))))
+                .then(Commands.literal("mute").executes(context -> run(messages, context, router::muteImmediately)))
+                .then(Commands.literal("unmute").executes(context -> run(messages, context, router::unmuteImmediately)))
+                .then(linkNode(messages, linkDispatcher, asyncExecutor))
+                .then(unlinkNode(messages, linkDispatcher, asyncExecutor))
                 .then(Commands.literal("test")
                         .requires(source -> source.getSender().hasPermission(TEST_PERMISSION))
-                        .executes(context -> run(context,
+                        .executes(context -> run(messages, context,
                                 player -> testSender.send(player, DEFAULT_TEST_MESSAGE)))
                         .then(Commands.argument("message", StringArgumentType.greedyString())
-                                .executes(context -> run(context, player -> testSender.send(
+                                .executes(context -> run(messages, context, player -> testSender.send(
                                         player, StringArgumentType.getString(context, "message"))))))
                 .then(Commands.literal("reload")
                         .requires(source -> source.getSender().hasPermission(RELOAD_PERMISSION))
@@ -150,28 +149,30 @@ public final class NotificationsCommand {
      * node, for which Paper exposes no API.
      */
     private static LiteralArgumentBuilder<CommandSourceStack> linkNode(
-            @NotNull AccountLinkDispatcher dispatcher, @NotNull Executor asyncExecutor) {
+            @NotNull MessageContainer messages, @NotNull AccountLinkDispatcher dispatcher,
+            @NotNull Executor asyncExecutor) {
         return Commands.literal("link")
                 .requires(source -> source.getSender().hasPermission(LINK_PERMISSION))
-                .executes(context -> run(context,
+                .executes(context -> run(messages, context,
                         player -> reply(player, asyncExecutor, dispatcher::listProviders)))
                 .then(providerArgument(dispatcher)
-                        .executes(context -> linkAction(context, dispatcher, asyncExecutor,
+                        .executes(context -> linkAction(messages, context, dispatcher, asyncExecutor,
                                 AccountLinkDispatcher.Action.BEGIN))
                         .then(Commands.literal("status")
-                                .executes(context -> linkAction(context, dispatcher, asyncExecutor,
+                                .executes(context -> linkAction(messages, context, dispatcher, asyncExecutor,
                                         AccountLinkDispatcher.Action.STATUS))));
     }
 
     /** {@code /notifications unlink <provider>} — a sibling of {@code link}, not a child of it. */
     private static LiteralArgumentBuilder<CommandSourceStack> unlinkNode(
-            @NotNull AccountLinkDispatcher dispatcher, @NotNull Executor asyncExecutor) {
+            @NotNull MessageContainer messages, @NotNull AccountLinkDispatcher dispatcher,
+            @NotNull Executor asyncExecutor) {
         return Commands.literal("unlink")
                 .requires(source -> source.getSender().hasPermission(LINK_PERMISSION))
-                .executes(context -> run(context,
+                .executes(context -> run(messages, context,
                         player -> reply(player, asyncExecutor, dispatcher::listProviders)))
                 .then(providerArgument(dispatcher)
-                        .executes(context -> linkAction(context, dispatcher, asyncExecutor,
+                        .executes(context -> linkAction(messages, context, dispatcher, asyncExecutor,
                                 AccountLinkDispatcher.Action.UNLINK)));
     }
 
@@ -184,12 +185,13 @@ public final class NotificationsCommand {
                 });
     }
 
-    private static int linkAction(@NotNull CommandContext<CommandSourceStack> context,
+    private static int linkAction(@NotNull MessageContainer messages,
+                                  @NotNull CommandContext<CommandSourceStack> context,
                                   @NotNull AccountLinkDispatcher dispatcher,
                                   @NotNull Executor asyncExecutor,
                                   @NotNull AccountLinkDispatcher.Action action) {
         String provider = StringArgumentType.getString(context, PROVIDER_ARGUMENT);
-        return run(context, player -> reply(player, asyncExecutor,
+        return run(messages, context, player -> reply(player, asyncExecutor,
                 () -> dispatcher.dispatch(provider, player.getUniqueId(), action)));
     }
 
@@ -203,10 +205,12 @@ public final class NotificationsCommand {
         asyncExecutor.execute(() -> player.sendMessage(action.get()));
     }
 
-    private static int run(@NotNull CommandContext<CommandSourceStack> context, @NotNull Consumer<Player> action) {
+    private static int run(@NotNull MessageContainer messages,
+                           @NotNull CommandContext<CommandSourceStack> context,
+                           @NotNull Consumer<Player> action) {
         CommandSender sender = context.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(PLAYERS_ONLY);
+            sender.sendMessage(messages.messageFor(MessageKeys.NOTIFICATIONS_PLAYERS_ONLY));
             return 0;
         }
         action.accept(player);

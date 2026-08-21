@@ -1,10 +1,11 @@
 package io.github.md5sha256.playernotifications.paper.command;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.link.AccountLinkProvider;
 import io.github.md5sha256.playernotifications.api.link.AccountLinkRegistry;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -33,10 +34,14 @@ public final class AccountLinkDispatcher {
         UNLINK
     }
 
+    private final MessageContainer messages;
     private final AccountLinkRegistry registry;
     private final Logger logger;
 
-    public AccountLinkDispatcher(@NotNull AccountLinkRegistry registry, @NotNull Logger logger) {
+    public AccountLinkDispatcher(@NotNull MessageContainer messages,
+                                 @NotNull AccountLinkRegistry registry,
+                                 @NotNull Logger logger) {
+        this.messages = messages;
         this.registry = registry;
         this.logger = logger;
     }
@@ -51,21 +56,19 @@ public final class AccountLinkDispatcher {
         List<String> keys = new ArrayList<>(this.registry.registeredProviders());
         keys.sort(String::compareTo);
         if (keys.isEmpty()) {
-            return Component.text("There is no account linking available on this server.",
-                    NamedTextColor.YELLOW);
+            return this.messages.messageFor(MessageKeys.LINK_NONE_AVAILABLE);
         }
 
         TextComponent.Builder builder = Component.text()
-                .append(Component.text("Accounts you can link:", NamedTextColor.GREEN));
+                .append(this.messages.messageFor(MessageKeys.LINK_HEADER));
         for (String key : keys) {
             Component name = this.registry.getProvider(key)
                     .map(AccountLinkProvider::displayName)
                     .orElseGet(() -> Component.text(key));
             builder.append(Component.newline())
-                    .append(Component.text("  "))
-                    .append(name.colorIfAbsent(NamedTextColor.GOLD))
-                    .append(Component.text(" — run ", NamedTextColor.GRAY))
-                    .append(Component.text("/notifications link " + key, NamedTextColor.AQUA));
+                    .append(this.messages.messageFor(MessageKeys.LINK_ENTRY,
+                            MessageContainer.markup("name", name),
+                            MessageContainer.value("key", key)));
         }
         return builder.build();
     }
@@ -81,12 +84,9 @@ public final class AccountLinkDispatcher {
         if (provider.isEmpty()) {
             // Also the message a player sees after the owning module is stopped: the command node stays
             // in the tree, so absent-provider and never-installed are deliberately one code path.
-            return Component.text()
-                    .append(AccountLinkProvider.defaultDisplayName(providerKey)
-                            .colorIfAbsent(NamedTextColor.GOLD))
-                    .append(Component.text(" linking is not available on this server.",
-                            NamedTextColor.YELLOW))
-                    .build();
+            return this.messages.messageFor(MessageKeys.LINK_UNAVAILABLE,
+                    MessageContainer.markup("name",
+                            AccountLinkProvider.defaultDisplayName(providerKey)));
         }
 
         Function<UUID, Component> method = switch (action) {
@@ -100,7 +100,7 @@ public final class AccountLinkDispatcher {
             // A module's bug must not reach the player as a Brigadier stack trace.
             this.logger.log(Level.WARNING, "Account link provider '" + providerKey
                     + "' failed handling " + action + " for " + playerUuid, exception);
-            return Component.text("Something went wrong — try again shortly.", NamedTextColor.RED);
+            return this.messages.messageFor(MessageKeys.COMMON_ERROR);
         }
     }
 
