@@ -82,5 +82,6 @@ public final class MessageKeys {
     public static final String TEST_SILENCED = "test.silenced";
     public static final String TEST_NO_MEDIA = "test.no-media";
     public static final String TEST_NO_SINK = "test.no-sink";
+    public static final String TEST_FAILED = "test.failed";
 
 }

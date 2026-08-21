@@ -104,3 +104,5 @@ test:
   no-media: '<yellow>Nothing was sent: you have no delivery methods chosen for test notifications. </yellow><gray>Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
   # <media> — the preferred media that no installed module provides a sink for.
   no-sink: '<yellow>Not set up on this server, so it was skipped: <media></yellow>'
+  # <error> — the exception message; the full detail goes to the server console.
+  failed: '<red>The test notification could not be sent. The details are in the server console: <error></red>'

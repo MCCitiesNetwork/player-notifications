@@ -327,6 +327,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         MailSender mailSender = new MailSender(this.notificationService);
         // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
         TestNotificationSender testSender = new TestNotificationSender(
+                this.messages,
                 this, this.notificationService, this.preferences, this.sinkRegistry,
                 () -> this.notificationDelivery);
         // Built here, resolved per dispatch: modules register their providers during startModules(),
