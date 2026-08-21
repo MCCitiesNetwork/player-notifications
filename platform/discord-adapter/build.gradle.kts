@@ -26,7 +26,7 @@ dependencies {
 
     // compileOnlyApi is not on the test runtime classpath, and the sink/factory tests touch
     // Adventure types. See "Testing gotchas" in CLAUDE.md.
-    testRuntimeOnly("io.papermc.paper:paper-api:26.1.2.build.74-stable")
+    testRuntimeOnly("io.papermc.paper:paper-api:26.1.2.+")
 
     // This module owns its own schema and migrator, so the migrator, the mapper and the link store are
     // tested against a real MariaDB. Like :core:test, this suite therefore NEEDS A RUNNING DOCKER DAEMON;
