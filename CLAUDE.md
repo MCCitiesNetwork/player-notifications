@@ -666,6 +666,92 @@ renderable notification enqueued together, delivery runs, and only the non-mail 
 recording sink while the mail's `seenTime` stays null and it is still present in `inbox(player, 1, 10,
 "mail")`).
 
+## Broadcast
+
+Design doc: `docs/superpowers/specs/2026-08-21-broadcast-command-design.md`.
+Plan: `docs/superpowers/plans/2026-08-21-broadcast-command.md`.
+
+`/broadcast <content> --perm [perm] --perm [perm] [--bypass]` — a one-shot announcement delivered
+*immediately* to matching online players through the media each of them prefers, and **never written
+to the database**. Op-only (`playernotifications.command.broadcast`, `default: op`) and usable from
+the console, since it acts on the server rather than on the sender's own inbox. Permissions combine
+with **OR** — a player receives it if they hold any one of them, and with no `--perm` flag at all
+every online player does.
+
+**It is not a `Notification`, and that is the central decision.** Its audience is "whoever is online
+and holds the permission right now", which is not a set that survives being written down: a player
+who joins ten minutes later was never a recipient, and storing the broadcast would put it in their
+inbox as though they were. So it follows `MailNotifier`'s precedent — fan a `RenderableNotification`
+out through the sink registry with no payload, no `notifKey` and no `NotificationDisposition`. No new
+registry axis, no sink, no processor, no migration; `Broadcaster` is a second consumer of the medium
+axis exactly as it stands. Nothing about a broadcast is enqueued, so nothing about it is prunable,
+readable in the inbox, or recoverable once missed.
+
+**Mute and silence both apply; `--bypass` overrides both together.** An ordinary broadcast is
+suppressed by the player-level mute and by a `broadcast` silence (`{none}`) like any other push.
+`--bypass` is for the announcement class that is not a subscription — a restart warning — and carries
+no permission of its own, the command being op-only already. There is deliberately no flag that
+overrides only one of the two.
+
+**A player can silence broadcasts because the type is registered as a payload mapping and nothing
+else.** The preference dialogs enumerate `dataTypeRegistry().dataTypes()`, so
+`PlayerNotificationsPlugin.onEnable` calls `registerPayloadMapping(Broadcaster.BROADCAST_DATA_TYPE,
+BroadcastPayload.class)` — no serializer, no renderer, no processor, and nothing ever enqueues a
+`BroadcastPayload`. It is the one registered data type in the tree that cannot round-trip through
+storage; `paper.broadcast.BroadcastPayload` exists to be that mapping's key and for no other reason.
+Adding a serializer and a renderer is the upgrade path to a *storable* broadcast, which is why the
+mapping is registered now rather than later. `categories.yml` ships a `broadcast` category (label
+"Broadcasts") so the type groups under a readable name instead of "Other".
+
+The four types, in `paper.broadcast` unless noted — every decision in a class with no Bukkit
+dependency, the command reduced to wiring, the same split `/mail` uses:
+
+| Type | Holds |
+|---|---|
+| `BroadcastArguments` | The flag syntax. Brigadier cannot express repeated flags, so `<content>` is one greedy string and the flags are parsed out of it. |
+| `BroadcastAudience` | One method — permissions in, UUIDs out. The seam for future offline delivery. |
+| `OnlineBroadcastAudience` | Today's only implementation: map online players to candidates, delegate. **Main thread only.** |
+| `BroadcastRecipients` | The OR match, over a `Predicate<String>` seam so it is testable without a server. |
+| `Broadcaster` | The per-recipient sink fan-out, mirroring `MailNotifier.notifyArrival`. |
+| `paper.command.BroadcastCommand` | The Brigadier node. Wiring only. |
+
+- **Parsing rule.** Everything before the **first** flag token (`--perm` or `--bypass`) is the
+  content, taken from the raw string so interior spacing survives; the remainder must be
+  `--perm <value>` pairs and bare `--bypass` tokens in any order. Anything else is **rejected naming
+  the token** rather than absorbed, which is what lets a later flag be added without silently
+  changing an existing command's meaning. The cost, accepted: the literal tokens `--perm` and
+  `--bypass` cannot appear in a broadcast's text.
+- **`<content>` is full MiniMessage, with no per-tag permission gate** — unlike `/mail send`, whose
+  fifteen `…format.*` nodes exist because a mail is stored and rendered later, for a *recipient*,
+  from a *sender* who may be gone. A broadcast is op-only and never stored, so that split does not
+  arise. A parse failure (a legacy `§` code throws) is reported to the sender; there is no fallback to
+  literal text, because the sender is present and can fix it.
+- **Permissions are resolved on the command thread, delivery is not.** Bukkit permission state
+  belongs to the main thread, so `OnlineBroadcastAudience` is called there and only the resulting
+  `List<UUID>` crosses into `runTaskAsynchronously` — the same rule `MailCommand.send` follows for its
+  `TagResolver`. The fan-out does blocking JDBC and `DiscordDmSink` refuses the main thread outright.
+- **The `--bypass` fallback is `chat`, and only when nothing else remains.** A bypassed recipient who
+  still has usable preferred media is delivered to *those* — bypass overrides the suppression, not the
+  player's choice of medium. Only when the resolved set is empty after dropping `SILENCED_MEDIUM` does
+  it fall back to `Broadcaster.FALLBACK_MEDIUM` (`"chat"`), chosen because `ChatSink` is registered
+  unconditionally and so cannot be missing; `default-media` was rejected as a fallback because a
+  server that misconfigures it would make bypass silently deliver nothing, the exact failure the flag
+  exists to rule out.
+- **The two failure replies are worded apart on purpose.** "No online player matched those
+  permissions." and "No recipient had broadcasts enabled. Use --bypass to deliver regardless." — only
+  the second is fixable with the flag, and an operator has to be able to tell which they hit.
+- **`BroadcastAudience` is the seam for delivering to offline players later**, which is wanted and
+  **not designed**. `BroadcastArguments`, `BroadcastRecipients` and `Broadcaster` are already
+  audience-neutral (`Broadcaster` takes `Collection<UUID>` and never asks about presence), so an
+  offline design is a new implementation of that one interface. The open questions it must answer are
+  listed in the spec's "Room for offline delivery" — including two traps: **`ChatSink` reports
+  `DELIVERED` for an offline player** (the same trap `JoinDeliveryListener` re-checks `isOnline()` to
+  avoid), so the `chat` fallback would claim a success nobody saw; and **"never stored" may not
+  survive**, since a broadcast for someone offline with no out-of-game medium has to wait somewhere.
+- **Tested:** `BroadcastArgumentsTest` (17), `BroadcastRecipientsTest` (5), `BroadcasterTest` (10).
+  `BroadcastCommand` and `OnlineBroadcastAudience` are **not** covered — they need a live server, and
+  `OnlineBroadcastAudience` is kept a map-and-delegate so that nothing worth testing lives in it.
+
 ## EssentialsX mail converter
 
 Design doc: `docs/superpowers/specs/2026-08-20-essentials-mail-converter-design.md`.
@@ -1038,6 +1124,12 @@ player has never configured — it is just no longer reachable once they have. `
 **`/mail` is a sibling command tree, not a subcommand of `/notifications`** — see "Mail" for its full
 table, `MailNotifier`, and why mail is never pushed through `RenderingProcessor`.
 
+**`/broadcast` is a second sibling tree** — one node, no subcommands, gated by its own
+`playernotifications.command.broadcast` (`default: op`, the only op-only command root here) and open
+to the console. It is the one player-reaching path in the tree that never stores anything; see
+"Broadcast" for the flag syntax, what `--bypass` overrides, and why a broadcast is not a
+`Notification`.
+
 The player-facing subcommands are player-only, under permission `playernotifications.command.preferences`,
 declared in `paper-plugin.yml` with `default: true`. `link`/`unlink` carry an **additional**
 `playernotifications.command.link` (also `default: true`), so a server can restrict linking without
@@ -1241,7 +1333,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 113 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 488 in total, all passing.
+Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 145 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 520 in total, all passing. The paper-plugin figure was verified after the broadcast work; the Docker-backed figures (`:core:test`, `:platform:discord-adapter:test`) were not re-run then, since no Docker daemon was available on that machine.
 
 ## Current state
 
@@ -1323,6 +1415,12 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   granted, a non-op's `<click>` still arriving literal, an op's arriving live, and a tag-only message
   rejected as blank). Everything underneath is
   unit- or Testcontainers-tested — see "Mail" and "Mail formatting" for the list.
+- **`/broadcast` has never run on a live server.** `BroadcastCommand`'s Brigadier node, the op-only
+  gate, a console send, the `Broadcasts` category appearing in `/notifications preferences types`, the
+  mute and silence interaction, the `--bypass` fallback to chat, and a broadcast arriving as a Discord
+  DM all need `:platform:paper-plugin:runServer`. **Task 4's 14-item manual checklist in
+  `docs/superpowers/plans/2026-08-21-broadcast-command.md` has not been run.** Everything underneath is
+  unit tested (32 tests) and needs neither Docker nor a server — see "Broadcast".
 - **The global mute's player-facing surface is unverified — nothing about it has run on a live
   server.** `/notifications mute|unmute` (both the top-level and `preferences` forms), the root
   dialog's state-dependent button label, `MuteConfirmDialog`'s staged flip, the suppressed join and
