@@ -1114,7 +1114,7 @@ player has never configured — it is just no longer reachable once they have. `
   debug message. It names the target rather than printing its raw UUID, taking a
   `Function<UUID, String>` name lookup so it stays unit-testable; `TestNotificationRenderer.usingServerNames()`
   is the production wiring over `Bukkit.getOfflinePlayer`.
-- `/notifications reload` — reloads `categories.yml` and `settings.yml` without a restart. Admin-only
+- `/notifications reload` — reloads `categories.yml`, `settings.yml` and `messages.yml` without a restart. Admin-only
   (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
   subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
   dispatches it outside the player-only `run()` helper the rest of the tree uses. Deliberately does
@@ -1302,10 +1302,75 @@ All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getCo
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
 - `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`); `inbox-page-size` (`int`, default 7) — how many inbox entries `/notifications` shows per page, clamped to `1..20` in the compact constructor, with `0` (the value an absent key deserializes to) falling back to the default. The three primitive keys and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
 - `categories.yml` → `NotificationCategoriesConfig` (in `core`, package `category`): `uncategorized-label` — the label for the catch-all category; `categories` — a map of category key → `{label, description, types}`, each `types` entry a registered `dataType` string. See "Notification categories".
+- `messages.yml` → a `MessageContainer` rather than a record, since its shape is a flat key/value map and not a fixed set of fields. See "Messages".
 
 Conventions when editing config:
 - Every non-null (`@NotNull`, reference-typed) `@Setting` field must also be annotated `@Required`, so a missing key fails loudly instead of deserializing to null.
 - Configurate 4.2.0 has **no built-in `java.time.Duration` serializer** (`node.get(Duration.class)` returns null). Use a `long`-seconds field instead, or register a custom serializer.
+
+## Messages
+
+Design doc: `docs/superpowers/specs/2026-08-21-configurable-messages-design.md`.
+Plan: `docs/superpowers/plans/2026-08-21-configurable-messages.md`.
+
+Player-facing chat text lives in `messages.yml` as MiniMessage, loaded into
+`plugin-infrastructure`'s `com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer`
+— the same pattern the sibling `realty` project uses. `PlayerNotificationsPlugin.messages()` exposes
+it; `paper.localisation.MessageKeys` declares every key.
+
+- **The container is used unsubclassed**, diverging from realty, which adds `deserializeRaw` for a
+  `/realty …` command substituted into a `<click>` tag argument — a position no `TagResolver` can
+  fill. The listing rows here have the same shape of need but attach their click in Java, on the
+  rendered `Component`, so the key holds only text. **Do not move a click target into `messages.yml`
+  without adding the subclass**; that is the one thing the key format cannot express.
+- **A missing key renders as the key's own name**, so a typo prints `mail.sent` to a player rather
+  than throwing. `MessageKeysTest` is the whole defence: it walks `MessageKeys` by reflection
+  against the shipped file **in both directions**, so a constant pointing at nothing and a key
+  nothing reads are each a failing test. **Adding a message means adding both** a constant and a
+  YAML line — either alone fails that test.
+- **`value()` for anything a player typed, `markup()` only for a `Component` the plugin built.**
+  Player names, mail bodies, broadcast tokens and exception messages all go through `value()`; a
+  stray `<` in one would otherwise open a tag in a message its recipient never consented to.
+- **The container is final and reloaded in place**, never replaced, so every command and listener
+  takes it once at construction and `/notifications reload` reaches all of them with no
+  re-registration — the idiom `DatabaseNotificationPreferences.reloadDefaultMedia` already uses.
+  `rawMessages` is a `ConcurrentHashMap` (verified with `javap`), so a read racing a reload is a
+  stale read at worst, never a corrupt map.
+- **Text whose value varies per call gets a key per case, not a ternary.** Singular and plural are
+  separate keys (`join.unread-one`/`-many`, `inbox.cleared-one`/`-many`), and a listing row's unread
+  and read states are separate keys too — the original applied `colorIfAbsent`, which is a no-op
+  once text carries a colour, so one key an operator had coloured would have silently erased the
+  unread distinction.
+- **Two rule classes carry values, not sentences**, so their wording can live in the file:
+  `MailRecipients.Result` is `UnknownPlayer` / `BlankMessage` / `MessageTooLong(maxLength)`, and
+  `BroadcastArguments.Result` is `Parsed` / `BlankContent` / `FlagMissingValue(flag)` /
+  `UnrecognisedToken(token)`. Their tests assert on a **case**, so rewording a reply no longer fails
+  a rule test. Note `discord-adapter`'s `DiscordMailService` consumes `MailRecipients.Result` too —
+  every feature module compiles against `paper-plugin`, so "internal to the host" does not mean
+  "unreferenced".
+
+**Deliberately still hardcoded:**
+
+- **`MailNotifier.ARRIVAL_NOTICE`** — the Discord adapter recognises it by **reference identity**
+  (`MailNoticeButton.java:39`) to attach its "Read mail" button. A configurable notice is rebuilt on
+  reload, which changes its identity and drops the button *silently*, since a `!=` that stops
+  matching just skips the decoration. Configuring it needs a marker a reload cannot invalidate.
+- **The dialogs** — the six preference screens, both inbox dialogs, and `ui/PagedDialogs`. Additive
+  when wanted, but `paper.ui` must import nothing from this plugin, so its three strings have to
+  arrive as `Component` parameters rather than as a container.
+- **Renderer titles** (`MailRenderer`, `TestNotificationRenderer`) — these render *stored*
+  notifications, so editing them changes how old notifications read, which is a different question
+  from changing a command reply.
+- **Both feature modules.** The Discord adapter's strings are Discord-shaped (embed titles, button
+  labels) and belong in a `discord-messages.yml` of its own if they are ever configured.
+
+**No per-player locale** — one file, one language; the container has no locale axis.
+
+**Unverified on a live server:** that an edited `messages.yml` takes effect on `/notifications
+reload`, and that a deleted key really does print its own name in game. Everything else is covered
+by `MessageKeysTest` plus the per-class suites, which assert against the shipped defaults via
+`paper.localisation.TestMessages` rather than a hand-built fixture — so a wording assertion is also
+an assertion that the default exists and is spelled the way the code asks for it.
 
 ## Persistence layer (`core`)
 
@@ -1333,7 +1398,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 145 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 520 in total, all passing. The paper-plugin figure was verified after the broadcast work; the Docker-backed figures (`:core:test`, `:platform:discord-adapter:test`) were not re-run then, since no Docker daemon was available on that machine.
+Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 157 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 532 in total, all passing. Every figure was verified by a single `./gradlew test` after the configurable-messages work, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over.
 
 ## Current state
 

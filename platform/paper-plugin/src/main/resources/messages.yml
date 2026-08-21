@@ -22,7 +22,14 @@ common:
 notifications:
   players-only: '<red>Only players have notification preferences.</red>'
 
+reload:
+  success: '<green>PlayerNotifications configuration reloaded.</green>'
+  # <error> — the failure detail; the full stack trace goes to the server console.
+  failed: '<red>Failed to reload configuration: <error></red>'
+
 mail:
+  # The mail screen's name, the /mail counterpart of inbox.title.
+  title: 'Mail'
   players-only: '<red>Only players can use mail.</red>'
   # <recipient>
   sent: '<green>Mail sent to <recipient>.</green>'
@@ -66,6 +73,8 @@ join:
   unread-mail: '<yellow>You have unread mail. </yellow><gray>Use /mail to read it.</gray>'
 
 inbox:
+  # The screen's own name, used as the dialog title and as <title> in the header below.
+  title: 'Notifications'
   # Shared by the dialog and the chat listing, so the two cannot word it differently.
   empty: '<gray>Your inbox is empty.</gray>'
   already-empty: '<gray>Your inbox is already empty.</gray>'

@@ -30,7 +30,12 @@ public final class MessageKeys {
     // notifications
     public static final String NOTIFICATIONS_PLAYERS_ONLY = "notifications.players-only";
 
+    // reload
+    public static final String RELOAD_SUCCESS = "reload.success";
+    public static final String RELOAD_FAILED = "reload.failed";
+
     // mail
+    public static final String MAIL_TITLE = "mail.title";
     public static final String MAIL_PLAYERS_ONLY = "mail.players-only";
     public static final String MAIL_SENT = "mail.sent";
     public static final String MAIL_UNKNOWN_PLAYER = "mail.unknown-player";
@@ -57,6 +62,7 @@ public final class MessageKeys {
     public static final String JOIN_UNREAD_MAIL = "join.unread-mail";
 
     // inbox
+    public static final String INBOX_TITLE = "inbox.title";
     public static final String INBOX_EMPTY = "inbox.empty";
     public static final String INBOX_ALREADY_EMPTY = "inbox.already-empty";
     public static final String INBOX_GONE = "inbox.gone";

@@ -24,6 +24,7 @@ import io.github.md5sha256.playernotifications.paper.inbox.InboxChatRow;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import io.github.md5sha256.playernotifications.paper.mail.MailChatRow;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailRenderer;
@@ -39,8 +40,6 @@ import io.github.md5sha256.playernotifications.core.category.NotificationCategor
 import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.maria.MariaDatabase;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -315,14 +314,15 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.inboxRouter = new InboxRouter(
                 this.messages,
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                null, "notifications", Component.text("Notifications"), InboxChatRow.titleOnly(this.messages));
+                null, "notifications", this.messages.messageFor(MessageKeys.INBOX_TITLE),
+                InboxChatRow.titleOnly(this.messages));
         // A second, mail-filtered InboxRouter instance rather than one shared router with a per-call
         // filter: the cursor and last-listed maps are per-screen state, and /mail list 2 must not make
         // /notifications read 1 resolve against the mail page.
         this.mailRouter = new InboxRouter(
                 this.messages,
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                MailPayload.DATA_TYPE, "mail", Component.text("Mail"),
+                MailPayload.DATA_TYPE, "mail", this.messages.messageFor(MessageKeys.MAIL_TITLE),
                 new MailChatRow(this.messages, inboxRenderer::decodePayload, ZoneId.systemDefault(), Instant::now));
         getServer().getPluginManager().registerEvents(
                 new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
@@ -379,8 +379,10 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             reloadMessages();
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to reload configuration.", ex);
-            sender.sendMessage(Component.text(
-                    "Failed to reload configuration: " + ex.getMessage(), NamedTextColor.RED));
+            // Safe to read from the container: a failure here means load() was never reached, so
+            // it still holds the wording the server started with.
+            sender.sendMessage(this.messages.messageFor(MessageKeys.RELOAD_FAILED,
+                    MessageContainer.value("error", String.valueOf(ex.getMessage()))));
             return;
         }
 
@@ -403,8 +405,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         warnAboutUnmappedCategoryTypes();
 
         getLogger().info("Configuration reloaded by " + sender.getName());
-        sender.sendMessage(Component.text(
-                "PlayerNotifications configuration reloaded.", NamedTextColor.GREEN));
+        sender.sendMessage(this.messages.messageFor(MessageKeys.RELOAD_SUCCESS));
     }
 
     /**

@@ -105,6 +105,7 @@ whose value is `<red>…</red>`.
 | `broadcast/Broadcaster` | 1 | `broadcast.title` |
 | `inbox/InboxChatRow` | 1 | `inbox.row.title-only` |
 | `command/NotificationsCommand` | 1 | `notifications.players-only` |
+| `PlayerNotificationsPlugin` | 4 | `reload.*`, `inbox.title`, `mail.title` |
 
 `NotificationsCommand` ("Only players have notification preferences.") and `MailCommand` ("Only
 players can use mail.") word the same idea differently today. They keep **separate keys** rather
@@ -144,9 +145,17 @@ record FlagMissingValue(@NotNull String flag) implements Result {}
 record UnrecognisedToken(@NotNull String token) implements Result {}
 ```
 
-`InvalidMessage` and `Invalid` are removed, not deprecated: both are internal to
-`platform:paper-plugin`, neither is in the `api` module, so no separately-compiled feature module
-can hold a reference to either.
+`InvalidMessage` and `Invalid` are removed, not deprecated. Neither is in the `api` module, so no
+separately-compiled feature module can be *frozen* against them.
+
+**Corrected during implementation:** the claim that nothing outside `platform:paper-plugin` held a
+reference was wrong — `discord-adapter`'s `DiscordMailService` matched on
+`MailRecipients.Result.InvalidMessage` and passed its `reason()` straight through as a Discord
+rejection. The adapter compiles against the host, so this surfaced as a compile error in
+`./gradlew build`, not as a runtime surprise. It now matches the two new cases and words them
+locally, beside the unknown-player line it already worded that way — it is not on `messages.yml`,
+and its text is Discord-shaped. The lesson generalises: "internal to paper-plugin" is not the same
+as "unreferenced", because every feature module compiles against paper-plugin.
 
 The command maps case to key and resolvers. This is a **better test** than the one it replaces —
 `MailRecipientsTest` and `BroadcastArgumentsTest` currently assert on prose, so a wording change
@@ -235,6 +244,20 @@ test:
   no-media: "<yellow>Nothing was sent: you have no delivery methods chosen for test notifications. </yellow><gray>Use </gray><white>/notifications preferences</white><gray> to choose one.</gray>"
   no-sink: "<yellow>Not set up on this server, so it was skipped: <media></yellow>"
 ```
+
+**The key list above is the design's; the shipped file is larger.** Reading the call sites turned
+up cases it under-specified, all resolved in favour of more keys:
+
+- **Pluralisation needs two keys, not a ternary.** `join.unread-one`/`-many` and
+  `inbox.cleared-one`/`-many`. Which form to use is a wording decision, and a translator needs both
+  forms in the file to change.
+- **A listing row needs separate unread and read keys.** The original applied `colorIfAbsent` with
+  a per-row colour; `colorIfAbsent` is a no-op once text carries a colour, so a single key an
+  operator had coloured would have silently erased the unread distinction.
+- **Seven strings the survey missed**, in `InboxRouter` (`cleared`, `header`, `list-first`,
+  `no-entry`, `row-hover`), `BroadcastCommand` (`parse-failed`, `sent`) and
+  `TestNotificationSender` (`failed`), plus the two screen titles and the two `/notifications
+  reload` replies.
 
 Per-key wording is whatever the corresponding literal says today. The strings above are transcribed
 from the call sites; any drift is a transcription error to fix against the code, not a wording
