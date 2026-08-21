@@ -1,9 +1,11 @@
 package io.github.md5sha256.playernotifications.paper.mail;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.InboxEntry;
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxChatRow;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.jetbrains.annotations.NotNull;
@@ -47,8 +49,12 @@ public final class MailChatRow implements InboxChatRow {
     private final ZoneId zone;
     private final Supplier<Instant> clock;
 
-    public MailChatRow(@NotNull Function<InboxEntry, Optional<Object>> decoder, @NotNull ZoneId zone,
+    private final MessageContainer messages;
+
+    public MailChatRow(@NotNull MessageContainer messages,
+                       @NotNull Function<InboxEntry, Optional<Object>> decoder, @NotNull ZoneId zone,
                        @NotNull Supplier<Instant> clock) {
+        this.messages = messages;
         this.decoder = decoder;
         this.zone = zone;
         this.clock = clock;
@@ -57,9 +63,15 @@ public final class MailChatRow implements InboxChatRow {
     @Override
     public @NotNull Component format(int entry, @NotNull InboxEntry stored,
                                      @NotNull RenderableNotification rendered, boolean unread) {
-        NamedTextColor color = unread ? NamedTextColor.WHITE : NamedTextColor.GRAY;
-        Component row = Component.text("#" + entry + " ", NamedTextColor.DARK_GRAY)
-                .append(Component.text("[" + time(stored.notifScheduledTime()) + "] ", NamedTextColor.GRAY));
+        // Two content keys rather than one plus colorIfAbsent: an operator who colours the key would
+        // otherwise lose the unread/read distinction entirely, since colorIfAbsent only applies to
+        // text that has no colour of its own.
+        String contentKey = unread
+                ? MessageKeys.MAIL_ROW_CONTENT_UNREAD
+                : MessageKeys.MAIL_ROW_CONTENT_READ;
+        Component row = this.messages.messageFor(MessageKeys.MAIL_ROW_PREFIX,
+                MessageContainer.value("entry", String.valueOf(entry)),
+                MessageContainer.value("time", time(stored.notifScheduledTime())));
 
         Optional<MailPayload> mail = this.decoder.apply(stored)
                 .filter(MailPayload.class::isInstance)
@@ -67,11 +79,16 @@ public final class MailChatRow implements InboxChatRow {
         if (mail.isEmpty()) {
             // The entry is still counted on the page, so an empty [] column would read as a bug. The
             // rendered title is what every row looked like before mail had a format of its own.
-            return row.append(rendered.title().colorIfAbsent(color));
+            return row.append(this.messages.messageFor(contentKey,
+                    MessageContainer.markup("content", rendered.title())));
         }
 
-        return row.append(Component.text("[" + mail.get().senderName() + "] ", NamedTextColor.AQUA))
-                .append(Component.text(preview(mail.get().message()), color));
+        // value(), not markup(): a sender name and a mail body are player-supplied, so a '<' in
+        // either must stay literal rather than opening a tag.
+        return row.append(this.messages.messageFor(MessageKeys.MAIL_ROW_SENDER,
+                        MessageContainer.value("sender", mail.get().senderName())))
+                .append(this.messages.messageFor(contentKey,
+                        MessageContainer.value("content", preview(mail.get().message()))));
     }
 
     /**

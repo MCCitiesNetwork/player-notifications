@@ -3,6 +3,7 @@ package io.github.md5sha256.playernotifications.paper.mail;
 import io.github.md5sha256.playernotifications.api.InboxEntry;
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import io.github.md5sha256.playernotifications.paper.localisation.TestMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Assertions;
@@ -52,7 +53,7 @@ class MailChatRowTest {
     }
 
     private static MailChatRow row(Function<InboxEntry, Optional<Object>> decoder) {
-        return new MailChatRow(decoder, ZONE, () -> NOW);
+        return new MailChatRow(TestMessages.shipped(), decoder, ZONE, () -> NOW);
     }
 
     @Test

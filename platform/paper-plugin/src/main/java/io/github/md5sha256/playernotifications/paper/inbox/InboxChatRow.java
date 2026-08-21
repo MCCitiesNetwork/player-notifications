@@ -2,8 +2,9 @@ package io.github.md5sha256.playernotifications.paper.inbox;
 
 import io.github.md5sha256.playernotifications.api.InboxEntry;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -27,10 +28,13 @@ public interface InboxChatRow {
                               @NotNull RenderableNotification rendered, boolean unread);
 
     /** The default: {@code <entry>. <title>}, which is how every listing read before mail got its own. */
-    static @NotNull InboxChatRow titleOnly() {
-        return (entry, stored, rendered, unread) -> {
-            NamedTextColor color = unread ? NamedTextColor.WHITE : NamedTextColor.GRAY;
-            return Component.text(entry + ". ", color).append(rendered.title().colorIfAbsent(color));
-        };
+    static @NotNull InboxChatRow titleOnly(@NotNull MessageContainer messages) {
+        return (entry, stored, rendered, unread) -> messages.messageFor(
+                // Separate keys rather than one plus colorIfAbsent: colouring a single key would
+                // otherwise erase the unread/read distinction, since colorIfAbsent is a no-op once
+                // the text carries a colour of its own.
+                unread ? MessageKeys.INBOX_ROW_TITLE_ONLY_UNREAD : MessageKeys.INBOX_ROW_TITLE_ONLY_READ,
+                MessageContainer.value("entry", String.valueOf(entry)),
+                MessageContainer.markup("title", rendered.title()));
     }
 }

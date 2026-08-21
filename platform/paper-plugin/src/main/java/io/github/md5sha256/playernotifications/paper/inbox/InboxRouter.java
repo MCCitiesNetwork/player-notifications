@@ -1,15 +1,16 @@
 package io.github.md5sha256.playernotifications.paper.inbox;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.InboxEntry;
 import io.github.md5sha256.playernotifications.api.InboxPage;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.paper.ui.DialogSupport;
 import io.github.md5sha256.playernotifications.paper.ui.PageBounds;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -32,10 +33,7 @@ import java.util.function.Consumer;
  */
 public final class InboxRouter {
 
-    /** Shared by the dialog entry point and the chat fallback, so the two cannot word it differently. */
-    private static final Component EMPTY_MESSAGE =
-            Component.text("Your inbox is empty.", NamedTextColor.GRAY);
-
+    private final MessageContainer messages;
     private final Plugin plugin;
     private final NotificationService service;
     private final InboxEntryRenderer renderer;
@@ -68,7 +66,8 @@ public final class InboxRouter {
 
     private volatile int pageSize;
 
-    public InboxRouter(@NotNull Plugin plugin,
+    public InboxRouter(@NotNull MessageContainer messages,
+                       @NotNull Plugin plugin,
                        @NotNull NotificationService service,
                        @NotNull InboxEntryRenderer renderer,
                        int pageSize,
@@ -76,6 +75,7 @@ public final class InboxRouter {
                        @NotNull String commandLabel,
                        @NotNull Component title,
                        @NotNull InboxChatRow chatRow) {
+        this.messages = messages;
         this.plugin = plugin;
         this.service = service;
         this.renderer = renderer;
@@ -121,7 +121,7 @@ public final class InboxRouter {
     public void openInbox(@NotNull Player player, int page) {
         withPage(player, page, read -> {
             if (read.entries().isEmpty()) {
-                player.sendMessage(EMPTY_MESSAGE);
+                player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_EMPTY));
                 return;
             }
             DialogSupport.onMainThread(this.plugin, player, () -> this.listDialog.show(player, read));
@@ -136,7 +136,7 @@ public final class InboxRouter {
             InboxEntry entry = findEntry(id, notificationKey);
             if (entry == null) {
                 DialogSupport.message(this.plugin, player,
-                        Component.text("That notification is no longer in your inbox.", NamedTextColor.RED));
+                        this.messages.messageFor(MessageKeys.INBOX_GONE));
                 return;
             }
             var rendered = this.renderer.render(entry, id);
@@ -180,15 +180,18 @@ public final class InboxRouter {
             UUID id = player.getUniqueId();
             int total = this.service.inbox(id, 1, 1, this.dataTypeFilter).totalEntries();
             if (total == 0) {
-                player.sendMessage(Component.text("Your inbox is already empty.", NamedTextColor.GRAY));
+                player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_ALREADY_EMPTY));
                 return;
             }
             this.service.markAllSeen(id, this.dataTypeFilter);
             this.service.dismissSeen(id, this.dataTypeFilter);
             drop(id);
-            player.sendMessage(Component.text(
-                    total == 1 ? "Cleared 1 notification." : "Cleared " + total + " notifications.",
-                    NamedTextColor.GREEN));
+            // Separate keys rather than an inline ternary: pluralisation is a wording decision, and
+            // an operator translating this needs both forms in the file to change.
+            player.sendMessage(total == 1
+                    ? this.messages.messageFor(MessageKeys.INBOX_CLEARED_ONE)
+                    : this.messages.messageFor(MessageKeys.INBOX_CLEARED_MANY,
+                            MessageContainer.value("count", String.valueOf(total))));
         });
     }
 
@@ -196,12 +199,14 @@ public final class InboxRouter {
     public void listInChat(@NotNull Player player, int page) {
         withPage(player, page, read -> {
             if (read.entries().isEmpty()) {
-                player.sendMessage(EMPTY_MESSAGE);
+                player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_EMPTY));
                 return;
             }
-            player.sendMessage(this.title.colorIfAbsent(NamedTextColor.GOLD)
-                    .append(Component.text(" — page " + read.page() + " of " + read.totalPages()
-                            + " (" + read.unreadCount() + " unread)", NamedTextColor.GOLD)));
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_HEADER,
+                    MessageContainer.markup("title", this.title),
+                    MessageContainer.value("page", String.valueOf(read.page())),
+                    MessageContainer.value("total-pages", String.valueOf(read.totalPages())),
+                    MessageContainer.value("unread", String.valueOf(read.unreadCount()))));
             int index = 1;
             for (InboxEntry entry : read.entries()) {
                 var rendered = this.renderer.render(entry, player.getUniqueId());
@@ -209,13 +214,16 @@ public final class InboxRouter {
                 player.sendMessage(this.chatRow.format(index, entry, rendered, entry.unread())
                         // The whole row is the button: hovering names the command and clicking runs it,
                         // so a chat-fallback reader never has to retype an index they can already see.
-                        .hoverEvent(HoverEvent.showText(Component.text(
-                                "Click to run " + readCommand, NamedTextColor.GRAY)))
+                        // The click target stays in Java: a <click> tag argument is a position no
+                        // TagResolver can fill, and moving it into the file would need a subclass.
+                        .hoverEvent(HoverEvent.showText(
+                                this.messages.messageFor(MessageKeys.INBOX_ROW_HOVER,
+                                        MessageContainer.value("command", readCommand))))
                         .clickEvent(ClickEvent.runCommand(readCommand)));
                 index++;
             }
-            player.sendMessage(Component.text("Use /" + this.commandLabel + " read <entry> or /"
-                    + this.commandLabel + " delete <entry>.", NamedTextColor.GRAY));
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_USAGE,
+                    MessageContainer.value("command", this.commandLabel)));
         });
     }
 
@@ -241,10 +249,9 @@ public final class InboxRouter {
                 return;
             }
             this.service.deleteNotificationTarget(entry.notifKey(), player.getUniqueId());
-            player.sendMessage(Component.text("Deleted: "
-                    + PlainTextComponentSerializer.plainText().serialize(
-                            this.renderer.render(entry, player.getUniqueId()).title()),
-                    NamedTextColor.GREEN));
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_DELETED,
+                    MessageContainer.markup("title",
+                            this.renderer.render(entry, player.getUniqueId()).title())));
         });
     }
 
@@ -255,13 +262,13 @@ public final class InboxRouter {
     private InboxEntry indexed(@NotNull Player player, int index) {
         List<InboxEntry> listed = this.lastListed.get(player.getUniqueId());
         if (listed == null || listed.isEmpty()) {
-            player.sendMessage(Component.text(
-                    "Run /" + this.commandLabel + " list first.", NamedTextColor.RED));
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_LIST_FIRST,
+                    MessageContainer.value("command", this.commandLabel)));
             return null;
         }
         if (index < 1 || index > listed.size()) {
-            player.sendMessage(Component.text(
-                    "No entry " + index + " on that page.", NamedTextColor.RED));
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_NO_ENTRY,
+                    MessageContainer.value("entry", String.valueOf(index))));
             return null;
         }
         return listed.get(index - 1);
