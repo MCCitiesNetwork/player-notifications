@@ -58,8 +58,15 @@ public final class DiscordMailService {
         if (resolved instanceof MailRecipients.Result.UnknownPlayer unknown) {
             return new SendResult.Rejected("No player named '" + unknown.name() + "' has played here.");
         }
-        if (resolved instanceof MailRecipients.Result.InvalidMessage invalid) {
-            return new SendResult.Rejected(invalid.reason());
+        // The host's rule cases carry values rather than sentences now that its own wording lives in
+        // messages.yml. This module is not on that file — its text is Discord-shaped and belongs to a
+        // config of its own — so it words these two here, alongside the unknown-player line above.
+        if (resolved instanceof MailRecipients.Result.BlankMessage) {
+            return new SendResult.Rejected("Your mail cannot be blank.");
+        }
+        if (resolved instanceof MailRecipients.Result.MessageTooLong tooLong) {
+            return new SendResult.Rejected(
+                    "Your mail must be at most " + tooLong.maxLength() + " characters.");
         }
 
         MailRecipients.Result.Ok ok = (MailRecipients.Result.Ok) resolved;

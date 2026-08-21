@@ -349,7 +349,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                     List.of("notifs")
             );
             event.registrar().register(
-                    MailCommand.create(this, this.mailRouter, mailSender, this.mailNotifier),
+                    MailCommand.create(this.messages, this, this.mailRouter, mailSender, this.mailNotifier),
                     MailCommand.DESCRIPTION
             );
             event.registrar().register(

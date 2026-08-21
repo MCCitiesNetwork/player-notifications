@@ -1,11 +1,13 @@
 package io.github.md5sha256.playernotifications.paper.command;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import io.github.md5sha256.playernotifications.paper.mail.MailFormatting;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailRecipients;
@@ -53,9 +55,6 @@ public final class MailCommand {
 
     public static final String DESCRIPTION = "Read and send mail";
 
-    private static final Component PLAYERS_ONLY =
-            Component.text("Only players can use mail.", NamedTextColor.RED);
-
     private static final String PAGE_ARGUMENT = "page";
     private static final String INDEX_ARGUMENT = "entry";
     private static final String PLAYER_ARGUMENT = "player";
@@ -65,34 +64,36 @@ public final class MailCommand {
     }
 
     @NotNull
-    public static LiteralCommandNode<CommandSourceStack> create(@NotNull Plugin plugin,
+    public static LiteralCommandNode<CommandSourceStack> create(@NotNull MessageContainer messages,
+                                                                 @NotNull Plugin plugin,
                                                                  @NotNull InboxRouter mailRouter,
                                                                  @NotNull MailSender mailSender,
                                                                  @NotNull MailNotifier mailNotifier) {
         return Commands.literal("mail")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
-                .executes(context -> run(context, player -> mailRouter.openInbox(player, 1)))
+                .executes(context -> run(messages, context, player -> mailRouter.openInbox(player, 1)))
                 .then(Commands.literal("list")
-                        .executes(context -> run(context, player -> mailRouter.listInChat(player, 1)))
+                        .executes(context -> run(messages, context, player -> mailRouter.listInChat(player, 1)))
                         .then(Commands.argument(PAGE_ARGUMENT, IntegerArgumentType.integer(1))
-                                .executes(context -> run(context, player -> mailRouter.listInChat(
+                                .executes(context -> run(messages, context, player -> mailRouter.listInChat(
                                         player, IntegerArgumentType.getInteger(context, PAGE_ARGUMENT))))))
                 .then(Commands.literal("read")
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
-                                .executes(context -> run(context, player -> mailRouter.readInChat(
+                                .executes(context -> run(messages, context, player -> mailRouter.readInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
                 .then(Commands.literal("delete")
                         .then(Commands.argument(INDEX_ARGUMENT, IntegerArgumentType.integer(1))
-                                .executes(context -> run(context, player -> mailRouter.dismissInChat(
+                                .executes(context -> run(messages, context, player -> mailRouter.dismissInChat(
                                         player, IntegerArgumentType.getInteger(context, INDEX_ARGUMENT))))))
                 .then(Commands.literal("clear")
-                        .executes(context -> run(context, mailRouter::clearInChat)))
-                .then(sendNode(plugin, mailSender, mailNotifier))
+                        .executes(context -> run(messages, context, mailRouter::clearInChat)))
+                .then(sendNode(messages, plugin, mailSender, mailNotifier))
                 .build();
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> sendNode(
-            @NotNull Plugin plugin, @NotNull MailSender mailSender, @NotNull MailNotifier mailNotifier) {
+            @NotNull MessageContainer messages, @NotNull Plugin plugin,
+            @NotNull MailSender mailSender, @NotNull MailNotifier mailNotifier) {
         return Commands.literal("send")
                 .requires(source -> source.getSender().hasPermission(SEND_PERMISSION))
                 .then(Commands.argument(PLAYER_ARGUMENT, StringArgumentType.word())
@@ -101,7 +102,7 @@ public final class MailCommand {
                             return builder.buildFuture();
                         })
                         .then(Commands.argument(MESSAGE_ARGUMENT, StringArgumentType.greedyString())
-                                .executes(context -> send(context, plugin, mailSender, mailNotifier))));
+                                .executes(context -> send(messages, context, plugin, mailSender, mailNotifier))));
     }
 
     /**
@@ -113,7 +114,8 @@ public final class MailCommand {
      * it reads the sender's permissions, and Bukkit's permission state belongs to the main thread. The
      * resolved {@code TagResolver} is then just data the task closes over.
      */
-    private static int send(@NotNull CommandContext<CommandSourceStack> context, @NotNull Plugin plugin,
+    private static int send(@NotNull MessageContainer messages,
+                            @NotNull CommandContext<CommandSourceStack> context, @NotNull Plugin plugin,
                             @NotNull MailSender mailSender, @NotNull MailNotifier mailNotifier) {
         String name = StringArgumentType.getString(context, PLAYER_ARGUMENT);
         String message = StringArgumentType.getString(context, MESSAGE_ARGUMENT);
@@ -128,15 +130,22 @@ public final class MailCommand {
             switch (result) {
                 case MailRecipients.Result.Ok ok -> {
                     mailSender.send(senderId, senderName, ok.recipient(), ok.message());
-                    sender.sendMessage(Component.text("Mail sent to " + name + ".", NamedTextColor.GREEN));
+                    sender.sendMessage(messages.messageFor(MessageKeys.MAIL_SENT,
+                            MessageContainer.value("recipient", name)));
                     // Unconditional: Discord DM reaches the recipient whether or not they're online, and
                     // MailNotifier already resolves what can reach them.
                     mailNotifier.notifyArrival(ok.recipient());
                 }
-                case MailRecipients.Result.UnknownPlayer unknown -> sender.sendMessage(Component.text(
-                        "Unknown player: " + unknown.name(), NamedTextColor.RED));
-                case MailRecipients.Result.InvalidMessage invalid -> sender.sendMessage(Component.text(
-                        invalid.reason(), NamedTextColor.RED));
+                // value() throughout: a player name is arbitrary text, and a '<' in one must not
+                // open a tag in a message the recipient never consented to.
+                case MailRecipients.Result.UnknownPlayer unknown -> sender.sendMessage(
+                        messages.messageFor(MessageKeys.MAIL_UNKNOWN_PLAYER,
+                                MessageContainer.value("name", unknown.name())));
+                case MailRecipients.Result.BlankMessage ignored -> sender.sendMessage(
+                        messages.messageFor(MessageKeys.MAIL_BLANK_MESSAGE));
+                case MailRecipients.Result.MessageTooLong tooLong -> sender.sendMessage(
+                        messages.messageFor(MessageKeys.MAIL_MESSAGE_TOO_LONG,
+                                MessageContainer.value("max", String.valueOf(tooLong.maxLength()))));
             }
         });
         return Command.SINGLE_SUCCESS;
@@ -157,10 +166,12 @@ public final class MailCommand {
         return offline.hasPlayedBefore() ? offline.getUniqueId() : null;
     }
 
-    private static int run(@NotNull CommandContext<CommandSourceStack> context, @NotNull Consumer<Player> action) {
+    private static int run(@NotNull MessageContainer messages,
+                           @NotNull CommandContext<CommandSourceStack> context,
+                           @NotNull Consumer<Player> action) {
         CommandSender sender = context.getSource().getSender();
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(PLAYERS_ONLY);
+            sender.sendMessage(messages.messageFor(MessageKeys.MAIL_PLAYERS_ONLY));
             return 0;
         }
         action.accept(player);

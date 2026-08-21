@@ -41,9 +41,9 @@ class MailRecipientsTest {
     }
 
     @Test
-    void blankMessageGivesInvalidMessage() {
+    void blankMessageGivesBlankMessage() {
         MailRecipients.Result result = MailRecipients.resolve("Steve", "   ", this.resolver);
-        assertInstanceOf(MailRecipients.Result.InvalidMessage.class, result);
+        assertInstanceOf(MailRecipients.Result.BlankMessage.class, result);
     }
 
     @Test
@@ -58,7 +58,10 @@ class MailRecipientsTest {
     void oneCharacterOverMaxLengthIsInvalidAndNotTruncated() {
         String message = "a".repeat(MailPayload.MAX_MESSAGE_LENGTH + 1);
         MailRecipients.Result result = MailRecipients.resolve("Steve", message, this.resolver);
-        assertInstanceOf(MailRecipients.Result.InvalidMessage.class, result);
+        MailRecipients.Result.MessageTooLong tooLong =
+                assertInstanceOf(MailRecipients.Result.MessageTooLong.class, result);
+        // The reply has to name the real limit, so the case carries it rather than a sentence.
+        assertEquals(MailPayload.MAX_MESSAGE_LENGTH, tooLong.maxLength());
     }
 
     @Test
@@ -81,9 +84,7 @@ class MailRecipientsTest {
         // MailFormatting.sanitize returns "" for a message of nothing but tags, e.g. "<red>".
         MailRecipients.Result result =
                 MailRecipients.resolve("Steve", "<red>", this.resolver, message -> "");
-        MailRecipients.Result.InvalidMessage invalid =
-                assertInstanceOf(MailRecipients.Result.InvalidMessage.class, result);
-        assertTrue(invalid.reason().toLowerCase().contains("blank"), invalid.reason());
+        assertInstanceOf(MailRecipients.Result.BlankMessage.class, result);
     }
 
     @Test
@@ -97,7 +98,7 @@ class MailRecipientsTest {
         MailRecipients.Result result = MailRecipients.resolve(
                 "Steve", "x".repeat(MailPayload.MAX_MESSAGE_LENGTH + 1), this.resolver, formatter);
 
-        assertInstanceOf(MailRecipients.Result.InvalidMessage.class, result);
+        assertInstanceOf(MailRecipients.Result.MessageTooLong.class, result);
         assertFalse(ran[0], "the formatter must not run on a message that was already rejected");
     }
 }

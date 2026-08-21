@@ -49,15 +49,14 @@ public final class MailRecipients {
                                  @NotNull UnaryOperator<String> formatter) {
         String trimmed = message.trim();
         if (trimmed.isEmpty()) {
-            return new Result.InvalidMessage("Mail cannot be blank.");
+            return new Result.BlankMessage();
         }
         if (trimmed.length() > MailPayload.MAX_MESSAGE_LENGTH) {
-            return new Result.InvalidMessage(
-                    "Mail must be at most " + MailPayload.MAX_MESSAGE_LENGTH + " characters.");
+            return new Result.MessageTooLong(MailPayload.MAX_MESSAGE_LENGTH);
         }
         String formatted = formatter.apply(trimmed);
         if (formatted.isBlank()) {
-            return new Result.InvalidMessage("Mail cannot be blank.");
+            return new Result.BlankMessage();
         }
         UUID recipient = resolver.apply(name);
         if (recipient == null) {
@@ -74,7 +73,18 @@ public final class MailRecipients {
         record UnknownPlayer(@NotNull String name) implements Result {
         }
 
-        record InvalidMessage(@NotNull String reason) implements Result {
+        /**
+          * The message was empty, or the formatter reduced it to nothing readable.
+          *
+          * <p>These cases carry values rather than sentences so that the wording lives in
+          * {@code messages.yml} alongside every other player-facing string. It also makes this class's
+          * tests assert on a case rather than on prose, so rewording a reply no longer fails a rule test.
+          */
+        record BlankMessage() implements Result {
+        }
+
+        /** The typed message was longer than {@code maxLength} characters and was not truncated. */
+        record MessageTooLong(int maxLength) implements Result {
         }
     }
 }
