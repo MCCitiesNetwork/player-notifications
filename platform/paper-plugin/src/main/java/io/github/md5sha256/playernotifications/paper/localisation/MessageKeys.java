@@ -48,6 +48,8 @@ public final class MessageKeys {
     public static final String BROADCAST_BLANK_CONTENT = "broadcast.blank-content";
     public static final String BROADCAST_FLAG_MISSING_VALUE = "broadcast.flag-missing-value";
     public static final String BROADCAST_UNRECOGNISED_TOKEN = "broadcast.unrecognised-token";
+    public static final String BROADCAST_PARSE_FAILED = "broadcast.parse-failed";
+    public static final String BROADCAST_SENT = "broadcast.sent";
 
     // join
     public static final String JOIN_UNREAD_ONE = "join.unread-one";

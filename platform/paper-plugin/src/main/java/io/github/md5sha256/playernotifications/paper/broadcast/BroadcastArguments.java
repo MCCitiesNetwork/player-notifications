@@ -52,7 +52,7 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
         }
 
         if (content.isBlank()) {
-            return new Result.Invalid("Broadcast content cannot be blank.");
+            return new Result.BlankContent();
         }
 
         Set<String> permissions = new LinkedHashSet<>();
@@ -65,13 +65,13 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
             }
             if (PERM_FLAG.equals(token)) {
                 if (i + 1 >= tokens.length || tokens[i + 1].startsWith("--")) {
-                    return new Result.Invalid(PERM_FLAG + " requires a value.");
+                    return new Result.FlagMissingValue(PERM_FLAG);
                 }
                 permissions.add(tokens[i + 1]);
                 i++;
                 continue;
             }
-            return new Result.Invalid("Unrecognised token: " + token);
+            return new Result.UnrecognisedToken(token);
         }
 
         return new Result.Parsed(new BroadcastArguments(content, List.copyOf(permissions), bypass));
@@ -90,7 +90,20 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
         record Parsed(@NotNull BroadcastArguments arguments) implements Result {
         }
 
-        record Invalid(@NotNull String message) implements Result {
+        /**
+          * The three rejection cases carry values rather than sentences, so that the wording lives in
+          * {@code messages.yml} with every other player-facing string, and so this class's tests
+          * assert on a case instead of on prose.
+          */
+        record BlankContent() implements Result {
+        }
+
+        /** {@code flag} was given with no value after it. */
+        record FlagMissingValue(@NotNull String flag) implements Result {
+        }
+
+        /** A token that is neither part of the content nor a recognised flag — named, never absorbed. */
+        record UnrecognisedToken(@NotNull String token) implements Result {
         }
     }
 }

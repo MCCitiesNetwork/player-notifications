@@ -21,8 +21,10 @@ class BroadcastArgumentsTest {
         return assertInstanceOf(BroadcastArguments.Result.Parsed.class, result).arguments();
     }
 
+    /** Rejected, without pinning which of the three rejection cases — the specific tests do that. */
     private static void assertInvalid(@NotNull String raw) {
-        assertInstanceOf(BroadcastArguments.Result.Invalid.class, BroadcastArguments.parse(raw));
+        assertFalse(BroadcastArguments.parse(raw) instanceof BroadcastArguments.Result.Parsed,
+                raw + " should have been rejected");
     }
 
     @Test
@@ -55,9 +57,10 @@ class BroadcastArgumentsTest {
     @Test
     void permAsFinalTokenIsInvalidMentioningPerm() {
         BroadcastArguments.Result result = BroadcastArguments.parse("hi --perm");
-        BroadcastArguments.Result.Invalid invalid =
-                assertInstanceOf(BroadcastArguments.Result.Invalid.class, result);
-        assertTrue(invalid.message().contains("--perm"), invalid.message());
+        BroadcastArguments.Result.FlagMissingValue missing =
+                assertInstanceOf(BroadcastArguments.Result.FlagMissingValue.class, result);
+        // The reply must name the flag, so the case carries it rather than a prebuilt sentence.
+        assertEquals("--perm", missing.flag());
     }
 
     @Test
@@ -68,9 +71,9 @@ class BroadcastArgumentsTest {
     @Test
     void junkTokenAfterFlagsIsInvalidNamingIt() {
         BroadcastArguments.Result result = BroadcastArguments.parse("hi --perm a junk");
-        BroadcastArguments.Result.Invalid invalid =
-                assertInstanceOf(BroadcastArguments.Result.Invalid.class, result);
-        assertTrue(invalid.message().contains("junk"), invalid.message());
+        BroadcastArguments.Result.UnrecognisedToken unrecognised =
+                assertInstanceOf(BroadcastArguments.Result.UnrecognisedToken.class, result);
+        assertEquals("junk", unrecognised.token());
     }
 
     @Test
@@ -133,8 +136,14 @@ class BroadcastArgumentsTest {
     @Test
     void junkAfterBypassIsInvalidNamingIt() {
         BroadcastArguments.Result result = BroadcastArguments.parse("hi --bypass junk");
-        BroadcastArguments.Result.Invalid invalid =
-                assertInstanceOf(BroadcastArguments.Result.Invalid.class, result);
-        assertTrue(invalid.message().contains("junk"), invalid.message());
+        BroadcastArguments.Result.UnrecognisedToken unrecognised =
+                assertInstanceOf(BroadcastArguments.Result.UnrecognisedToken.class, result);
+        assertEquals("junk", unrecognised.token());
+    }
+
+    @Test
+    void blankContentIsItsOwnRejectionCase() {
+        assertInstanceOf(BroadcastArguments.Result.BlankContent.class,
+                BroadcastArguments.parse("   "));
     }
 }

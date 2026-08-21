@@ -5,6 +5,7 @@ import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import io.github.md5sha256.playernotifications.paper.localisation.TestMessages;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.jetbrains.annotations.NotNull;
@@ -98,7 +99,7 @@ class BroadcasterTest {
         sinks.registerSink(chat);
         sinks.registerSink(discord);
         NotificationPreferences preferences = fixedMedia(Set.of("chat", "discord-dm"));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
         Component content = Component.text("hello");
 
         int attempted = broadcaster.broadcast(content, List.of(UUID.randomUUID()), false);
@@ -118,7 +119,7 @@ class BroadcasterTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of(NotificationPreferences.SILENCED_MEDIUM));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), false);
 
@@ -132,7 +133,7 @@ class BroadcasterTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of("chat"), true);
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), false);
 
@@ -146,7 +147,7 @@ class BroadcasterTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of("chat", "carrier-pigeon"));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), false);
 
@@ -161,7 +162,7 @@ class BroadcasterTest {
         sinks.registerSink(chat);
         sinks.registerSink(new ThrowingSink());
         NotificationPreferences preferences = fixedMedia(Set.of("chat", "throws"));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), false);
 
@@ -175,7 +176,7 @@ class BroadcasterTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of("chat"));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"),
                 List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()), false);
@@ -192,7 +193,7 @@ class BroadcasterTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of(NotificationPreferences.SILENCED_MEDIUM));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), true);
 
@@ -206,7 +207,7 @@ class BroadcasterTest {
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of(NotificationPreferences.SILENCED_MEDIUM), true);
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), true);
 
@@ -222,7 +223,7 @@ class BroadcasterTest {
         sinks.registerSink(chat);
         sinks.registerSink(discord);
         NotificationPreferences preferences = fixedMedia(Set.of("discord-dm"), true);
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), true);
 
@@ -239,7 +240,7 @@ class BroadcasterTest {
         sinks.registerSink(chat);
         sinks.registerSink(discord);
         NotificationPreferences preferences = fixedMedia(Set.of("chat", "discord-dm"));
-        Broadcaster broadcaster = new Broadcaster(sinks, preferences, LOGGER);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
 
         int attempted = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), true);
 

@@ -338,7 +338,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         AccountLinkDispatcher linkDispatcher =
                 new AccountLinkDispatcher(this.messages, this.accountLinkRegistry, getLogger());
         Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
-        Broadcaster broadcaster = new Broadcaster(this.sinkRegistry, this.preferences, getLogger());
+        Broadcaster broadcaster = new Broadcaster(this.messages, this.sinkRegistry, this.preferences, getLogger());
         OnlineBroadcastAudience broadcastAudience = new OnlineBroadcastAudience(getServer());
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(
@@ -353,7 +353,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                     MailCommand.DESCRIPTION
             );
             event.registrar().register(
-                    BroadcastCommand.create(this, broadcaster, broadcastAudience),
+                    BroadcastCommand.create(this.messages, this, broadcaster, broadcastAudience),
                     BroadcastCommand.DESCRIPTION
             );
         });

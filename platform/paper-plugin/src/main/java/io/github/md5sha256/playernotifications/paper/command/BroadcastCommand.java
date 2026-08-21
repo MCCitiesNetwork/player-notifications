@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.paper.command;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -9,8 +10,8 @@ import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastAudience
 import io.github.md5sha256.playernotifications.paper.broadcast.Broadcaster;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.Plugin;
@@ -43,35 +44,47 @@ public final class BroadcastCommand {
 
     private static final String CONTENT_ARGUMENT = "content";
 
-    private static final Component NO_RECIPIENTS =
-            Component.text("No online player matched those permissions.", NamedTextColor.RED);
-    private static final Component NOTHING_ENABLED = Component.text(
-            "No recipient had broadcasts enabled. Use --bypass to deliver regardless.",
-            NamedTextColor.RED);
-
     private BroadcastCommand() {
     }
 
     @NotNull
-    public static LiteralCommandNode<CommandSourceStack> create(@NotNull Plugin plugin,
+    public static LiteralCommandNode<CommandSourceStack> create(@NotNull MessageContainer messages,
+                                                                  @NotNull Plugin plugin,
                                                                   @NotNull Broadcaster broadcaster,
                                                                   @NotNull BroadcastAudience audience) {
         return Commands.literal("broadcast")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .then(Commands.argument(CONTENT_ARGUMENT, StringArgumentType.greedyString())
-                        .executes(context -> run(context, plugin, broadcaster, audience)))
+                        .executes(context -> run(messages, context, plugin, broadcaster, audience)))
                 .build();
     }
 
-    private static int run(@NotNull CommandContext<CommandSourceStack> context, @NotNull Plugin plugin,
+    private static int run(@NotNull MessageContainer messages,
+                            @NotNull CommandContext<CommandSourceStack> context, @NotNull Plugin plugin,
                             @NotNull Broadcaster broadcaster, @NotNull BroadcastAudience audience) {
         CommandSender sender = context.getSource().getSender();
         String raw = StringArgumentType.getString(context, CONTENT_ARGUMENT);
 
         BroadcastArguments.Result parsed = BroadcastArguments.parse(raw);
-        if (parsed instanceof BroadcastArguments.Result.Invalid invalid) {
-            sender.sendMessage(Component.text(invalid.message(), NamedTextColor.RED));
-            return 0;
+        switch (parsed) {
+            case BroadcastArguments.Result.BlankContent ignored -> {
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_BLANK_CONTENT));
+                return 0;
+            }
+            case BroadcastArguments.Result.FlagMissingValue missing -> {
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_FLAG_MISSING_VALUE,
+                        MessageContainer.value("flag", missing.flag())));
+                return 0;
+            }
+            case BroadcastArguments.Result.UnrecognisedToken unrecognised -> {
+                // value(): the token is whatever the sender typed, so it must stay literal.
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_UNRECOGNISED_TOKEN,
+                        MessageContainer.value("token", unrecognised.token())));
+                return 0;
+            }
+            case BroadcastArguments.Result.Parsed ignored -> {
+                // Fall through to the send below.
+            }
         }
         BroadcastArguments arguments = ((BroadcastArguments.Result.Parsed) parsed).arguments();
 
@@ -79,14 +92,14 @@ public final class BroadcastCommand {
         try {
             content = MiniMessage.miniMessage().deserialize(arguments.content());
         } catch (RuntimeException e) {
-            sender.sendMessage(Component.text(
-                    "Could not parse broadcast content: " + e.getMessage(), NamedTextColor.RED));
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_PARSE_FAILED,
+                    MessageContainer.value("error", String.valueOf(e.getMessage()))));
             return 0;
         }
 
         List<UUID> recipients = audience.resolve(arguments.permissions());
         if (recipients.isEmpty()) {
-            sender.sendMessage(NO_RECIPIENTS);
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NO_AUDIENCE));
             return 0;
         }
 
@@ -94,10 +107,10 @@ public final class BroadcastCommand {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             int attempted = broadcaster.broadcast(content, recipients, bypass);
             if (attempted == 0) {
-                sender.sendMessage(NOTHING_ENABLED);
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NOTHING_ENABLED));
             } else {
-                sender.sendMessage(Component.text(
-                        "Broadcast sent to " + attempted + " player(s).", NamedTextColor.GREEN));
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_SENT,
+                        MessageContainer.value("count", String.valueOf(attempted))));
             }
         });
         return Command.SINGLE_SUCCESS;

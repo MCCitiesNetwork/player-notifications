@@ -1,10 +1,12 @@
 package io.github.md5sha256.playernotifications.paper.broadcast;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
 
@@ -54,15 +56,17 @@ public final class Broadcaster {
      * command supplies one — a Discord embed has one either way — and {@link RenderableNotification}
      * requires one.
      */
-    public static final Component BROADCAST_TITLE = Component.text("Broadcast");
 
+    private final MessageContainer messages;
     private final NotificationSinkRegistry sinks;
     private final NotificationPreferences preferences;
     private final Logger logger;
 
-    public Broadcaster(@NotNull NotificationSinkRegistry sinks,
+    public Broadcaster(@NotNull MessageContainer messages,
+                       @NotNull NotificationSinkRegistry sinks,
                         @NotNull NotificationPreferences preferences,
                         @NotNull Logger logger) {
+        this.messages = messages;
         this.sinks = sinks;
         this.preferences = preferences;
         this.logger = logger;
@@ -107,7 +111,9 @@ public final class Broadcaster {
                 }
                 media = Set.of(FALLBACK_MEDIUM);
             }
-            RenderableNotification notification = new RenderableNotification(BROADCAST_TITLE, content);
+            // Read per broadcast rather than held in a field, so /notifications reload takes effect.
+            RenderableNotification notification = new RenderableNotification(
+                    this.messages.messageFor(MessageKeys.BROADCAST_TITLE), content);
             for (String medium : media) {
                 Optional<NotificationSink> sink = this.sinks.getSink(medium);
                 if (sink.isEmpty()) {

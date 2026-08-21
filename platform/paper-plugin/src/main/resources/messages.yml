@@ -52,6 +52,10 @@ broadcast:
   flag-missing-value: '<red><flag> requires a value.</red>'
   # <token>
   unrecognised-token: '<red>Unrecognised token: <token></red>'
+  # <error> — why the content would not parse as MiniMessage, e.g. a legacy section-sign code.
+  parse-failed: '<red>Could not parse broadcast content: <error></red>'
+  # <count> — the original wording avoids singular/plural, so this is deliberately one key.
+  sent: '<green>Broadcast sent to <count> player(s).</green>'
 
 join:
   # Sent on join, outside the deliver-on-join setting: a player who turned push off
