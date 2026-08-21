@@ -41,6 +41,11 @@ permissions:
   playernotifications.command.test:
     description: Send yourself a test notification with /notifications test.
     default: op
+  # A broadcast reaches every online player matching the given permissions (or all of them) and is
+  # never stored - see the "Broadcast" section of CLAUDE.md.
+  playernotifications.command.broadcast:
+    description: Broadcast a message to online players with /broadcast.
+    default: op
   playernotifications.command.mail:
     description: Read your mail with /mail.
     default: true

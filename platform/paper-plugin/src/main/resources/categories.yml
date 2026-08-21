@@ -17,3 +17,8 @@ categories:
     description: "Where you are told that new mail has arrived. The mail itself is always read with /mail."
     types:
       - mail
+  broadcast:
+    label: "Broadcasts"
+    description: "Where server-wide broadcasts sent with /broadcast reach you. A broadcast sent with --bypass is delivered regardless of this setting."
+    types:
+      - broadcast

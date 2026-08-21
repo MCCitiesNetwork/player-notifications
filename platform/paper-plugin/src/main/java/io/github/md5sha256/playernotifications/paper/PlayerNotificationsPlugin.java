@@ -9,7 +9,11 @@ import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.api.processor.NotificationDisposition;
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
+import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastPayload;
+import io.github.md5sha256.playernotifications.paper.broadcast.Broadcaster;
+import io.github.md5sha256.playernotifications.paper.broadcast.OnlineBroadcastAudience;
 import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
+import io.github.md5sha256.playernotifications.paper.command.BroadcastCommand;
 import io.github.md5sha256.playernotifications.paper.command.MailCommand;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
@@ -208,6 +212,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationService.dataTypeRegistry().registerProcessor(MailPayload.class,
                 (payload, target) -> NotificationDisposition.RETAIN);
 
+        // A mapping-only registration: no serializer, no renderer, no processor, because a broadcast is
+        // never enqueued, never serialized and never rendered - see Broadcaster's javadoc. This is what
+        // makes "broadcast" enumerate in dataTypeRegistry().dataTypes(), which is what the preference
+        // dialogs walk, so a player can silence it like any other type.
+        this.notificationService.dataTypeRegistry().registerPayloadMapping(
+                Broadcaster.BROADCAST_DATA_TYPE, BroadcastPayload.class);
+
         this.inboxPageSize = pluginSettings.inboxPageSize();
         registerCommands(pluginSettings.inboxPageSize());
 
@@ -297,6 +308,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         AccountLinkDispatcher linkDispatcher =
                 new AccountLinkDispatcher(this.accountLinkRegistry, getLogger());
         Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
+        Broadcaster broadcaster = new Broadcaster(this.sinkRegistry, this.preferences, getLogger());
+        OnlineBroadcastAudience broadcastAudience = new OnlineBroadcastAudience(getServer());
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(
                     NotificationsCommand.create(this.preferenceDialogRouter, this.inboxRouter,
@@ -308,6 +321,10 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             event.registrar().register(
                     MailCommand.create(this, this.mailRouter, mailSender, this.mailNotifier),
                     MailCommand.DESCRIPTION
+            );
+            event.registrar().register(
+                    BroadcastCommand.create(this, broadcaster, broadcastAudience),
+                    BroadcastCommand.DESCRIPTION
             );
         });
     }
