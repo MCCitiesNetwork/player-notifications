@@ -1,11 +1,12 @@
 package io.github.md5sha256.playernotifications.paper;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -33,6 +34,7 @@ import java.util.logging.Level;
  */
 public final class JoinDeliveryListener implements Listener {
 
+    private final MessageContainer messages;
     private final Plugin plugin;
     private final Supplier<NotificationDelivery> delivery;
     private final NotificationService service;
@@ -49,12 +51,14 @@ public final class JoinDeliveryListener implements Listener {
      *                 replaces the {@link NotificationDelivery} with a new object, so a captured
      *                 reference would silently go stale after a reload.
      */
-    public JoinDeliveryListener(@NotNull Plugin plugin,
+    public JoinDeliveryListener(@NotNull MessageContainer messages,
+                                @NotNull Plugin plugin,
                                 @NotNull Supplier<NotificationDelivery> delivery,
                                 @NotNull NotificationService service,
                                 @NotNull NotificationPreferences preferences,
                                 boolean enabled,
                                 long delaySeconds) {
+        this.messages = messages;
         this.plugin = plugin;
         this.delivery = delivery;
         this.service = service;
@@ -161,10 +165,12 @@ public final class JoinDeliveryListener implements Listener {
         List<Component> lines = new ArrayList<>();
         int unread = this.service.unreadCount(playerId);
         if (unread != 0) {
-            lines.add(Component.text("You have " + unread
-                            + (unread == 1 ? " unread notification. " : " unread notifications. "),
-                            NamedTextColor.YELLOW)
-                    .append(Component.text("Use /notifications to read them.", NamedTextColor.GRAY)));
+            // Separate keys, not an inline ternary: which form to use is a wording decision, and a
+            // translator needs both in the file to change.
+            lines.add(unread == 1
+                    ? this.messages.messageFor(MessageKeys.JOIN_UNREAD_ONE)
+                    : this.messages.messageFor(MessageKeys.JOIN_UNREAD_MANY,
+                            MessageContainer.value("count", String.valueOf(unread))));
         }
         Component mailReminder = mailReminder(playerId);
         if (mailReminder != null) {
@@ -183,8 +189,7 @@ public final class JoinDeliveryListener implements Listener {
         if (unreadMail == 0) {
             return null;
         }
-        return Component.text("You have unread mail. ", NamedTextColor.YELLOW)
-                .append(Component.text("Use /mail to read it.", NamedTextColor.GRAY));
+        return this.messages.messageFor(MessageKeys.JOIN_UNREAD_MAIL);
     }
 
     /** Test seam: the currently effective {@code deliver-on-join} value. */

@@ -252,6 +252,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         // without re-registering the listener. A supplier, not the instance — reload() replaces
         // notificationDelivery with a new object.
         this.joinDeliveryListener = new JoinDeliveryListener(
+                this.messages,
                 this, () -> this.notificationDelivery, this.notificationService, this.preferences,
                 pluginSettings.deliverOnJoin(), pluginSettings.joinDeliveryDelaySeconds());
         getServer().getPluginManager().registerEvents(this.joinDeliveryListener, this);

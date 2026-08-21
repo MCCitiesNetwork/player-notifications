@@ -7,6 +7,7 @@ import io.github.md5sha256.playernotifications.api.ResolvedNotification;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.mail.MailPayload;
+import io.github.md5sha256.playernotifications.paper.localisation.TestMessages;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
@@ -68,7 +69,7 @@ class JoinDeliveryListenerTest {
     @Test
     void reportsConstructedSettings() {
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, null, fixedMute(false), true, 3L);
+                TestMessages.shipped(), null, this.delivery, null, fixedMute(false), true, 3L);
         assertTrue(listener.enabled());
         assertEquals(3L, listener.delaySeconds());
     }
@@ -76,7 +77,7 @@ class JoinDeliveryListenerTest {
     @Test
     void reloadSettingsReplacesBoth() {
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, null, fixedMute(false), true, 3L);
+                TestMessages.shipped(), null, this.delivery, null, fixedMute(false), true, 3L);
         listener.reloadSettings(false, 30L);
         assertFalse(listener.enabled());
         assertEquals(30L, listener.delaySeconds());
@@ -85,7 +86,7 @@ class JoinDeliveryListenerTest {
     @Test
     void reloadSettingsClampsNegativeDelay() {
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, null, fixedMute(false), true, 3L);
+                TestMessages.shipped(), null, this.delivery, null, fixedMute(false), true, 3L);
         listener.reloadSettings(true, -5L);
         assertEquals(0L, listener.delaySeconds());
     }
@@ -93,7 +94,7 @@ class JoinDeliveryListenerTest {
     @Test
     void deliverDoesNothingWhenDisabled() {
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, null, fixedMute(false), false, 0L);
+                TestMessages.shipped(), null, this.delivery, null, fixedMute(false), false, 0L);
         listener.deliver(UUID.randomUUID());
         assertEquals(0, this.supplierCalls.get());
     }
@@ -101,7 +102,7 @@ class JoinDeliveryListenerTest {
     @Test
     void deliverIsSkippedAfterAReloadTurnsItOff() {
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, null, fixedMute(false), true, 30L);
+                TestMessages.shipped(), null, this.delivery, null, fixedMute(false), true, 30L);
         listener.reloadSettings(false, 30L);
         listener.deliver(UUID.randomUUID());
         assertEquals(0, this.supplierCalls.get());
@@ -111,7 +112,7 @@ class JoinDeliveryListenerTest {
     void mailReminderIsSentWhenMailIsUnread() {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, new FakeUnreadCountService(Map.of(MailPayload.DATA_TYPE, 2)),
+                TestMessages.shipped(), null, this.delivery, new FakeUnreadCountService(Map.of(MailPayload.DATA_TYPE, 2)),
                 fixedMute(false), true, 0L);
 
         var reminder = listener.mailReminder(player);
@@ -125,7 +126,7 @@ class JoinDeliveryListenerTest {
     void mailReminderIsNothingWhenNoMailIsUnread() {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, new FakeUnreadCountService(Map.of(MailPayload.DATA_TYPE, 0)),
+                TestMessages.shipped(), null, this.delivery, new FakeUnreadCountService(Map.of(MailPayload.DATA_TYPE, 0)),
                 fixedMute(false), true, 0L);
 
         assertNull(listener.mailReminder(player));
@@ -143,7 +144,7 @@ class JoinDeliveryListenerTest {
     void announcementsAreEmptyWhenMuted() {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, new FakeUnreadCountService(counts(3, 1)),
+                TestMessages.shipped(), null, this.delivery, new FakeUnreadCountService(counts(3, 1)),
                 fixedMute(true), true, 0L);
 
         assertTrue(listener.announcements(player).isEmpty());
@@ -153,7 +154,7 @@ class JoinDeliveryListenerTest {
     void announcementsCarryBothLinesWhenUnmuted() {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, new FakeUnreadCountService(counts(3, 1)),
+                TestMessages.shipped(), null, this.delivery, new FakeUnreadCountService(counts(3, 1)),
                 fixedMute(false), true, 0L);
 
         assertEquals(2, listener.announcements(player).size());
@@ -163,7 +164,7 @@ class JoinDeliveryListenerTest {
     void announcementsAreEmptyWithNothingUnread() {
         UUID player = UUID.randomUUID();
         JoinDeliveryListener listener = new JoinDeliveryListener(
-                null, this.delivery, new FakeUnreadCountService(counts(0, 0)),
+                TestMessages.shipped(), null, this.delivery, new FakeUnreadCountService(counts(0, 0)),
                 fixedMute(false), true, 0L);
 
         assertTrue(listener.announcements(player).isEmpty());
@@ -279,5 +280,32 @@ class JoinDeliveryListenerTest {
         public @NotNull NotificationCategoryRegistry categoryRegistry() {
             throw new UnsupportedOperationException();
         }
+    }
+
+    @Test
+    void theUnreadLineNamesTheCount() {
+        UUID player = UUID.randomUUID();
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                TestMessages.shipped(), null, this.delivery,
+                new FakeUnreadCountService(counts(4, 0)), fixedMute(false), true, 0L);
+
+        String line = PlainTextComponentSerializer.plainText()
+                .serialize(listener.announcements(player).getFirst());
+
+        assertTrue(line.contains("4"), line);
+        assertTrue(line.contains("/notifications"), line);
+    }
+
+    @Test
+    void aSingleUnreadNotificationUsesTheSingularWording() {
+        UUID player = UUID.randomUUID();
+        JoinDeliveryListener listener = new JoinDeliveryListener(
+                TestMessages.shipped(), null, this.delivery,
+                new FakeUnreadCountService(counts(1, 0)), fixedMute(false), true, 0L);
+
+        String line = PlainTextComponentSerializer.plainText()
+                .serialize(listener.announcements(player).getFirst());
+
+        assertTrue(line.contains("1 unread notification."), line);
     }
 }
