@@ -32,8 +32,8 @@ dependencies {
     api(projects.api)
     api(projects.core)
     api("com.minecraftcitiesnetwork:plugin-infrastructure:1.0.0-SNAPSHOT")
-    compileOnlyApi("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
-    testRuntimeOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+    compileOnlyApi("io.papermc.paper:paper-api:26.1.2.build.74-stable")
+    testRuntimeOnly("io.papermc.paper:paper-api:26.1.2.build.74-stable")
 }
 
 // Sync, not Copy: a stale jar left behind by a renamed or removed adapter would still be loaded.
@@ -75,7 +75,7 @@ tasks {
     }
 
     runServer {
-        minecraftVersion("1.21.8")
+        minecraftVersion("26.1.2")
         dependsOn(installFeatureModules)
 
         downloadPlugins {

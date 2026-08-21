@@ -5,7 +5,7 @@ method** each player prefers: in-game chat, a dialog screen, Essentials mail, or
 notification also stays in the player's **inbox** until they delete it, so nothing is missed. This
 guide covers using the plugin — see `CLAUDE.md` for the developer/API side.
 
-Requires Paper **1.21.8**, Java **21**, and a MariaDB database.
+Requires Paper **26.1.2**, Java **25**, and a MariaDB database.
 
 ---
 

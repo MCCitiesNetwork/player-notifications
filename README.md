@@ -11,8 +11,8 @@ player's **inbox** (`/notifications`) until they dismiss it.
 
 ## Requirements
 
-- **Paper** 1.21.8+
-- **Java** 21
+- **Paper** 26.1.2+
+- **Java** 25
 - **MariaDB** (or MySQL) to store notifications
 - **EssentialsX** — optional, only for the mail delivery module
 - A **Discord bot token** — optional, only for the Discord DM module
@@ -140,7 +140,7 @@ or sink. To build your own, apply the `paper-adapter` Gradle convention and mode
 - `./gradlew :core:test` — run the persistence + delivery tests. **These require a running Docker
   daemon**; they spin up a real MariaDB container via [Testcontainers](https://testcontainers.com/).
   `./gradlew :platform:discord-adapter:test` needs Docker for the same reason.
-- `./gradlew :platform:paper-plugin:runServer` — launch a Paper 1.21.8 test server with the plugin
+- `./gradlew :platform:paper-plugin:runServer` — launch a Paper 26.1.2 test server with the plugin
   loaded (needs a reachable MariaDB).
 
 See [CLAUDE.md](CLAUDE.md) for a deeper tour of the module layout, persistence design, and known gaps.

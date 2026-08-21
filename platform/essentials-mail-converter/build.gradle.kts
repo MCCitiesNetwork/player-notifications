@@ -14,7 +14,7 @@ dependencies {
     // paper-api is compileOnlyApi on the host, which does not reach the test runtime — without this the
     // converter's tests die on NoClassDefFoundError the moment they touch Adventure. See "Testing
     // gotchas" in CLAUDE.md.
-    testRuntimeOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+    testRuntimeOnly("io.papermc.paper:paper-api:26.1.2.build.74-stable")
 
     compileOnly("net.essentialsx:EssentialsX:2.21.2") {
         exclude(group = "org.bukkit", module = "bukkit")
