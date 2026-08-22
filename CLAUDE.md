@@ -43,6 +43,48 @@ Uses the Gradle wrapper (Gradle 9.3.0). On Windows, use `./gradlew` from the Bas
 - `./gradlew :platform:paper-plugin:runServer` — launch a real Paper 26.1.2 test server with the plugin loaded (via the `xyz.jpenilla.run-paper` plugin). Server files go under `platform/paper-plugin/run/`. Needs a reachable MariaDB (see `database.yml`). It `dependsOn` `installFeatureModules`, so every feature module is built and installed first, and its `downloadPlugins` block fetches DiscordSRV `v1.30.5` from GitHub (the discord adapter's link source — without it `DiscordSrvAccountProvider` reports itself unavailable and the adapter cannot be exercised end to end).
 - `./gradlew :platform:paper-plugin:installFeatureModules` — `Sync` the feature-module jars into the runServer data folder's `run/plugins/PlayerNotifications/modules/`. Modules are **not** classpath entries (the host loads them through their own `URLClassLoader`), so they are installed as files, not added to the server classpath. Adding a new adapter means adding one `featureModules(project(path = ":platform:<name>", configuration = "moduleJar"))` line to `platform/paper-plugin/build.gradle.kts`. The `Sync` owns only the top-level `*.jar` files — everything else in that directory is preserved at any depth (`preserve { include("**"); exclude("*.jar") }`), so module configs written at runtime survive, whether they are loose files (`discord.yml`, holding the bot token) or a module's own config subdirectory.
 
+## Publishing
+
+`api` and `core` are published to the network Maven repo; **1.0.0 is deployed** at
+`https://maven.minecraftcitiesnetwork.com/releases` (verified live — pom, jar and sources jar for
+both). The other modules are not published: `platform:paper-plugin` ships as a shaded jar and the
+two feature modules ship as module jars.
+
+```kotlin
+repositories {
+    maven("https://maven.minecraftcitiesnetwork.com/releases")
+}
+
+dependencies {
+    compileOnly("io.github.md5sha256:player-notifications-api:1.0.0")
+}
+```
+
+- **The artifact ids are prefixed, the project names are not.** The modules are `:api` and `:core`,
+  but they publish as `player-notifications-api` / `player-notifications-core` via an explicit
+  `artifactId` in each publication — the bare names would squat generic coordinates under
+  `io.github.md5sha256` in a repo shared with other projects. A project dependency picks the
+  prefixed id up automatically, so `core`'s POM correctly names `player-notifications-api`.
+- **`buildSrc/src/main/kotlin/player-notifications-publish.gradle.kts`** is the convention plugin:
+  `maven-publish`, a sources jar, the `deploy` repository (driven by the `deployUrl`,
+  `deployUsername` and `deployPassword` Gradle properties) and the shared POM url/developer/scm
+  metadata. A module is published by applying it and declaring a `maven` publication — the pattern
+  the sibling `realty` project uses.
+- **`.github/workflows/deploy-api.yml`** runs on `release: published` and `workflow_dispatch`. It
+  greps `version` out of `gradle.properties` and routes a `-SNAPSHOT` version to `/snapshots` and
+  anything else to `/releases`, then runs
+  `./gradlew :api:publishMavenPublicationToDeployRepository :core:publishMavenPublicationToDeployRepository`.
+  The three `ORG_GRADLE_PROJECT_deploy*` values come from the `MAVEN_REPOSITORY_URL`,
+  `MAVEN_REPOSITORY_USERNAME` and `MAVEN_REPOSITORY_PASSWORD` Actions secrets; the URL secret holds
+  the bare host, since the workflow appends the suffix.
+- **The version lives in the root `gradle.properties`** and nowhere else — the conventions plugin
+  reads it with `providers.gradleProperty("version")`. Releasing means editing that one line. Note
+  realty instead greps its version out of its conventions script, so its workflow's grep pattern is
+  not this one's.
+- **Publishing is not gated on tests.** The workflow runs the publish task directly, which builds
+  only the jars it needs; `./gradlew build` never runs in CI. There is no `build.yml` here (realty
+  has one). A broken `core` reaches the repo if nobody ran the suite locally.
+
 ## Module architecture
 
 Gradle build with `api`, `core`, and three platform modules (`settings.gradle.kts` includes `api`, `core`, `platform:paper-plugin`, `platform:discord-adapter`, `platform:essentials-mail-converter`). Type-safe project accessors are enabled (`enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")`), so build scripts reference `projects.api`, `projects.core`, etc. Dependency direction flows **platform → core → api**; `api` depends on nothing but Paper.

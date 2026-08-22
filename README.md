@@ -96,6 +96,19 @@ The schema is created and migrated automatically on enable.
 
 ### Consuming the service
 
+`api` and `core` are published to the network Maven repo — **1.0.0** is the current release:
+
+```kotlin
+repositories {
+    maven("https://maven.minecraftcitiesnetwork.com/releases")
+}
+
+dependencies {
+    // The API surface is all most consumers need; core is the persistence implementation.
+    compileOnly("io.github.md5sha256:player-notifications-api:1.0.0")
+}
+```
+
 Other plugins obtain the service from Bukkit's `ServicesManager` (no hard dependency required):
 
 ```java
