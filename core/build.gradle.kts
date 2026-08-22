@@ -1,6 +1,7 @@
 plugins {
     `java-library`
     `player-notifications-conventions`
+    `player-notifications-publish`
 }
 
 dependencies {
@@ -17,4 +18,17 @@ dependencies {
     // compileOnly is not present on the runtime classpath; tests need paper-api's Adventure/Bukkit
     // types (e.g. net.kyori.adventure.text.Component) at test runtime.
     testRuntimeOnly("io.papermc.paper:paper-api:26.1.2.+")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "player-notifications-core"
+            from(components["java"])
+            pom {
+                name.set("PlayerNotifications Core")
+                description.set("Persistence and delivery implementation for PlayerNotifications")
+            }
+        }
+    }
 }
