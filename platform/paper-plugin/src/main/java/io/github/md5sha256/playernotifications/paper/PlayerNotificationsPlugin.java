@@ -63,6 +63,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
 public final class PlayerNotificationsPlugin extends JavaPlugin {
@@ -77,6 +78,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
+    /** Guards {@link #scheduleCategoryRebuild()} so a burst of late claims causes one rebuild, not one each. */
+    private final AtomicBoolean categoryRebuildPending = new AtomicBoolean();
     /**
      * Player-facing text from {@code messages.yml}.
      *
@@ -264,12 +267,14 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         // Rebuild the merged categories now that modules have had a chance to register, and swap the
         // rebuilt view into the dialog router — the same mechanism /notifications reload uses.
-        try {
-            this.categories = loadCategories();
-            this.preferenceDialogRouter.reloadCategories(this.categories);
-        } catch (IOException ex) {
-            getLogger().log(Level.WARNING, "Failed to rebuild categories after module startup.", ex);
-        }
+        rebuildCategories("after module startup");
+
+        // Our own modules are covered by the rebuild above, but a separate plugin registering from its
+        // own onEnable runs strictly after ours has returned, so its claims would land in the registry
+        // after this snapshot was frozen and every one of its data types would show as uncategorized.
+        // Subscribing here means such a registration rebuilds the snapshot instead of being lost.
+        this.notificationService.categoryRegistry().addChangeListener(this::scheduleCategoryRebuild);
+
         warnAboutUnmappedCategoryTypes();
         getLogger().info("PlayerNotifications enabled");
     }
@@ -531,6 +536,48 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             throw new IOException("categories.yml could not be deserialized into NotificationCategoriesConfig");
         }
         return new NotificationCategories(config, this.notificationService.categoryRegistry(), getLogger());
+    }
+
+    /**
+     * Re-reads {@code categories.yml}, re-merges it with the code registry, and swaps the result into
+     * the dialog router. A failure is logged and the previous snapshot kept: a stale category view is a
+     * far better outcome than a null one, which would break the preference dialogs outright.
+     *
+     * @param when names the trigger, so the log says which rebuild failed
+     */
+    private void rebuildCategories(@NotNull String when) {
+        try {
+            this.categories = loadCategories();
+            this.preferenceDialogRouter.reloadCategories(this.categories);
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING, "Failed to rebuild categories " + when + ".", ex);
+        }
+    }
+
+    /**
+     * Requests a category rebuild on behalf of a registration that arrived after startup.
+     *
+     * <p>Coalescing is the point. Listeners fire once per mutating call, so a plugin claiming five data
+     * types fires five times, and each rebuild re-reads and re-writes {@code categories.yml}; without
+     * this guard a single registrant would cause five file round-trips. The flag is cleared inside the
+     * scheduled task, so claims arriving after it runs schedule a fresh rebuild rather than being
+     * swallowed.
+     *
+     * <p>The rebuild is marshalled onto the main thread because it touches the dialog router, and is
+     * skipped entirely once the plugin is disabled — scheduling against a disabled plugin throws, and a
+     * rebuild during shutdown has nothing left to serve.
+     */
+    private void scheduleCategoryRebuild() {
+        if (!isEnabled()) {
+            return;
+        }
+        if (!this.categoryRebuildPending.compareAndSet(false, true)) {
+            return;
+        }
+        getServer().getScheduler().runTask(this, () -> {
+            this.categoryRebuildPending.set(false);
+            rebuildCategories("after a late category registration");
+        });
     }
 
     /**
