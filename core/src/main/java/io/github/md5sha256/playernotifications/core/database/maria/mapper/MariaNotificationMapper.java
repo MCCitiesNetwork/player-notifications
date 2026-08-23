@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.core.database.maria.mapper;
 
 import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
+import io.github.md5sha256.playernotifications.core.database.entity.UnreadDataTypeCountEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import org.apache.ibatis.annotations.Arg;
 import org.apache.ibatis.annotations.ConstructorArgs;
@@ -167,6 +168,24 @@ public interface MariaNotificationMapper extends NotificationMapper {
             """)
     int countUnread(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now,
                     @Param("dataTypes") @Nullable Collection<String> dataTypes);
+
+    @Override
+    @Select("""
+            SELECT n.notifPayloadType AS notifPayloadType, COUNT(*) AS unreadCount
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid = #{playerId}
+              AND t.seenTime IS NULL
+              AND n.notifScheduledTime <= #{now}
+              AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime > #{now})
+            GROUP BY n.notifPayloadType
+            """)
+    @ConstructorArgs({
+            @Arg(column = "notifPayloadType", javaType = String.class),
+            @Arg(column = "unreadCount", javaType = int.class)
+    })
+    @NotNull List<UnreadDataTypeCountEntity> countUnreadByDataType(@Param("playerId") @NotNull UUID playerId,
+                                                                   @Param("now") @NotNull Instant now);
 
     @Override
     @Insert("""

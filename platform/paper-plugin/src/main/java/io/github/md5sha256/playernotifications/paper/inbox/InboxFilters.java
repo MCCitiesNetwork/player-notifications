@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -53,6 +54,26 @@ public final class InboxFilters {
             return null;
         }
         return this.categories.dataTypesForCategory(categoryKey, this.registry.dataTypes());
+    }
+
+    /**
+     * Whether a filter scope holds anything the player has not read, given one unread count per data
+     * type. Backs the asterisk the filter picker puts on a row.
+     *
+     * <p>Scoping goes through {@link #resolve}, so the {@code null}/empty distinction holds here too: a
+     * {@code null} key is unfiltered and asks only whether the player has any unread notification at
+     * all, while a category claiming nothing registered — or a key removed by a reload — matches no
+     * data type and is therefore never marked, however much unread mail sits in other categories.
+     *
+     * <p>The map is expected to omit data types with nothing unread, but a zero is read as a zero
+     * rather than as presence, so it cannot matter which way the query renders one.
+     */
+    public boolean hasUnread(@Nullable String categoryKey, @NotNull Map<String, Integer> unreadByDataType) {
+        Set<String> dataTypes = resolve(categoryKey);
+        if (dataTypes == null) {
+            return unreadByDataType.values().stream().anyMatch(count -> count > 0);
+        }
+        return dataTypes.stream().anyMatch(dataType -> unreadByDataType.getOrDefault(dataType, 0) > 0);
     }
 
     /**

@@ -2,6 +2,7 @@ package io.github.md5sha256.playernotifications.core.database.mapper;
 
 import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
+import io.github.md5sha256.playernotifications.core.database.entity.UnreadDataTypeCountEntity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -51,6 +52,13 @@ public interface NotificationMapper {
 
     /** Counts the subset of {@link #countInbox} the player has not yet seen. */
     int countUnread(@NotNull UUID playerId, @NotNull Instant now, @Nullable Collection<String> dataTypes);
+
+    /**
+     * The unfiltered {@link #countUnread} broken down by data type, in one read. Data types with
+     * nothing unread produce no row at all rather than a zero.
+     */
+    @NotNull List<UnreadDataTypeCountEntity> countUnreadByDataType(@NotNull UUID playerId,
+                                                                   @NotNull Instant now);
 
     int insert(@NotNull NotificationEntity notification);
 

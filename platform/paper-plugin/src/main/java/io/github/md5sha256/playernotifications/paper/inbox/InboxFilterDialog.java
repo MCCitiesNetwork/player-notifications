@@ -33,18 +33,20 @@ final class InboxFilterDialog {
 
     private static final Component TITLE = Component.text("Filter inbox");
     private static final Component CLOSE_LABEL = Component.text("Close");
+    /** Appended to a row whose scope holds something unread. */
+    private static final Component UNREAD_MARKER = Component.text("*", NamedTextColor.YELLOW);
 
     /**
      * One row. {@code categoryKey} is {@code null} for the unfiltered row, matching
      * {@link InboxFilters#resolve} — so the row a player picks is the argument the router takes, with
      * nothing to translate in between.
      *
-     * <p>Carries no counts. A filter is a filter: this screen chooses what the inbox shows, and unread
-     * totals are the inbox's own business — the list screen states them for the scope you are actually
-     * in. Putting them here also meant a count pair per category on every open, for numbers nobody had
-     * asked this screen for.
+     * <p>{@code unread} carries presence, not a number: whether the scope holds anything the player has
+     * not read, which is what the row's asterisk says. A count belongs to the list screen, which states
+     * it for the scope you are actually in — this screen only needs to say which rows are worth opening,
+     * and one grouped read answers that for every row at once.
      */
-    record Row(@Nullable String categoryKey, @NotNull Component label) {
+    record Row(@Nullable String categoryKey, @NotNull Component label, boolean unread) {
     }
 
     private final InboxRouter router;
@@ -90,14 +92,19 @@ final class InboxFilterDialog {
     }
 
     /**
-     * The category's name, with the active one marked so the screen says what it is currently showing.
+     * The category's name, with the active one marked so the screen says what it is currently showing,
+     * and a trailing asterisk on any scope holding unread notifications.
      *
      * <p>Every category is listed, including ones holding nothing: a picker whose rows come and go as
      * mail arrives moves the row a player is reaching for, and the row set staying put is what makes the
-     * screen learnable.
+     * screen learnable. The asterisk is what tells the two apart without moving anything — it is coloured
+     * rather than merely appended so it reads as a marker and not as part of the category's name.
      */
     private static Component rowLabel(@NotNull InboxFilterDialog.Row row, @Nullable String activeCategory) {
         Component label = row.label().colorIfAbsent(NamedTextColor.WHITE);
+        if (row.unread()) {
+            label = label.append(UNREAD_MARKER);
+        }
         return java.util.Objects.equals(row.categoryKey(), activeCategory)
                 ? Component.text("▶ ", NamedTextColor.YELLOW).append(label)
                 : label;

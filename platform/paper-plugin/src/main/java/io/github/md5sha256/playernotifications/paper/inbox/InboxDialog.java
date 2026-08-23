@@ -34,6 +34,7 @@ final class InboxDialog {
     private static final Component DELETE_SEEN_LABEL =
             Component.text("Delete all read", NamedTextColor.RED);
     private static final Component CLOSE_LABEL = Component.text("Close");
+    private static final Component BACK_LABEL = Component.text("Back");
 
     private final InboxRouter router;
     private final Component title;
@@ -58,13 +59,12 @@ final class InboxDialog {
         body.add(DialogBody.plainMessage(PagedDialogs.pageIndicator(bounds)));
 
         List<ActionButton> buttons = new ArrayList<>();
-        // First in the grid, so the screen's scope is legible before its contents. Omitted entirely on a
-        // pinned screen such as /mail, whose scope is the reason it is a separate screen.
+        // First in the grid, so the way out is in a fixed place regardless of how many rows follow.
+        // The picker is the screen this one is opened from, so this reads as Back rather than naming
+        // the current scope — the title already does that. Omitted entirely on a pinned screen such as
+        // /mail, whose scope is the reason it is a separate screen and which has no picker to go back to.
         if (this.router.filterable()) {
-            buttons.add(ActionButton.builder(
-                            Component.text("Filter: ", NamedTextColor.GRAY)
-                                    .append(this.router.filterLabel(player.getUniqueId())
-                                            .colorIfAbsent(NamedTextColor.WHITE)))
+            buttons.add(ActionButton.builder(BACK_LABEL)
                     .action(DialogAction.customClick((response, audience) ->
                             this.router.openFilterPicker(player), DialogSupport.callbackOptions()))
                     .build());
@@ -95,8 +95,9 @@ final class InboxDialog {
         // by their own command. A jump into the preference screens from here left the player with no
         // way back to what they were reading.
 
-        // A filtered screen titles itself with the category, so its scope is stated in two places: the
-        // title and the Filter button. An unfiltered or pinned screen keeps its own name.
+        // A filtered screen titles itself with the category, which is the only place its scope is
+        // stated now that the Filter button is a plain Back. An unfiltered or pinned screen keeps its
+        // own name.
         Component screenTitle = this.router.filterable() && this.router.isFiltered(player.getUniqueId())
                 ? this.router.filterLabel(player.getUniqueId())
                 : this.title;

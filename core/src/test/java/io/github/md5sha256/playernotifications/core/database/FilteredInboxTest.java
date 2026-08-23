@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -24,11 +25,16 @@ class FilteredInboxTest extends AbstractDatabaseTest {
     private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.SECONDS);
 
     private static void insert(String key, String dataType, Instant scheduled, UUID... players) {
+        insert(key, dataType, scheduled, null, players);
+    }
+
+    private static void insert(String key, String dataType, Instant scheduled, Instant expiry,
+                               UUID... players) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             int targetId = wrapper.notificationTargetMapper().nextTargetId();
             wrapper.notificationTargetMapper().insertMembers(targetId, List.of(players));
             wrapper.notificationMapper().insert(new NotificationEntity(
-                    key, scheduled, null, targetId, dataType, "\"hello\"", 0));
+                    key, scheduled, expiry, targetId, dataType, "\"hello\"", 0));
             wrapper.session().commit();
         }
     }
@@ -84,5 +90,52 @@ class FilteredInboxTest extends AbstractDatabaseTest {
         Assertions.assertEquals(2, page2.totalPages());
         Assertions.assertEquals(1, page2.entries().size());
         Assertions.assertEquals("mail-1", page2.entries().get(0).notifKey());
+    }
+
+    @Test
+    @DisplayName("unreadCountsByDataType groups the unread total by data type in one read")
+    void unreadCountsAreGroupedByDataType() {
+        insert("mail-1", "mail", NOW.minusSeconds(60), PLAYER);
+        insert("mail-2", "mail", NOW.minusSeconds(50), PLAYER);
+        insert("test-1", "test", NOW.minusSeconds(40), PLAYER);
+
+        Assertions.assertEquals(Map.of("mail", 2, "test", 1), service.unreadCountsByDataType(PLAYER));
+    }
+
+    @Test
+    @DisplayName("a data type with nothing unread is absent from the map rather than present as zero")
+    void fullyReadDataTypesAreOmitted() {
+        insert("mail-1", "mail", NOW.minusSeconds(60), PLAYER);
+        insert("test-1", "test", NOW.minusSeconds(40), PLAYER);
+        service.markSeen("mail-1", PLAYER);
+
+        Assertions.assertEquals(Map.of("test", 1), service.unreadCountsByDataType(PLAYER));
+    }
+
+    @Test
+    @DisplayName("unreadCountsByDataType counts only what the inbox itself would show")
+    void expiredAndUndueNotificationsAreNotCounted() {
+        insert("expired", "mail", NOW.minus(2, ChronoUnit.HOURS), NOW.minus(1, ChronoUnit.HOURS), PLAYER);
+        insert("future", "mail", NOW.plus(1, ChronoUnit.HOURS), PLAYER);
+        insert("live", "test", NOW.minusSeconds(30), PLAYER);
+
+        Assertions.assertEquals(Map.of("test", 1), service.unreadCountsByDataType(PLAYER));
+    }
+
+    @Test
+    @DisplayName("another player's unread notifications are not counted")
+    void unreadCountsArePerPlayer() {
+        UUID other = UUID.randomUUID();
+        insert("mine", "mail", NOW.minusSeconds(60), PLAYER);
+        insert("theirs", "test", NOW.minusSeconds(60), other);
+
+        Assertions.assertEquals(Map.of("mail", 1), service.unreadCountsByDataType(PLAYER));
+        Assertions.assertEquals(Map.of("test", 1), service.unreadCountsByDataType(other));
+    }
+
+    @Test
+    @DisplayName("a player with nothing unread reads as an empty map")
+    void nothingUnreadIsAnEmptyMap() {
+        Assertions.assertEquals(Map.of(), service.unreadCountsByDataType(PLAYER));
     }
 }

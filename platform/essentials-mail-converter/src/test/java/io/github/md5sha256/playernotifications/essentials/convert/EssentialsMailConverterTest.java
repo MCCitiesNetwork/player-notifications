@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
 
@@ -126,6 +127,11 @@ class EssentialsMailConverterTest {
         @Override
         public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull Map<String, Integer> unreadCountsByDataType(@NotNull UUID playerId) {
+            return Map.of();
         }
 
         @Override

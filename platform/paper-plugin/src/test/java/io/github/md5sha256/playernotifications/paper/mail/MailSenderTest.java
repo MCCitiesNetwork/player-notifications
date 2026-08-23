@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -93,6 +94,11 @@ class MailSenderTest {
         @Override
         public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull Map<String, Integer> unreadCountsByDataType(@NotNull UUID playerId) {
+            return Map.of();
         }
 
         @Override

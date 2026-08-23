@@ -180,6 +180,11 @@ class JoinDeliveryListenerTest {
         }
 
         @Override
+        public @NotNull Map<String, Integer> unreadCountsByDataType(@NotNull UUID playerId) {
+            return Map.of();
+        }
+
+        @Override
         public int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
             // The fake is keyed by a single data type, which is all the listener asks for: the whole
             // inbox (null) or one type. An empty filter matches nothing, per the service contract.

@@ -18,6 +18,7 @@ import io.github.md5sha256.playernotifications.core.database.Database;
 import io.github.md5sha256.playernotifications.core.database.SqlSessionWrapper;
 import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
+import io.github.md5sha256.playernotifications.core.database.entity.UnreadDataTypeCountEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationTargetMapper;
 import io.github.md5sha256.playernotifications.core.serialize.JacksonPayloadSerializer;
@@ -27,7 +28,9 @@ import org.jetbrains.annotations.Nullable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -191,6 +194,18 @@ public class DefaultNotificationService implements NotificationService {
     public int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             return wrapper.notificationMapper().countUnread(playerId, Instant.now(), dataTypes);
+        }
+    }
+
+    @Override
+    public @NotNull Map<String, Integer> unreadCountsByDataType(@NotNull UUID playerId) {
+        try (SqlSessionWrapper wrapper = database.openSession()) {
+            Map<String, Integer> counts = new HashMap<>();
+            for (UnreadDataTypeCountEntity row
+                    : wrapper.notificationMapper().countUnreadByDataType(playerId, Instant.now())) {
+                counts.put(row.notifPayloadType(), row.unreadCount());
+            }
+            return Map.copyOf(counts);
         }
     }
 

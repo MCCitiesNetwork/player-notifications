@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -105,6 +106,8 @@ public interface NotificationService {
      * empty collection means "match nothing".
      */
     int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes);
+
+    @NotNull Map<String, Integer> unreadCountsByDataType(@NotNull UUID playerId);
 
     /**
      * Marks one notification seen for one player. An unknown key, or a player the notification does not

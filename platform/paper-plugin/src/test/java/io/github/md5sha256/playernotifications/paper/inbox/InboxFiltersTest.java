@@ -129,4 +129,46 @@ class InboxFiltersTest {
 
         Assertions.assertEquals(Set.of("mail"), filters.resolve("mail"));
     }
+
+    @Test
+    void aCategoryHasUnreadWhenAnyDataTypeItClaimsHasAnUnreadCount() {
+        InboxFilters filters = new InboxFilters(mailCategories(), registry("mail", "parcel", "broadcast"));
+
+        Assertions.assertTrue(filters.hasUnread("mail", Map.of("parcel", 2)));
+    }
+
+    @Test
+    void aCategoryHasNoUnreadWhenOnlyOtherCategoriesDataTypesDo() {
+        InboxFilters filters = new InboxFilters(mailCategories(), registry("mail", "parcel", "broadcast"));
+
+        Assertions.assertFalse(filters.hasUnread("mail", Map.of("broadcast", 5)));
+    }
+
+    @Test
+    void aNullCategoryKeyHasUnreadWhenAnyDataTypeAtAllDoes() {
+        InboxFilters filters = new InboxFilters(mailCategories(), registry("mail"));
+
+        Assertions.assertTrue(filters.hasUnread(null, Map.of("broadcast", 1)));
+    }
+
+    @Test
+    void aNullCategoryKeyHasNoUnreadWhenNothingDoes() {
+        InboxFilters filters = new InboxFilters(mailCategories(), registry("mail"));
+
+        Assertions.assertFalse(filters.hasUnread(null, Map.of()));
+    }
+
+    @Test
+    void anUnknownCategoryKeyHasNoUnreadEvenWhenOtherDataTypesDo() {
+        InboxFilters filters = new InboxFilters(mailCategories(), registry("mail", "broadcast"));
+
+        Assertions.assertFalse(filters.hasUnread("no-such-category", Map.of("mail", 3)));
+    }
+
+    @Test
+    void aClaimedDataTypeWithAZeroCountIsNotUnread() {
+        InboxFilters filters = new InboxFilters(mailCategories(), registry("mail", "parcel"));
+
+        Assertions.assertFalse(filters.hasUnread("mail", Map.of("mail", 0)));
+    }
 }

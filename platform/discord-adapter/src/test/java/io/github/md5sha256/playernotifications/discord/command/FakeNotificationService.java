@@ -14,6 +14,7 @@ import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -80,6 +81,11 @@ final class FakeNotificationService implements NotificationService {
         int to = Math.min(matching.size(), from + size);
         return new InboxPage(matching.subList(from, to), clamped, size, matching.size(),
                 (int) matching.stream().filter(InboxEntry::unread).count());
+    }
+
+    @Override
+    public Map<String, Integer> unreadCountsByDataType(UUID playerId) {
+        return Map.of();
     }
 
     @Override
