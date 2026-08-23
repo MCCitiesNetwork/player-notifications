@@ -82,6 +82,16 @@ public final class MessageKeys {
     public static final String INBOX_ROW_TITLE_ONLY_UNREAD = "inbox.row.title-only-unread";
     public static final String INBOX_ROW_TITLE_ONLY_READ = "inbox.row.title-only-read";
 
+    // preferences
+    public static final String PREFERENCES_SAVED = "preferences.saved";
+    public static final String PREFERENCES_SAVE_FAILED = "preferences.save-failed";
+    public static final String PREFERENCES_DISCARDED = "preferences.discarded";
+    public static final String PREFERENCES_MUTED = "preferences.muted";
+    public static final String PREFERENCES_UNMUTED = "preferences.unmuted";
+    public static final String PREFERENCES_MUTE_FAILED = "preferences.mute-failed";
+    public static final String PREFERENCES_UNMUTE_FAILED = "preferences.unmute-failed";
+    public static final String PREFERENCES_SESSION_DISCARDED = "preferences.session-discarded";
+
     // link
     public static final String LINK_NONE_AVAILABLE = "link.none-available";
     public static final String LINK_HEADER = "link.header";

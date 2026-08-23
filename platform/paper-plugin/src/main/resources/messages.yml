@@ -110,6 +110,20 @@ inbox:
     title-only-unread: '<white><entry>. <title></white>'
     title-only-read: '<gray><entry>. <title></gray>'
 
+preferences:
+  # The replies from the preference screens' Apply and Discard, and from /notifications mute|unmute.
+  saved: '<prefix> <green>Notification preferences saved.</green>'
+  save-failed: '<prefix> <red>Could not save your notification preferences; please try again.</red>'
+  discarded: '<prefix> <yellow>Changes discarded.</yellow>'
+  muted: '<prefix> <yellow>All notifications muted until you unmute. </yellow><gray>Your inbox still fills up.</gray>'
+  unmuted: '<prefix> <green>Notifications unmuted. </green><gray>Your delivery preferences are exactly as you left them.</gray>'
+  # A key per direction rather than one with the verb substituted: an operator translating this
+  # needs both forms in the file, and the same rule already splits join.unread-one from -many.
+  mute-failed: '<prefix> <red>Could not mute your notifications; please try again.</red>'
+  unmute-failed: '<prefix> <red>Could not unmute your notifications; please try again.</red>'
+  # Appended to muted/unmuted when the player had an unapplied screen open, so no prefix of its own.
+  session-discarded: '<gray> Any unsaved preference changes were discarded.</gray>'
+
 link:
   none-available: '<yellow>There is no account linking available on this server.</yellow>'
   header: '<green>Accounts you can link:</green>'
