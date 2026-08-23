@@ -26,6 +26,8 @@ import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
+import io.github.md5sha256.playernotifications.paper.localisation.TypeNameDefaultsWriter;
+import io.github.md5sha256.playernotifications.paper.localisation.TypeNames;
 import io.github.md5sha256.playernotifications.paper.mail.MailChatRow;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailRenderer;
@@ -85,6 +87,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * category registry holds. Written, never read — see {@link CategoryDefaultsWriter}.
      */
     private CategoryDefaultsWriter categoryDefaultsWriter;
+    /**
+     * Resolves a {@code dataType} to the name players see: operator override, module default,
+     * title-cased key. Reloaded in place like {@link #messages}, never replaced, so every holder keeps
+     * a valid reference across {@code /notifications reload}.
+     */
+    private TypeNames typeNames;
+    private TypeNameDefaultsWriter typeNameDefaultsWriter;
     /** Guards {@link #scheduleCategoryRebuild()} so a burst of late claims causes one rebuild, not one each. */
     private final AtomicBoolean categoryRebuildPending = new AtomicBoolean();
     /**
@@ -166,6 +175,16 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         return this.messages;
     }
 
+    /**
+     * Resolves a {@code dataType} to its player-facing name. Exposed so a feature module labelling
+     * types on its own surface agrees with the in-game screens — the Discord adapter's preference
+     * command is the one caller today.
+     */
+    @NotNull
+    public TypeNames typeNames() {
+        return this.typeNames;
+    }
+
     @Override
     public void onEnable() {
         DatabaseSettings databaseSettings;
@@ -201,6 +220,10 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         this.categoryDefaultsWriter = new CategoryDefaultsWriter(
                 getDataFolder().toPath().resolve(CategoryDefaultsWriter.FILE_NAME), getLogger());
+        this.typeNames = new TypeNames(this.notificationService.dataTypeRegistry(), getLogger());
+        this.typeNameDefaultsWriter = new TypeNameDefaultsWriter(
+                getDataFolder().toPath().resolve(TypeNameDefaultsWriter.FILE_NAME),
+                this.notificationService.dataTypeRegistry(), this.typeNames, getLogger());
 
         try {
             this.categories = loadCategories();
@@ -214,6 +237,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         // argument, so an unloaded one would leave the whole tree replying with bare key names.
         try {
             reloadMessages();
+            this.typeNames.load(copyDefaultsYaml("type-names"));
         } catch (IOException ex) {
             getLogger().log(Level.SEVERE, "Failed to load messages.yml; disabling plugin.", ex);
             getServer().getPluginManager().disablePlugin(this);
@@ -304,6 +328,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 return;
             }
             this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
+            this.typeNameDefaultsWriter.write();
         });
 
         getLogger().info("PlayerNotifications enabled");
@@ -342,7 +367,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private void registerCommands(int inboxPageSize) {
         this.preferenceDialogRouter = new PreferenceDialogRouter(
                 this, this.sinkRegistry, this.categories, this.notificationService.dataTypeRegistry(),
-                this.preferences);
+                this.typeNames, this.preferences);
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         InboxEntryRenderer inboxRenderer = new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger());
@@ -412,6 +437,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             newSettings = loadPluginSettings();
             // In place, so every command and listener holding the container sees the new wording.
             reloadMessages();
+            this.typeNames.load(copyDefaultsYaml("type-names"));
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to reload configuration.", ex);
             // Safe to read from the container: a failure here means load() was never reached, so
@@ -424,6 +450,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.categories = newCategories;
         this.preferenceDialogRouter.reloadCategories(newCategories);
         this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
+        this.typeNameDefaultsWriter.write();
         this.notificationDelivery = new NotificationDelivery(
                 this.database,
                 this.notificationService.dataTypeRegistry(),
@@ -520,6 +547,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationDelivery = null;
         this.categories = null;
         this.categoryDefaultsWriter = null;
+        this.typeNames = null;
+        this.typeNameDefaultsWriter = null;
         this.preferenceDialogRouter = null;
         this.inboxRouter = null;
         this.mailRouter = null;
@@ -598,6 +627,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             this.categories = loadCategories();
             this.preferenceDialogRouter.reloadCategories(this.categories);
             this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
+            this.typeNameDefaultsWriter.write();
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to rebuild categories " + when + ".", ex);
         }

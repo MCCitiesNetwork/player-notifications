@@ -202,14 +202,18 @@ final class PreferenceDialogs {
      * A data type's row label in the delivery-method editor: its primary category's label, prefixed for
      * readability, followed by the data type itself.
      *
-     * <p>The data type is title-cased rather than shown raw. A registry key such as
-     * {@code essentials-mail} is an identifier meant for module authors, and a player reading a checkbox
-     * list has no way to know it is the same thing as the "Essentials Mail" named everywhere else.
+     * <p>The name comes from {@link TypeNames}, which resolves the operator's {@code type-names.yml}
+     * over the module's registered default over a title-cased key. Only the second half is
+     * configurable: the category prefix stays, because it is what makes this flat checkbox list read
+     * as grouped, and a file with some types renamed and some not would otherwise show two different
+     * row shapes in one list.
      */
     @NotNull
-    static Component dataTypeLabel(@NotNull NotificationCategories categories, @NotNull String dataType) {
+    static Component dataTypeLabel(@NotNull NotificationCategories categories,
+                                   @NotNull TypeNames typeNames,
+                                   @NotNull String dataType) {
         String category = primaryCategoryFor(categories, dataType);
-        return Component.text(categories.label(category) + ": " + TypeNames.titleCase(dataType));
+        return Component.text(categories.label(category) + ": ").append(typeNames.name(dataType));
     }
 
     /**

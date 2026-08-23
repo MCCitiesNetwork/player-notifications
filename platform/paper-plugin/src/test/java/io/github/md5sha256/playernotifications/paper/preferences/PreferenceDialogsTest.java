@@ -7,7 +7,9 @@ import io.github.md5sha256.playernotifications.api.category.NotificationCategory
 import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
+import io.github.md5sha256.playernotifications.paper.localisation.TypeNames;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoryDefinition;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
@@ -157,18 +159,35 @@ class PreferenceDialogsTest {
                 Logger.getLogger("test"));
     }
 
+    /** A {@link TypeNames} over an empty registry, so every type falls through to the title-cased key. */
+    private static TypeNames noNames() {
+        return new TypeNames(new NotificationDataTypeRegistry(), Logger.getLogger("test"));
+    }
+
     @Test
     void dataTypeLabelTitleCasesTheRawKey() {
-        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), "essentials-mail");
+        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), noNames(), "essentials-mail");
 
         Assertions.assertEquals("Mail: Essentials Mail", plain(label));
     }
 
     @Test
     void dataTypeLabelTitleCasesASingleWordKey() {
-        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), "test");
+        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), noNames(), "test");
 
         Assertions.assertEquals("Other: Test", plain(label));
+    }
+
+    @Test
+    void dataTypeLabelUsesAConfiguredNameForTheSecondHalfOnly() {
+        // The category prefix is not configurable: only the type's own name is.
+        NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
+        registry.registerDisplayName("essentials-mail", "Legacy Post");
+        TypeNames typeNames = new TypeNames(registry, Logger.getLogger("test"));
+
+        Component label = PreferenceDialogs.dataTypeLabel(mailCategories(), typeNames, "essentials-mail");
+
+        Assertions.assertEquals("Mail: Legacy Post", plain(label));
     }
 
     @Test

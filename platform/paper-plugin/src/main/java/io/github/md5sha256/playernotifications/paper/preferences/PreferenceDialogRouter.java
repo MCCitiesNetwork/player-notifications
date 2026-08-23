@@ -4,6 +4,7 @@ import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
+import io.github.md5sha256.playernotifications.paper.localisation.TypeNames;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
 import net.kyori.adventure.text.Component;
@@ -27,6 +28,7 @@ public final class PreferenceDialogRouter {
     private final NotificationSinkRegistry sinkRegistry;
     private volatile NotificationCategories categories;
     private final NotificationDataTypeRegistry dataTypeRegistry;
+    private final TypeNames typeNames;
     private final DatabaseNotificationPreferences preferences;
     private final PreferenceSessionManager sessions;
 
@@ -41,11 +43,13 @@ public final class PreferenceDialogRouter {
                                   @NotNull NotificationSinkRegistry sinkRegistry,
                                   @NotNull NotificationCategories categories,
                                   @NotNull NotificationDataTypeRegistry dataTypeRegistry,
+                                  @NotNull TypeNames typeNames,
                                   @NotNull DatabaseNotificationPreferences preferences) {
         this.plugin = plugin;
         this.sinkRegistry = sinkRegistry;
         this.categories = categories;
         this.dataTypeRegistry = dataTypeRegistry;
+        this.typeNames = typeNames;
         this.preferences = preferences;
         this.sessions = new PreferenceSessionManager();
         this.rootDialog = new PreferenceRootDialog(this);
@@ -74,6 +78,16 @@ public final class PreferenceDialogRouter {
     @NotNull
     NotificationDataTypeRegistry dataTypeRegistry() {
         return this.dataTypeRegistry;
+    }
+
+    /**
+     * Resolves a {@code dataType} to the name players see. Not {@code volatile} like
+     * {@link #categories}: {@code TypeNames} is reloaded in place rather than replaced, so this
+     * reference stays correct across {@code /notifications reload}.
+     */
+    @NotNull
+    TypeNames typeNames() {
+        return this.typeNames;
     }
 
     /**

@@ -168,9 +168,12 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
 
         // A session manager this module owns, not the host's: sharing would let an Apply from Discord
         // commit a half-finished in-game dialog edit with nothing on the player's screen saying so.
+        // Type labels come from the host, so a rename in type-names.yml reads the same here as it does
+        // in game. Flattened to plain text: a Discord select option carries a string, not a component,
+        // so a coloured name loses its colour and keeps its words.
         PreferenceView preferences = new PreferenceView(plugin.preferences(), plugin.sinkRegistry(),
                 () -> plugin.notificationService().dataTypeRegistry().dataTypes(),
-                new PreferenceSessionManager(), logger);
+                new PreferenceSessionManager(), logger, plugin.typeNames()::plainName);
 
         InboxMessageFactory inboxMessages = new InboxMessageFactory(settings.resolvedEmbedColor());
         PreferenceMessageFactory preferenceMessages =

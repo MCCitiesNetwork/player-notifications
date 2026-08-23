@@ -77,29 +77,6 @@ public final class PreferenceView {
         this.typeLabel = typeLabel;
     }
 
-    /**
-     * Transitional: the label function defaults to the title-casing this class used to hardcode.
-     *
-     * <p>Exists only so {@code DiscordModule} keeps compiling until it is wired to the host's
-     * {@code TypeNames}; delete it with that wiring.
-     */
-    public PreferenceView(@NotNull DatabaseNotificationPreferences preferences,
-                          @NotNull NotificationSinkRegistry sinks,
-                          @NotNull Supplier<Set<String>> knownDataTypes,
-                          @NotNull PreferenceSessionManager sessions,
-                          @NotNull Logger logger) {
-        this(preferences, sinks, knownDataTypes, sessions, logger, dataType -> {
-            String spaced = dataType.replace('-', ' ').replace('_', ' ');
-            StringBuilder builder = new StringBuilder(spaced.length());
-            boolean capitalise = true;
-            for (char character : spaced.toCharArray()) {
-                builder.append(capitalise ? Character.toUpperCase(character) : character);
-                capitalise = character == ' ';
-            }
-            return builder.toString();
-        });
-    }
-
     /** Opens (or resumes) the player's staged edit, showing {@code selectedDataType} or the first one. */
     public @NotNull State open(@NotNull UUID player, @Nullable String selectedDataType) {
         List<String> dataTypes = dataTypes();

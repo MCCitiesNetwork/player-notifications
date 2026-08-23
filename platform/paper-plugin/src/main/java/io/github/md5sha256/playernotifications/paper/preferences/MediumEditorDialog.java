@@ -49,7 +49,7 @@ final class MediumEditorDialog {
             String inputKey = PreferenceDialogs.inputKey("dataType", i);
             inputKeyToDataType.put(inputKey, dataType);
             boolean initial = session.mediaFor(dataType).contains(mediumKey);
-            inputs.add(DialogInput.bool(inputKey, PreferenceDialogs.dataTypeLabel(this.router.categories(), dataType))
+            inputs.add(DialogInput.bool(inputKey, PreferenceDialogs.dataTypeLabel(this.router.categories(), this.router.typeNames(), dataType))
                     .initial(initial).build());
         }
 
