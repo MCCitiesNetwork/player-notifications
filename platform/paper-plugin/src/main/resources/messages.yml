@@ -94,6 +94,13 @@ inbox:
   no-entry: '<red>No entry <entry> on that page.</red>'
   # Hover text on a listing row. <command> is the full command clicking the row runs.
   row-hover: '<gray>Click to run <command></gray>'
+  # The pager under a chat listing, shown only when there is more than one page.
+  # <previous> and <next> are the two arrow keys below. The plugin attaches their click itself, so
+  # a <click> tag here would not receive the page number — leave the arrows as plain text.
+  # <page> <total-pages>
+  footer: '<previous> <gray>Page <page> of <total-pages></gray> <next>'
+  footer-previous: '<yellow>«</yellow>'
+  footer-next: '<yellow>»</yellow>'
   row:
     # One row of /notifications list. <entry> <title>
     title-only-unread: '<white><entry>. <title></white>'
