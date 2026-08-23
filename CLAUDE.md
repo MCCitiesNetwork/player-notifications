@@ -1113,8 +1113,8 @@ next render:
   silently: emptying an entry is how an override is deleted, not a mistake.
 - **`load` collects then `putAll`+`retainAll`**, never `clear()`-then-fill, so the map is never
   observably empty to a screen opening mid-reload. `MessageContainer.load` takes the same care.
-- **`type-names-defaults.yml` lists every registered type, not only those a module named** — a
-  deliberate divergence from `categories-defaults.yml`. The file answers "what can I rename and what does
+- **`defaults/type-names.yml` lists every registered type, not only those a module named** — a
+  deliberate divergence from `defaults/categories.yml`. The file answers "what can I rename and what does
   it say now", and a module-only dump would omit exactly the types most worth renaming: the ones with an
   ugly key and nobody supplying a name. It reports the **default**, never `TypeNames#name`, which would
   echo the operator's own override back as though a module had supplied it. Provenance is in the header
@@ -1148,7 +1148,7 @@ that claims the type; a `dataType` claimed by two categories resolves to both, n
 after modules load, to warn about a category referencing a `dataType` nothing registered). A category-key
 collision (code and config both defining the same key) logs at `fine`; config's label/description wins.
 
-**The code registry is also dumped to `<dataFolder>/categories-defaults.yml`, which is written and
+**The code registry is also dumped to `<dataFolder>/defaults/categories.yml`, which is written and
 never read.** `core.category.CategoryDefaultsWriter` renders every category the registry holds — only
 the `categories:` subtree, reusing `NotificationCategoryDefinition` so the shape cannot drift from the
 live file's — so an operator can see what a module registered and copy the block into `categories.yml`
@@ -1239,7 +1239,7 @@ player has never configured — it is just no longer reachable once they have. `
   debug message. It names the target rather than printing its raw UUID, taking a
   `Function<UUID, String>` name lookup so it stays unit-testable; `TestNotificationRenderer.usingServerNames()`
   is the production wiring over `Bukkit.getOfflinePlayer`.
-- `/notifications reload` — re-reads `categories.yml`, `settings.yml` and `messages.yml` without a restart (re-reads only: it writes to none of them, and regenerates `categories-defaults.yml`). Admin-only
+- `/notifications reload` — re-reads `categories.yml`, `settings.yml` and `messages.yml` without a restart (re-reads only: it writes to none of them, and regenerates `defaults/categories.yml`). Admin-only
   (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
   subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
   dispatches it outside the player-only `run()` helper the rest of the tree uses. Deliberately does
@@ -1434,9 +1434,10 @@ All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getCo
 The files:
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
 - `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`); `inbox-page-size` (`int`, default 7) — how many inbox entries `/notifications` shows per page, clamped to `1..20` in the compact constructor, with `0` (the value an absent key deserializes to) falling back to the default. The three primitive keys and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
-- `categories-defaults.yml` — **generated, and never read.** Written by `core.category.CategoryDefaultsWriter`; not a bundled resource, so `copyDefaultsYaml` does not apply to it. See "Notification categories".
+- `defaults/` — **everything the plugin generates and never reads.** `core.config.GeneratedYaml.DIRECTORY_NAME`; the first write creates it. Each file inside shares the **basename of the live file it mirrors** rather than carrying a `-defaults` suffix, so an operator's comparison is a plain `diff defaults/categories.yml categories.yml`, and the data folder's top level stays files the operator owns and the plugin reads.
+- `defaults/categories.yml` — **generated, and never read.** Written by `core.category.CategoryDefaultsWriter`; not a bundled resource, so `copyDefaultsYaml` does not apply to it. See "Notification categories".
 - `type-names.yml` → `paper.localisation.TypeNames` — a flat map of `dataType` → display name, MiniMessage, renaming the notification types players see in `/notifications preferences`. Not a `@ConfigSerializable` record: the keys are per-`dataType` and unknown at compile time, so it is read with `childrenMap()` the way `MessageContainer` reads its own file. Ships with every example commented out. See "Type names".
-- `type-names-defaults.yml` — **generated, and never read.** Written by `paper.localisation.TypeNameDefaultsWriter`. See "Type names".
+- `defaults/type-names.yml` — **generated, and never read.** Written by `paper.localisation.TypeNameDefaultsWriter`. See "Type names".
 - `categories.yml` → `NotificationCategoriesConfig` (in `core`, package `category`): `uncategorized-label` — the label for the catch-all category; `categories` — a map of category key → `{label, description, types}`, each `types` entry a registered `dataType` string. See "Notification categories".
 - `messages.yml` → a `MessageContainer` rather than a record, since its shape is a flat key/value map and not a fixed set of fields. See "Messages".
 
@@ -1539,7 +1540,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **118 tests in `:core:test`, 39 in `:api:test`, 188 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 580 in total, all passing. Every figure was verified by a single `./gradlew test` after the type-names work, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (The previous entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
+Current baseline: **121 tests in `:core:test`, 39 in `:api:test`, 188 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 583 in total, all passing. Every figure was verified by a single `./gradlew test` after moving the generated files into `defaults/`, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (The previous entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
 
 ## Current state
 
@@ -1560,19 +1561,19 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   half of the category system (and the two-pass rebuild-after-`startModules()` ordering in
   `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
   never end-to-end by a real module through the real module class loader. **The same applies to
-  `categories-defaults.yml`**: with nothing registering in code, a stock install writes an empty
+  `defaults/categories.yml`**: with nothing registering in code, a stock install writes an empty
   `categories` node forever, so `CategoryDefaultsWriter`'s interesting output is covered only by its
   unit tests. Moving the three host categories out of `categories.yml` into the code registry was
   considered as a live consumer and rejected — it would change what a stock install's preference
   dialogs are built from.
 - **The module-supplied type-name layer has no in-tree consumer.** Nothing calls
   `NotificationDataTypeRegistry#registerDisplayName`, so on a stock install every entry in
-  `type-names-defaults.yml` is a title-cased fallback and the module-default branch of `TypeNames` runs
+  `defaults/type-names.yml` is a title-cased fallback and the module-default branch of `TypeNames` runs
   only in unit tests. Registering names for the host's own three types was considered and left out: it
   would make the shipped dump non-empty, which is a separate call from adding the mechanism.
 - **Configurable type names are unverified on a live server.** `type-names.yml` being created, a rename
   reaching the medium editor, the malformed-value warning firing exactly once, the Discord select
-  picking up the host's name, and `type-names-defaults.yml` being regenerated on reload all need
+  picking up the host's name, and `defaults/type-names.yml` being regenerated on reload all need
   `:platform:paper-plugin:runServer`. **Task 7's checklist in
   `docs/superpowers/plans/2026-08-23-configurable-type-names.md` has not been run.** Everything
   underneath is unit tested — `TypeNamesTest` (13), `TypeNameDefaultsWriterTest` (9), the api registry

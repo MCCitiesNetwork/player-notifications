@@ -1,6 +1,6 @@
 # Module category defaults Implementation Plan
 
-**Goal:** Write a generated, never-read `categories-defaults.yml` snapshotting every category the code registry holds, so an operator can see what modules registered and reconcile it into `categories.yml` by hand.
+**Goal:** Write a generated, never-read `defaults/categories.yml` snapshotting every category the code registry holds, so an operator can see what modules registered and reconcile it into `categories.yml` by hand.
 **Spec:** `docs/superpowers/specs/2026-08-23-module-category-defaults-design.md`
 
 ## Task 1: `CategoryDefaultsWriter` in `core`
@@ -13,7 +13,7 @@
 
 ```java
 public final class CategoryDefaultsWriter {
-    public static final String FILE_NAME = "categories-defaults.yml";
+    public static final String FILE_NAME = "categories.yml";
     public CategoryDefaultsWriter(@NotNull Path file, @NotNull Logger logger);
     public void write(@NotNull NotificationCategoryRegistry registry);
     static @NotNull Map<String, NotificationCategoryDefinition> snapshot(@NotNull NotificationCategoryRegistry registry);
@@ -197,15 +197,15 @@ getServer().getScheduler().runTask(this, () -> {
 
 Live-server checklist — `./gradlew :platform:paper-plugin:runServer`, needs a reachable MariaDB:
 
-- [ ] Start the server. Confirm `platform/paper-plugin/run/plugins/PlayerNotifications/categories-defaults.yml`
+- [ ] Start the server. Confirm `platform/paper-plugin/run/plugins/PlayerNotifications/defaults/categories.yml`
       exists after enable, starts with the `#` header, and holds an empty `categories` node — the stock
       install has no code-registered category.
-- [ ] Delete `categories-defaults.yml` while the server is **stopped**, start it, and confirm the file
+- [ ] Delete `defaults/categories.yml` while the server is **stopped**, start it, and confirm the file
       is back — proving the one-tick backstop wrote it, since nothing else runs on a clean start with
       no code-registered category.
 - [ ] Confirm `categories.yml` is untouched and `/notifications preferences types` still shows
       Diagnostics, Mail, Broadcasts and Other exactly as before.
-- [ ] Delete `categories-defaults.yml`, run `/notifications reload`, confirm it is recreated and the
+- [ ] Delete `defaults/categories.yml`, run `/notifications reload`, confirm it is recreated and the
       reload reports success.
 - [ ] Make the file read-only (or replace it with a directory), run `/notifications reload`: expect a
       single `WARNING` naming the path in the console and a **successful** reload reply to the player.
@@ -219,15 +219,15 @@ Live-server checklist — `./gradlew :platform:paper-plugin:runServer`, needs a 
       one from the one-tick backstop. Confirm the two produce identical file content, then remove the
       log line and the temporary registration.
 - [ ] Copy that block into `categories.yml`, reload, confirm the category appears in
-      `/notifications preferences types` and that `categories-defaults.yml` still holds its own copy
+      `/notifications preferences types` and that `defaults/categories.yml` still holds its own copy
       unchanged — the two files are independent.
 
 - [ ] Update `CLAUDE.md`:
-  - **"Configuration"** — add `categories-defaults.yml` to the list, marked generated and never read,
+  - **"Configuration"** — add `defaults/categories.yml` to the list, marked generated and never read,
     naming `CategoryDefaultsWriter` and the fact that `copyDefaultsYaml`'s copy-then-merge idiom does
     not apply to it.
   - **"Notification categories"** — add a paragraph: the code registry is still a live merge input
-    (unchanged), *and* is separately dumped to `categories-defaults.yml` for the operator to reconcile
+    (unchanged), *and* is separately dumped to `defaults/categories.yml` for the operator to reconcile
     by hand; the dump is one-way, so a copied block does not track the module's later rewording.
   - **"Current state"** — amend the `NotificationCategoryRegistry has no in-tree consumer` bullet to
     note that the defaults dump is therefore empty on a stock install and exercised only by unit tests.

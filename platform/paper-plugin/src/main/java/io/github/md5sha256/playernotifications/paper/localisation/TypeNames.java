@@ -168,7 +168,7 @@ public final class TypeNames {
     /**
      * The raw operator override for a {@code dataType}, if the loaded file supplied a usable one.
      *
-     * <p>Exists for the generated {@code type-names-defaults.yml}, which marks which entries are the
+     * <p>Exists for the generated {@code defaults/type-names.yml}, which marks which entries are the
      * operator's own; nothing in the resolution chain reads it.
      */
     @NotNull

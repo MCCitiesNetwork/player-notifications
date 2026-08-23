@@ -6,8 +6,8 @@
 # right. A type you do not list here keeps whatever name the module that registered it supplied, or,
 # failing that, a title-cased version of its key ("essentials-mail" reads as "Essentials Mail").
 #
-# See type-names-defaults.yml, written next to this file, for every type this server knows about and
-# the name it currently gets. That file is generated and never read -- copy a line out of it into
+# See defaults/type-names.yml for every type this server knows about and the name it currently gets.
+# Everything in the defaults folder is generated and never read back -- copy a line out of it into
 # here, then edit it. This file is yours: the plugin only ever creates it, never rewrites it.
 #
 # Values are MiniMessage, so a name may carry colour and formatting. A value that is not valid

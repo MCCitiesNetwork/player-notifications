@@ -11,7 +11,7 @@ import java.util.TreeMap;
 import java.util.logging.Logger;
 
 /**
- * Writes {@code categories-defaults.yml}: a generated snapshot of everything the code-side
+ * Writes {@code defaults/categories.yml}: a generated snapshot of everything the code-side
  * {@link NotificationCategoryRegistry} holds, so an operator can see what a module registered and
  * reconcile it into {@code categories.yml} by hand.
  *
@@ -34,10 +34,11 @@ import java.util.logging.Logger;
 public final class CategoryDefaultsWriter {
 
     /**
-     * The file's name in the plugin's data folder. Deliberately not {@code categories.yml}: the two sit
-     * side by side and only one of them is ever read.
+     * The file's name inside {@link GeneratedYaml#DIRECTORY_NAME}. Deliberately the <em>same</em>
+     * basename as the live {@code categories.yml}: the folder is what distinguishes them, which makes
+     * the operator's comparison a plain {@code diff defaults/categories.yml categories.yml}.
      */
-    public static final String FILE_NAME = "categories-defaults.yml";
+    public static final String FILE_NAME = "categories.yml";
 
     /**
      * Prepended verbatim to the rendered YAML. It is plain text rather than a Configurate node comment
@@ -49,12 +50,12 @@ public final class CategoryDefaultsWriter {
             #
             # This file is written by PlayerNotifications on startup and on /notifications reload, and
             # is never read back. Editing it changes nothing; your edits are overwritten on the next
-            # write.
+            # write. Everything in this "defaults" folder works that way.
             #
             # It lists every notification category that a module or another plugin registered in code.
-            # categories.yml is the live file -- the one the plugin actually reads. To make one of the
-            # blocks below visible to players, copy it by hand into the "categories:" section of
-            # categories.yml and edit it there.
+            # The categories.yml one folder up is the live file -- the one the plugin actually reads.
+            # To make one of the blocks below visible to players, copy it by hand into the
+            # "categories:" section of that file and edit it there.
             #
             # A blank "label" means a module claimed data types without ever naming its category. Those
             # are the blocks most worth copying across and giving a readable name.

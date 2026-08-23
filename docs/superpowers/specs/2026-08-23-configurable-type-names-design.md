@@ -4,6 +4,11 @@
 **Date:** 2026-08-23
 **Related:** `2026-08-23-module-category-defaults-design.md` — this reuses its generated-dump pattern.
 
+
+> **Superseded detail (2026-08-23):** the generated file is `<dataFolder>/defaults/type-names.yml`,
+> not `type-names-defaults.yml` — see the note in the category-defaults spec. Nothing else here
+> changed.
+
 ## Goal
 
 A `dataType` is a registry key chosen by a module author (`mail`, `broadcast`, `essentials-mail`).

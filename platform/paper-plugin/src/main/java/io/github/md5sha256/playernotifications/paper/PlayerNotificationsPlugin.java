@@ -39,6 +39,7 @@ import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
 import io.github.md5sha256.playernotifications.core.category.CategoryDefaultsWriter;
+import io.github.md5sha256.playernotifications.core.config.GeneratedYaml;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig;
 import io.github.md5sha256.playernotifications.core.database.Database;
@@ -83,7 +84,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
     /**
-     * Writes {@code categories-defaults.yml}, the generated reference copy of everything the code-side
+     * Writes {@code defaults/categories.yml}, the generated reference copy of everything the code-side
      * category registry holds. Written, never read — see {@link CategoryDefaultsWriter}.
      */
     private CategoryDefaultsWriter categoryDefaultsWriter;
@@ -218,11 +219,16 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 ServicePriority.Normal
         );
 
+        // Everything the plugin generates and never reads goes in one folder, named after the live
+        // file it mirrors -- see GeneratedYaml.DIRECTORY_NAME. The folder itself is created by the
+        // first write, not here, so a failure to create it is reported the same way a failure to
+        // write is: logged, never fatal.
+        Path defaultsDir = getDataFolder().toPath().resolve(GeneratedYaml.DIRECTORY_NAME);
         this.categoryDefaultsWriter = new CategoryDefaultsWriter(
-                getDataFolder().toPath().resolve(CategoryDefaultsWriter.FILE_NAME), getLogger());
+                defaultsDir.resolve(CategoryDefaultsWriter.FILE_NAME), getLogger());
         this.typeNames = new TypeNames(this.notificationService.dataTypeRegistry(), getLogger());
         this.typeNameDefaultsWriter = new TypeNameDefaultsWriter(
-                getDataFolder().toPath().resolve(TypeNameDefaultsWriter.FILE_NAME),
+                defaultsDir.resolve(TypeNameDefaultsWriter.FILE_NAME),
                 this.notificationService.dataTypeRegistry(), this.typeNames, getLogger());
 
         try {
@@ -638,7 +644,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      *
      * <p>Coalescing is the point. Listeners fire once per mutating call, so a plugin claiming five data
      * types fires five times, and each rebuild re-reads {@code categories.yml} and rewrites
-     * {@code categories-defaults.yml}; without this guard a single registrant would cause five file
+     * {@code defaults/categories.yml}; without this guard a single registrant would cause five file
      * round-trips. The flag is cleared inside the scheduled task, so claims arriving after it runs
      * schedule a fresh rebuild rather than being swallowed.
      *

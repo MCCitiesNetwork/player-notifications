@@ -14,7 +14,7 @@ import java.util.TreeSet;
 import java.util.logging.Logger;
 
 /**
- * Writes {@code type-names-defaults.yml}: every registered {@code dataType} alongside the display name
+ * Writes {@code defaults/type-names.yml}: every registered {@code dataType} alongside the display name
  * it would get if the operator changed nothing, so they can see what is renameable and what it
  * currently says.
  *
@@ -23,7 +23,7 @@ import java.util.logging.Logger;
  * from {@link TypeNames}, whose operator layer is {@code type-names.yml}.
  *
  * <p><b>It lists every registered type, not only those a module named.</b> This diverges from
- * {@code categories-defaults.yml}, which dumps only what code registered, and the divergence is the
+ * {@code defaults/categories.yml}, which dumps only what code registered, and the divergence is the
  * point: this file answers "what can I rename, and what does it say now", and a module-only dump would
  * omit exactly the types most worth renaming — the ones with an ugly key and nobody supplying a name.
  * A type is "registered" when it has a payload mapping; a display name alone does not qualify it, for
@@ -42,7 +42,11 @@ import java.util.logging.Logger;
  */
 public final class TypeNameDefaultsWriter {
 
-    public static final String FILE_NAME = "type-names-defaults.yml";
+    /**
+     * The file's name inside {@link GeneratedYaml#DIRECTORY_NAME} — the same basename as the live
+     * {@code type-names.yml} one folder up, so comparing the two is a plain {@code diff}.
+     */
+    public static final String FILE_NAME = "type-names.yml";
 
     private final Path file;
     private final NotificationDataTypeRegistry registry;
@@ -112,9 +116,11 @@ public final class TypeNameDefaultsWriter {
                 #
                 # Written by PlayerNotifications on startup and on /notifications reload, and never read
                 # back. Editing it changes nothing; your edits are overwritten on the next write.
+                # Everything in this "defaults" folder works that way.
                 #
                 # Every notification type this server knows about, with the name players see if you
-                # change nothing. To rename one, copy its line into type-names.yml and edit it there.
+                # change nothing. To rename one, copy its line into the type-names.yml one folder up --
+                # the live file -- and edit it there.
                 # Values are MiniMessage, so a name may carry colour: "<gold>Personal Mail</gold>".
                 #
                 # Supplied by a module: %s

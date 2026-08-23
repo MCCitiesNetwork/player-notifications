@@ -1,6 +1,6 @@
 # Configurable notification type names Implementation Plan
 
-**Goal:** A module can supply a default display name for the `dataType`s it registers; the operator overrides any of them in `type-names.yml` and sees what modules supplied in a generated `type-names-defaults.yml`.
+**Goal:** A module can supply a default display name for the `dataType`s it registers; the operator overrides any of them in `type-names.yml` and sees what modules supplied in a generated `defaults/type-names.yml`.
 **Spec:** `docs/superpowers/specs/2026-08-23-configurable-type-names-design.md`
 
 Tasks 2, 3 and 4 are independent of each other and may run in parallel once Task 1 is in.
@@ -150,7 +150,7 @@ public static @NotNull String titleCase(@NotNull String key);
 Live-server checklist — `./gradlew :platform:paper-plugin:runServer`, needs a reachable MariaDB:
 
 - [ ] Start clean. Confirm `type-names.yml` is created with everything commented, and
-      `type-names-defaults.yml` lists `mail`, `broadcast` and `test` with title-cased fallbacks.
+      `defaults/type-names.yml` lists `mail`, `broadcast` and `test` with title-cased fallbacks.
 - [ ] `/notifications preferences media` → pick Chat. Confirm rows read `Mail: Mail`,
       `Broadcasts: Broadcast`, `Diagnostics: Test`.
 - [ ] Add `mail: "<gold>Personal Mail</gold>"` to `type-names.yml`, `/notifications reload`, reopen:

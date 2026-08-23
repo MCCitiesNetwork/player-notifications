@@ -6,6 +6,12 @@
 without the other — but they are two halves of one intent: the operator owns `categories.yml` outright,
 and the plugin's only channel for telling them what a module registered is this generated file.
 
+
+> **Superseded detail (2026-08-23):** the generated file is `<dataFolder>/defaults/categories.yml`,
+> not `categories-defaults.yml`. Every generated file moved into a `defaults/` folder and took the
+> basename of the live file it mirrors, so comparing the two is a plain `diff`. Nothing else here
+> changed.
+
 ## Goal
 
 Give a downstream consumer — a feature module, or a separate plugin registering against
