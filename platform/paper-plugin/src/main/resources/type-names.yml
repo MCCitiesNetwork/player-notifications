@@ -1,0 +1,28 @@
+# PlayerNotifications type names
+#
+# Renames the notification types players see in /notifications preferences, in game and in Discord.
+#
+# One entry per notification data type: the registry key on the left, the name players read on the
+# right. A type you do not list here keeps whatever name the module that registered it supplied, or,
+# failing that, a title-cased version of its key ("essentials-mail" reads as "Essentials Mail").
+#
+# See type-names-defaults.yml, written next to this file, for every type this server knows about and
+# the name it currently gets. That file is generated and never read -- copy a line out of it into
+# here, then edit it. This file is yours: the plugin only ever creates it, never rewrites it.
+#
+# Values are MiniMessage, so a name may carry colour and formatting. A value that is not valid
+# MiniMessage is ignored with a warning in the console naming the key, and that type falls back to its
+# default -- so a typo costs you the rename, not the screen. An empty value is treated as no entry at
+# all, which is how you delete an override without deleting the line.
+#
+# In game the row reads "<category>: <name>", so the category prefix from categories.yml is still
+# shown; in Discord the name stands alone and colour is dropped, because a Discord menu option is
+# plain text.
+#
+# Run /notifications reload after editing.
+#
+# Examples -- uncomment and change to taste:
+#
+# mail: "<gold>Personal Mail</gold>"
+# broadcast: "Server Announcements"
+# test: "Diagnostic Test"
