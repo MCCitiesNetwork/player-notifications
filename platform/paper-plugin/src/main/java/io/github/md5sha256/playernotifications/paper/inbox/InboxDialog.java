@@ -58,6 +58,17 @@ final class InboxDialog {
         body.add(DialogBody.plainMessage(PagedDialogs.pageIndicator(bounds)));
 
         List<ActionButton> buttons = new ArrayList<>();
+        // First in the grid, so the screen's scope is legible before its contents. Omitted entirely on a
+        // pinned screen such as /mail, whose scope is the reason it is a separate screen.
+        if (this.router.filterable()) {
+            buttons.add(ActionButton.builder(
+                            Component.text("Filter: ", NamedTextColor.GRAY)
+                                    .append(this.router.filterLabel(player.getUniqueId())
+                                            .colorIfAbsent(NamedTextColor.WHITE)))
+                    .action(DialogAction.customClick((response, audience) ->
+                            this.router.openFilterPicker(player), DialogSupport.callbackOptions()))
+                    .build());
+        }
         for (InboxEntry entry : page.entries()) {
             String key = entry.notifKey();
             buttons.add(ActionButton.builder(rowLabel(player, entry))

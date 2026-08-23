@@ -17,6 +17,7 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +41,7 @@ public final class InboxRouter {
     private final InboxEntryRenderer renderer;
     private final InboxDialog listDialog;
     private final InboxDetailDialog detailDialog;
+    private final InboxFilterDialog filterDialog;
     /** The screen's own name, so the chat fallback's header matches the dialog's title. */
     private final Component title;
 
@@ -68,6 +70,16 @@ public final class InboxRouter {
      */
     private final InboxCursors cursors = new InboxCursors();
 
+    /**
+     * The category each player has filtered the <b>dialog</b> to, absent meaning unfiltered. Deliberately
+     * not on {@link InboxCursors}: the commands read that state, and a filter must never reach them.
+     * Dropped on quit with everything else.
+     */
+    private final Map<UUID, String> dialogCategory = new ConcurrentHashMap<>();
+
+    /** Resolves a picked category to its data types. {@code null} on a pinned router, which cannot filter. */
+    private final InboxFilters filters;
+
     private volatile int pageSize;
 
     public InboxRouter(@NotNull MessageContainer messages,
@@ -76,6 +88,7 @@ public final class InboxRouter {
                        @NotNull InboxEntryRenderer renderer,
                        int pageSize,
                        @Nullable Set<String> pinnedFilter,
+                       @Nullable InboxFilters filters,
                        @NotNull String commandLabel,
                        @NotNull Component title,
                        @NotNull InboxChatRow chatRow) {
@@ -85,11 +98,13 @@ public final class InboxRouter {
         this.renderer = renderer;
         this.pageSize = pageSize;
         this.pinnedFilter = pinnedFilter;
+        this.filters = filters;
         this.commandLabel = commandLabel;
         this.title = title;
         this.chatRow = chatRow;
         this.listDialog = new InboxDialog(this, title);
         this.detailDialog = new InboxDetailDialog(this);
+        this.filterDialog = new InboxFilterDialog(this);
     }
 
     /** Applies a reloaded {@code inbox-page-size}, the same volatile-field idiom the other reloads use. */
@@ -111,6 +126,81 @@ public final class InboxRouter {
 
     public void drop(@NotNull UUID playerId) {
         this.cursors.drop(playerId);
+        this.dialogCategory.remove(playerId);
+    }
+
+    /**
+     * Whether this screen offers a filter at all. A pinned router ({@code /mail}) does not: its scope is
+     * the whole point of it being a separate screen.
+     */
+    boolean filterable() {
+        return this.pinnedFilter == null && this.filters != null;
+    }
+
+    /**
+     * The data types the <b>dialog</b> currently shows for this player: their picked category if any,
+     * otherwise this screen's pinned scope. Never consulted by a command — see {@link #dialogCategory}.
+     */
+    private @Nullable Set<String> activeFilter(@NotNull UUID playerId) {
+        if (!filterable()) {
+            return this.pinnedFilter;
+        }
+        String category = this.dialogCategory.get(playerId);
+        return category == null ? null : this.filters.resolve(category);
+    }
+
+    /** The label for the dialog's Filter button: the picked category's name, or "All notifications". */
+    @NotNull Component filterLabel(@NotNull UUID playerId) {
+        return this.filters == null
+                ? Component.empty()
+                : this.filters.label(this.dialogCategory.get(playerId));
+    }
+
+    /**
+     * Opens the filter picker, reading each category's counts off the main thread.
+     *
+     * <p>One count pair per category. Categories are few and this read is already async; if a server ever
+     * defines enough of them for it to hurt, the fix is one grouped count folded together in Java rather
+     * than a different screen.
+     */
+    public void openFilterPicker(@NotNull Player player) {
+        if (!filterable()) {
+            return;
+        }
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
+            UUID id = player.getUniqueId();
+            List<InboxFilterDialog.Row> rows = new ArrayList<>();
+            rows.add(row(id, null));
+            for (String key : this.filters.categoryKeys()) {
+                rows.add(row(id, key));
+            }
+            String active = this.dialogCategory.get(id);
+            DialogSupport.onMainThread(this.plugin, player,
+                    () -> this.filterDialog.show(player, rows, active));
+        });
+    }
+
+    private InboxFilterDialog.Row row(@NotNull UUID playerId, @Nullable String categoryKey) {
+        Set<String> filter = categoryKey == null ? null : this.filters.resolve(categoryKey);
+        int total = this.service.inbox(playerId, 1, 1, filter).totalEntries();
+        int unread = this.service.unreadCount(playerId, filter);
+        return new InboxFilterDialog.Row(categoryKey, this.filters.label(categoryKey), unread, total);
+    }
+
+    /**
+     * Applies a picked category and reopens the list at page 1. A {@code null} key clears the filter.
+     *
+     * <p>Page 1 rather than the page they were on: the old page number means nothing against a different
+     * result set, and landing on "page 3 of 1" clamped back would look like the filter had failed.
+     */
+    public void applyDialogFilter(@NotNull Player player, @Nullable String categoryKey) {
+        UUID id = player.getUniqueId();
+        if (categoryKey == null) {
+            this.dialogCategory.remove(id);
+        } else {
+            this.dialogCategory.put(id, categoryKey);
+        }
+        openInbox(player, 1);
     }
 
     /**
@@ -122,9 +212,17 @@ public final class InboxRouter {
      * one-line reply is also simply the better answer to "show me nothing".
      */
     public void openInbox(@NotNull Player player, int page) {
-        withPage(player, page, this.pinnedFilter, Surface.DIALOG, read -> {
+        withPage(player, page, activeFilter(player.getUniqueId()), Surface.DIALOG, read -> {
             if (read.entries().isEmpty()) {
                 player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_EMPTY));
+                // An empty *filtered* screen opens the picker instead of leaving the player in chat.
+                // Without this the filter is a trap: the list screen is the only route to the Filter
+                // button, an empty one never opens, and reopening /notifications re-reads the same
+                // filter — so the player could not clear their own choice short of quitting. The
+                // picker cannot itself be empty, so this cannot bounce.
+                if (this.dialogCategory.containsKey(player.getUniqueId())) {
+                    openFilterPicker(player);
+                }
                 return;
             }
             DialogSupport.onMainThread(this.plugin, player, () -> this.listDialog.show(player, read));
@@ -157,14 +255,14 @@ public final class InboxRouter {
 
     public void markAllSeen(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            this.service.markAllSeen(player.getUniqueId(), this.pinnedFilter);
+            this.service.markAllSeen(player.getUniqueId(), activeFilter(player.getUniqueId()));
             openInbox(player, currentPage(player.getUniqueId()));
         });
     }
 
     public void dismissSeen(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            this.service.dismissSeen(player.getUniqueId(), this.pinnedFilter);
+            this.service.dismissSeen(player.getUniqueId(), activeFilter(player.getUniqueId()));
             openInbox(player, 1);
         });
     }

@@ -24,6 +24,7 @@ import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotification
 import io.github.md5sha256.playernotifications.paper.inbox.InboxChatRow;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxEntryRenderer;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxQuitListener;
+import io.github.md5sha256.playernotifications.paper.inbox.InboxFilters;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import io.github.md5sha256.playernotifications.paper.localisation.TypeNameDefaultsWriter;
@@ -352,6 +353,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      */
     private volatile int inboxPageSize = 7;
 
+    private InboxFilters inboxFilters;
     private InboxRouter inboxRouter;
     private InboxRouter mailRouter;
     private MailNotifier mailNotifier;
@@ -377,10 +379,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         InboxEntryRenderer inboxRenderer = new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger());
+        this.inboxFilters = new InboxFilters(this.categories, this.notificationService.dataTypeRegistry());
         this.inboxRouter = new InboxRouter(
                 this.messages,
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                (java.util.Set<String>) null, "notifications", this.messages.messageFor(MessageKeys.INBOX_TITLE),
+                (java.util.Set<String>) null, this.inboxFilters, "notifications",
+                this.messages.messageFor(MessageKeys.INBOX_TITLE),
                 InboxChatRow.titleOnly(this.messages));
         // A second, mail-filtered InboxRouter instance rather than one shared router with a per-call
         // filter: the cursor and last-listed maps are per-screen state, and /mail list 2 must not make
@@ -388,7 +392,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.mailRouter = new InboxRouter(
                 this.messages,
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                java.util.Set.of(MailPayload.DATA_TYPE), "mail", this.messages.messageFor(MessageKeys.MAIL_TITLE),
+                java.util.Set.of(MailPayload.DATA_TYPE), null, "mail",
+                this.messages.messageFor(MessageKeys.MAIL_TITLE),
                 new MailChatRow(this.messages, inboxRenderer::decodePayload, ZoneId.systemDefault(), Instant::now));
         getServer().getPluginManager().registerEvents(
                 new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
@@ -455,6 +460,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         this.categories = newCategories;
         this.preferenceDialogRouter.reloadCategories(newCategories);
+        this.inboxFilters.reloadCategories(newCategories);
         this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
         this.typeNameDefaultsWriter.write();
         this.notificationDelivery = new NotificationDelivery(
@@ -557,6 +563,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.typeNameDefaultsWriter = null;
         this.preferenceDialogRouter = null;
         this.inboxRouter = null;
+        this.inboxFilters = null;
         this.mailRouter = null;
         this.mailNotifier = null;
         if (this.database != null) {
@@ -632,6 +639,11 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         try {
             this.categories = loadCategories();
             this.preferenceDialogRouter.reloadCategories(this.categories);
+            // Null-guarded rather than assumed: this runs from a registry change listener, which can
+            // fire before the inbox router is built and again while the plugin is tearing down.
+            if (this.inboxFilters != null) {
+                this.inboxFilters.reloadCategories(this.categories);
+            }
             this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
             this.typeNameDefaultsWriter.write();
         } catch (IOException ex) {
