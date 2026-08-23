@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -46,11 +47,13 @@ public final class InboxRouter {
     private final InboxChatRow chatRow;
 
     /**
-     * The data type this screen is restricted to, or {@code null} for unfiltered. Threaded into every
-     * {@link NotificationService} call this router makes, so {@code /mail}'s paging and counts agree with
-     * its own filtered view rather than the whole inbox.
+     * The data types this screen is permanently restricted to, or {@code null} for a screen the player
+     * may filter themselves. Threaded into every {@link NotificationService} call this router makes, so
+     * {@code /mail}'s paging and counts agree with its own filtered view rather than the whole inbox.
+     *
+     * <p>A pinned router ({@code /mail}) admits no player-chosen filter and shows no Filter button.
      */
-    private final String dataTypeFilter;
+    private final Set<String> pinnedFilter;
 
     /**
      * The command this screen belongs to ({@code notifications} or {@code mail}), used to word the chat
@@ -59,10 +62,11 @@ public final class InboxRouter {
      */
     private final String commandLabel;
 
-    /** The last page each player looked at. Dropped on quit by {@code InboxQuitListener}. */
-    private final Map<UUID, PageBounds> cursors = new ConcurrentHashMap<>();
-    /** The entries of that page, so a chat {@code read <entry>}/{@code dismiss <entry>} can resolve the index. */
-    private final Map<UUID, List<InboxEntry>> lastListed = new ConcurrentHashMap<>();
+    /**
+     * What each player last listed, held separately for the dialog and for chat so that neither surface
+     * can move the other's index. Dropped on quit by {@code InboxQuitListener}. See {@link InboxCursors}.
+     */
+    private final InboxCursors cursors = new InboxCursors();
 
     private volatile int pageSize;
 
@@ -71,7 +75,7 @@ public final class InboxRouter {
                        @NotNull NotificationService service,
                        @NotNull InboxEntryRenderer renderer,
                        int pageSize,
-                       @Nullable String dataTypeFilter,
+                       @Nullable Set<String> pinnedFilter,
                        @NotNull String commandLabel,
                        @NotNull Component title,
                        @NotNull InboxChatRow chatRow) {
@@ -80,7 +84,7 @@ public final class InboxRouter {
         this.service = service;
         this.renderer = renderer;
         this.pageSize = pageSize;
-        this.dataTypeFilter = dataTypeFilter;
+        this.pinnedFilter = pinnedFilter;
         this.commandLabel = commandLabel;
         this.title = title;
         this.chatRow = chatRow;
@@ -106,8 +110,7 @@ public final class InboxRouter {
     }
 
     public void drop(@NotNull UUID playerId) {
-        this.cursors.remove(playerId);
-        this.lastListed.remove(playerId);
+        this.cursors.drop(playerId);
     }
 
     /**
@@ -119,7 +122,7 @@ public final class InboxRouter {
      * one-line reply is also simply the better answer to "show me nothing".
      */
     public void openInbox(@NotNull Player player, int page) {
-        withPage(player, page, read -> {
+        withPage(player, page, this.pinnedFilter, Surface.DIALOG, read -> {
             if (read.entries().isEmpty()) {
                 player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_EMPTY));
                 return;
@@ -154,14 +157,14 @@ public final class InboxRouter {
 
     public void markAllSeen(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            this.service.markAllSeen(player.getUniqueId(), this.dataTypeFilter);
+            this.service.markAllSeen(player.getUniqueId(), this.pinnedFilter);
             openInbox(player, currentPage(player.getUniqueId()));
         });
     }
 
     public void dismissSeen(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            this.service.dismissSeen(player.getUniqueId(), this.dataTypeFilter);
+            this.service.dismissSeen(player.getUniqueId(), this.pinnedFilter);
             openInbox(player, 1);
         });
     }
@@ -172,20 +175,21 @@ public final class InboxRouter {
      * composed from exactly those two service calls rather than a new one, so it dismisses by deleting
      * target rows like every other dismissal and needs no extra query.
      *
-     * <p>The cursor is dropped afterwards, so a stale {@code read <entry>}/{@code dismiss <entry>} cannot resolve
-     * against entries that no longer exist.
+     * <p>The chat index is dropped afterwards, so a stale {@code read <entry>}/{@code delete <entry>}
+     * cannot resolve against entries that no longer exist. Only the chat index: the dialog resolves a
+     * clicked row by that row's own key, and an open dialog is not this command's business.
      */
     public void clearInChat(@NotNull Player player) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             UUID id = player.getUniqueId();
-            int total = this.service.inbox(id, 1, 1, this.dataTypeFilter).totalEntries();
+            int total = this.service.inbox(id, 1, 1, this.pinnedFilter).totalEntries();
             if (total == 0) {
                 player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_ALREADY_EMPTY));
                 return;
             }
-            this.service.markAllSeen(id, this.dataTypeFilter);
-            this.service.dismissSeen(id, this.dataTypeFilter);
-            drop(id);
+            this.service.markAllSeen(id, this.pinnedFilter);
+            this.service.dismissSeen(id, this.pinnedFilter);
+            this.cursors.clearChat(id);
             // Separate keys rather than an inline ternary: pluralisation is a wording decision, and
             // an operator translating this needs both forms in the file to change.
             player.sendMessage(total == 1
@@ -197,7 +201,7 @@ public final class InboxRouter {
 
     /** The chat fallback's listing: {@code /notifications list [page]}. */
     public void listInChat(@NotNull Player player, int page) {
-        withPage(player, page, read -> {
+        withPage(player, page, this.pinnedFilter, Surface.CHAT, read -> {
             if (read.entries().isEmpty()) {
                 player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_EMPTY));
                 return;
@@ -260,7 +264,7 @@ public final class InboxRouter {
      * {@code null} when nothing has been listed or the index is out of range.
      */
     private InboxEntry indexed(@NotNull Player player, int index) {
-        List<InboxEntry> listed = this.lastListed.get(player.getUniqueId());
+        List<InboxEntry> listed = this.cursors.chatListed(player.getUniqueId());
         if (listed == null || listed.isEmpty()) {
             player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_LIST_FIRST,
                     MessageContainer.value("command", this.commandLabel)));
@@ -275,21 +279,13 @@ public final class InboxRouter {
     }
 
     private int currentPage(@NotNull UUID playerId) {
-        PageBounds bounds = this.cursors.get(playerId);
-        return bounds == null ? 1 : bounds.page();
+        return this.cursors.dialogPage(playerId);
     }
 
     private InboxEntry findEntry(@NotNull UUID playerId, @NotNull String notificationKey) {
-        List<InboxEntry> listed = this.lastListed.get(playerId);
-        if (listed != null) {
-            for (InboxEntry entry : listed) {
-                if (entry.notifKey().equals(notificationKey)) {
-                    // Re-read so seenTime reflects the markSeen just performed.
-                    return withSeen(entry);
-                }
-            }
-        }
-        return null;
+        InboxEntry entry = this.cursors.dialogEntry(playerId, notificationKey);
+        // Re-read so seenTime reflects the markSeen just performed.
+        return entry == null ? null : withSeen(entry);
     }
 
     private static InboxEntry withSeen(@NotNull InboxEntry entry) {
@@ -304,15 +300,23 @@ public final class InboxRouter {
      * recording the cursor and the listed entries so the chat fallback and the paging buttons can
      * resolve against them.
      */
-    private void withPage(@NotNull Player player, int page, @NotNull Consumer<InboxPage> consumer) {
+    private void withPage(@NotNull Player player, int page, @Nullable Set<String> filter,
+                          @NotNull Surface surface, @NotNull Consumer<InboxPage> consumer) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             UUID id = player.getUniqueId();
-            InboxPage read = this.service.inbox(id, page, this.pageSize, this.dataTypeFilter);
+            InboxPage read = this.service.inbox(id, page, this.pageSize, filter);
             // Clamped twice on the way in, here and in the service. One is a UI helper and the other a
             // public-API trust boundary; neither should assume the other ran.
-            this.cursors.put(id, new PageBounds(read.page(), read.pageSize(), read.totalEntries()));
-            this.lastListed.put(id, read.entries());
+            if (surface == Surface.DIALOG) {
+                this.cursors.recordDialog(id,
+                        new PageBounds(read.page(), read.pageSize(), read.totalEntries()), read.entries());
+            } else {
+                this.cursors.recordChat(id, read.entries());
+            }
             consumer.accept(read);
         });
     }
+
+    /** Which screen a read is for, deciding which of the two indexes it records into. */
+    private enum Surface { DIALOG, CHAT }
 }

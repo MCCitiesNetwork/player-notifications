@@ -380,7 +380,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.inboxRouter = new InboxRouter(
                 this.messages,
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                null, "notifications", this.messages.messageFor(MessageKeys.INBOX_TITLE),
+                (java.util.Set<String>) null, "notifications", this.messages.messageFor(MessageKeys.INBOX_TITLE),
                 InboxChatRow.titleOnly(this.messages));
         // A second, mail-filtered InboxRouter instance rather than one shared router with a per-call
         // filter: the cursor and last-listed maps are per-screen state, and /mail list 2 must not make
@@ -388,7 +388,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.mailRouter = new InboxRouter(
                 this.messages,
                 this, this.notificationService, inboxRenderer, inboxPageSize,
-                MailPayload.DATA_TYPE, "mail", this.messages.messageFor(MessageKeys.MAIL_TITLE),
+                java.util.Set.of(MailPayload.DATA_TYPE), "mail", this.messages.messageFor(MessageKeys.MAIL_TITLE),
                 new MailChatRow(this.messages, inboxRenderer::decodePayload, ZoneId.systemDefault(), Instant::now));
         getServer().getPluginManager().registerEvents(
                 new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
