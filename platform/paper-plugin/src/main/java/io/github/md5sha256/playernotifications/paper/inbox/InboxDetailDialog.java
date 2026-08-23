@@ -19,17 +19,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One notification, read in full. Two buttons: Delete (removes it and returns to the list) and Back
- * (returns without deleting) — Back-doesn't-commit mirrors the rule players already learned in the
- * preference editors. Delete is red, because it is the one button here that destroys something.
+ * One notification, read in full. Three buttons: Delete (removes it and returns to the list), Mark as
+ * unread (the undo for having opened it), and Back (returns, changing nothing) — Back-doesn't-commit
+ * mirrors the rule players already learned in the preference editors. Delete is red, because it is the
+ * one button here that destroys something.
  *
- * <p>Opening this screen has already marked the entry seen; that is not undone by Back.
+ * <p>Opening this screen has already marked the entry seen, and Back does not undo that — <i>Mark as
+ * unread</i> is what does, which is the whole reason it is here. The button set and its wording match
+ * the Discord entry detail, so the two surfaces read the same.
  *
  * <p>Unverified by automated tests: dialogs need a live server.
  */
 final class InboxDetailDialog {
 
     private static final Component DELETE_LABEL = Component.text("Delete", NamedTextColor.RED);
+    private static final Component MARK_UNREAD_LABEL = Component.text("Mark as unread");
     private static final Component BACK_LABEL = Component.text("Back");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
@@ -48,6 +52,10 @@ final class InboxDetailDialog {
         buttons.add(ActionButton.builder(DELETE_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.dismissEntry(player, key), DialogSupport.callbackOptions()))
+                .build());
+        buttons.add(ActionButton.builder(MARK_UNREAD_LABEL)
+                .action(DialogAction.customClick((response, audience) ->
+                        this.router.markEntryUnread(player, key), DialogSupport.callbackOptions()))
                 .build());
         buttons.add(ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->

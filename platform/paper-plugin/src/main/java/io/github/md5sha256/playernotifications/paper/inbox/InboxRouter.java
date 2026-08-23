@@ -263,6 +263,27 @@ public final class InboxRouter {
         });
     }
 
+    /**
+     * Marks one entry unread again and returns to the list — the exact inverse of the {@code markSeen}
+     * that {@link #openEntry} performed, and the only undo for having opened a row by accident. It is
+     * the in-game counterpart of the Discord entry detail's <i>Mark as unread</i>, worded the same on
+     * both surfaces.
+     *
+     * <p>Unread also means <b>due</b>, so a trigger such as {@code JoinDeliveryListener} will push this
+     * notification again on the player's next join. That is what unread means here rather than a side
+     * effect, and it is why nothing calls this on a player's behalf.
+     *
+     * <p>Reopens at the page the player was on, as {@link #dismissEntry} does: the row that just
+     * changed is on that page, and its bullet is the only place the change is visible — the detail
+     * screen shows no read state, so returning them to page 1 would hide the result of the press.
+     */
+    public void markEntryUnread(@NotNull Player player, @NotNull String notificationKey) {
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
+            this.service.markUnread(notificationKey, player.getUniqueId());
+            openInbox(player, currentPage(player.getUniqueId()));
+        });
+    }
+
     public void dismissEntry(@NotNull Player player, @NotNull String notificationKey) {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
             this.service.deleteNotificationTarget(notificationKey, player.getUniqueId());
