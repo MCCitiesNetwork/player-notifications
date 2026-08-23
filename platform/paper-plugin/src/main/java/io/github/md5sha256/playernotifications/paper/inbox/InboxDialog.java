@@ -92,7 +92,7 @@ final class InboxDialog {
             DialogRegistryEntry.Builder builder = factory.empty();
             builder.base(base).type(DialogType.multiAction(buttons)
                     .exitAction(ActionButton.builder(CLOSE_LABEL).build())
-                    .columns(1)
+                    .columns(2)
                     .build());
         });
         player.showDialog(dialog);
