@@ -20,6 +20,8 @@ public class NotificationDataTypeRegistry {
     private final Map<Class<?>, NotificationRenderer<?>> renderers
             = Collections.synchronizedMap(new HashMap<>());
     private final Map<String, Class<?>> payloadMapping = Collections.synchronizedMap(new HashMap<>());
+    /** Raw MiniMessage, keyed by {@code dataType}. See {@link #registerDisplayName}. */
+    private final Map<String, String> displayNames = Collections.synchronizedMap(new HashMap<>());
 
     public <T> void registerPayloadMapping(@NotNull String dataType,
                                            @NotNull Class<T> payloadClass) {
@@ -118,6 +120,39 @@ public class NotificationDataTypeRegistry {
     @NotNull
     public Set<String> dataTypes() {
         return Set.copyOf(this.payloadMapping.keySet());
+    }
+
+    /**
+     * Supplies the player-facing name for a {@code dataType} — the module author's answer to "what is
+     * this type called", which the preference screens show instead of guessing from the registry key.
+     *
+     * <p>Registering one is <b>optional</b>. A type with no display name is title-cased from its key
+     * ({@code essentials-mail} → "Essentials Mail"), which is what every type did before this existed.
+     * Supply one whenever the key is an identifier rather than a name.
+     *
+     * <p>{@code displayName} is raw <b>MiniMessage</b>, so a name may carry colour. It is a
+     * <em>default</em>, not the final word: a server operator overrides it in the host's
+     * {@code type-names.yml}, and their value always wins. Nothing here is persisted — re-register on
+     * every startup, as with every other registration on this class.
+     */
+    public void registerDisplayName(@NotNull String dataType, @NotNull String displayName) {
+        this.displayNames.put(dataType, displayName);
+    }
+
+    public void unregisterDisplayName(@NotNull String dataType) {
+        this.displayNames.remove(dataType);
+    }
+
+    /**
+     * The module-supplied display name for a {@code dataType}, or empty when none was registered.
+     *
+     * <p>Deliberately independent of {@link #registerPayloadMapping}: naming a type does not make it a
+     * known type, so {@link #dataTypes()} still reports only types with a payload mapping. A name for a
+     * type nothing registers is inert rather than conjuring a row into the preference screens.
+     */
+    @NotNull
+    public Optional<String> displayName(@NotNull String dataType) {
+        return Optional.ofNullable(this.displayNames.get(dataType));
     }
 
 }
