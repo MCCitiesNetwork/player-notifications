@@ -17,6 +17,7 @@ import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatch
 import io.github.md5sha256.playernotifications.paper.command.BroadcastCommand;
 import io.github.md5sha256.playernotifications.paper.command.MailCommand;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
+import io.github.md5sha256.playernotifications.paper.config.ConfigKeyGaps;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
@@ -276,6 +277,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationService.categoryRegistry().addChangeListener(this::scheduleCategoryRebuild);
 
         warnAboutUnmappedCategoryTypes();
+        warnAboutMissingConfigKeys();
         getLogger().info("PlayerNotifications enabled");
     }
 
@@ -408,6 +410,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.mailRouter.reloadPageSize(newSettings.inboxPageSize());
         reschedulePruneTask(newSettings.pruneIntervalSeconds());
         warnAboutUnmappedCategoryTypes();
+        warnAboutMissingConfigKeys();
 
         getLogger().info("Configuration reloaded by " + sender.getName());
         sender.sendMessage(this.messages.messageFor(MessageKeys.RELOAD_SUCCESS));
@@ -521,12 +524,27 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     }
 
     /**
-     * Reloads {@code messages.yml} into the existing container. {@code copyDefaultsYaml} merges in
-     * keys absent from the operator's file, so an upgrade that adds a message gains its default
-     * without discarding any wording they have already changed.
+     * Reloads {@code messages.yml} into the existing container, with the bundled defaults underneath
+     * the operator's file — in memory only, writing nothing to disk.
+     *
+     * <p>{@code messages.yml} is the one config file that gets this treatment, because a missing key
+     * there is not a neutral absence: {@code MessageContainer.messageFor} renders an unknown key as
+     * {@code Component.text(key)}, so a message added by a later release would print {@code mail.sent}
+     * to players on every existing install, and {@code MessageKeysTest} cannot catch it — it checks the
+     * shipped resource, not the operator's file.
+     *
+     * <p>The asymmetry with the other three files is deliberate: here an absent key means "I did not
+     * override this", because every key has a shipped default that is a sensible value. In
+     * {@code categories.yml} an absent category means "I do not want this category", because a category
+     * is a whole object the operator composes rather than a slot with a natural default.
      */
     private void reloadMessages() throws IOException {
-        this.messages.load(copyDefaultsYaml("messages"));
+        ConfigurationNode merged = bundledNode("messages");
+        // mergeFrom fills keys ABSENT from the receiver, so the receiver is the loser: merging the
+        // operator's node into the bundled one is what makes the operator win. Reversing these two
+        // silently makes every shipped default override the operator's edit.
+        merged.mergeFrom(copyDefaultsYaml("messages"));
+        this.messages.load(merged);
     }
 
     private NotificationCategories loadCategories() throws IOException {
@@ -581,9 +599,18 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     }
 
     /**
-     * Ensures {@code <resourceName>.yml} exists in the data folder (copying the
-     * bundled default on first run), then loads it, merges in any newly-added
-     * default keys, saves it back, and returns the root node.
+     * Ensures {@code <resourceName>.yml} exists in the data folder (copying the bundled default in on
+     * first run only), loads it, and returns the root node.
+     *
+     * <p><b>Writes nothing after that first copy.</b> This used to merge the bundled defaults back in
+     * and save the result, which rewrote the operator's file on every call — at startup, on every
+     * {@code /notifications reload}, and, for {@code categories.yml}, on every late-registration
+     * category rebuild. Each rewrite was a Configurate re-emit, so it stripped their comments,
+     * reordered their keys and normalised their quoting. The file is theirs; the plugin reads it.
+     *
+     * <p>What the merge used to guarantee — that an upgrade's new key reached every install — is now
+     * reported instead by {@link #warnAboutMissingConfigKeys()}, and {@code messages.yml} additionally
+     * gets a defaults-underlay in memory (see {@link #reloadMessages()}).
      */
     private ConfigurationNode copyDefaultsYaml(@NotNull String resourceName) throws IOException {
         String fileName = resourceName + ".yml";
@@ -603,19 +630,58 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             }
         }
 
-        YamlConfigurationLoader loader = yamlLoader().file(file).build();
-        ConfigurationNode existing = loader.load();
-        try (InputStream defaultStream = getResource(fileName)) {
-            if (defaultStream != null) {
-                YamlConfigurationLoader defaultsLoader = yamlLoader()
-                        .source(() -> new BufferedReader(
-                                new InputStreamReader(defaultStream, StandardCharsets.UTF_8)))
-                        .build();
-                existing.mergeFrom(defaultsLoader.load());
-                loader.save(existing);
+        return yamlLoader().file(file).build().load();
+    }
+
+    /**
+     * Loads {@code <resourceName>.yml} from the plugin jar, touching no file on disk. Returns an empty
+     * node when the resource is missing, so a packaging fault degrades to "no defaults to compare
+     * against" rather than an enable failure — every caller has already loaded the operator's own file
+     * successfully by the time this runs.
+     */
+    private @NotNull ConfigurationNode bundledNode(@NotNull String resourceName) throws IOException {
+        String fileName = resourceName + ".yml";
+        try (InputStream stream = getResource(fileName)) {
+            if (stream == null) {
+                getLogger().severe("Failed to find bundled default resource: " + fileName);
+                return yamlLoader().build().createNode();
+            }
+            return yamlLoader()
+                    .source(() -> new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)))
+                    .build()
+                    .load();
+        }
+    }
+
+    /**
+     * Logs one warning per config file naming any key the bundled default has and the operator's file
+     * lacks.
+     *
+     * <p>This replaces what copy-defaults-then-merge used to do silently. Without it a key added by a
+     * later release arrives as a primitive {@code 0}/{@code false} — which {@link PluginSettings}'
+     * compact constructor absorbs today, but would not for a future boolean whose correct default is
+     * {@code true} — or, for a {@code @Required} reference key such as {@code settings.yml}'s
+     * {@code default-media}, fails deserialization and disables the plugin with nothing in the log
+     * pointing at the cause.
+     *
+     * <p>{@code messages.yml} is excluded: it has no gaps by construction, since
+     * {@link #reloadMessages()} resolves an absent key from the bundled defaults.
+     *
+     * <p>Comparison only — neither file is modified, which is the entire point of the change this
+     * belongs to.
+     */
+    private void warnAboutMissingConfigKeys() {
+        for (String name : List.of("database", "settings", "categories")) {
+            try {
+                List<String> missing = ConfigKeyGaps.missingKeys(bundledNode(name), copyDefaultsYaml(name));
+                if (!missing.isEmpty()) {
+                    getLogger().warning(name + ".yml is missing keys added by a newer version of the "
+                            + "plugin; add them by hand (the defaults are in the plugin jar): " + missing);
+                }
+            } catch (IOException ex) {
+                getLogger().log(Level.WARNING, "Could not check " + name + ".yml for missing keys.", ex);
             }
         }
-        return existing;
     }
 
     private YamlConfigurationLoader.Builder yamlLoader() {

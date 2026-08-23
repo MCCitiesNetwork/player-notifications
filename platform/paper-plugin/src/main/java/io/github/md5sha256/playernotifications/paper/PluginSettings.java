@@ -32,8 +32,14 @@ public record PluginSettings(
         List<String> defaultMedia,
 
         // Primitives, so deliberately not @Required: that rule exists to stop a missing key
-        // deserializing to null, which a primitive cannot do. Both keys are written into every data
-        // folder by the copy-defaults-then-merge path, including on upgrade.
+        // deserializing to null, which a primitive cannot do.
+        //
+        // A key absent from an older settings.yml is NOT written in on upgrade any more -- the plugin
+        // no longer rewrites a config file after its first copy, and reports the gap through
+        // PlayerNotificationsPlugin.warnAboutMissingConfigKeys instead. So an absent key here really
+        // does reach this record as 0/false, and the compact constructor below is what makes that
+        // safe. A future boolean whose correct default is `true` cannot rely on this and needs its
+        // own handling.
         @Setting("deliver-on-join")
         boolean deliverOnJoin,
 
