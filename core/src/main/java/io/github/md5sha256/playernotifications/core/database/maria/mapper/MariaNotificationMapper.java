@@ -13,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -95,7 +96,14 @@ public interface MariaNotificationMapper extends NotificationMapper {
             WHERE t.playerUuid = #{playerId}
               AND n.notifScheduledTime &lt;= #{now}
               AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
-              <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+              <choose>
+                <when test="dataTypes == null"/>
+                <when test="dataTypes.isEmpty()">AND 1 = 0</when>
+                <otherwise>
+                  AND n.notifPayloadType IN
+                  <foreach item="t" collection="dataTypes" open="(" separator="," close=")">#{t}</foreach>
+                </otherwise>
+              </choose>
             ORDER BY n.notifScheduledTime DESC, n.notifPriority DESC, n.notifKey DESC
             LIMIT #{limit} OFFSET #{offset}
             </script>
@@ -113,7 +121,7 @@ public interface MariaNotificationMapper extends NotificationMapper {
                                                            @Param("now") @NotNull Instant now,
                                                            @Param("limit") int limit,
                                                            @Param("offset") int offset,
-                                                           @Param("dataType") @Nullable String dataType);
+                                                           @Param("dataTypes") @Nullable Collection<String> dataTypes);
 
     @Override
     @Select("""
@@ -124,11 +132,18 @@ public interface MariaNotificationMapper extends NotificationMapper {
             WHERE t.playerUuid = #{playerId}
               AND n.notifScheduledTime &lt;= #{now}
               AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
-              <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+              <choose>
+                <when test="dataTypes == null"/>
+                <when test="dataTypes.isEmpty()">AND 1 = 0</when>
+                <otherwise>
+                  AND n.notifPayloadType IN
+                  <foreach item="t" collection="dataTypes" open="(" separator="," close=")">#{t}</foreach>
+                </otherwise>
+              </choose>
             </script>
             """)
     int countInbox(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now,
-                   @Param("dataType") @Nullable String dataType);
+                   @Param("dataTypes") @Nullable Collection<String> dataTypes);
 
     @Override
     @Select("""
@@ -140,11 +155,18 @@ public interface MariaNotificationMapper extends NotificationMapper {
               AND t.seenTime IS NULL
               AND n.notifScheduledTime &lt;= #{now}
               AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
-              <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+              <choose>
+                <when test="dataTypes == null"/>
+                <when test="dataTypes.isEmpty()">AND 1 = 0</when>
+                <otherwise>
+                  AND n.notifPayloadType IN
+                  <foreach item="t" collection="dataTypes" open="(" separator="," close=")">#{t}</foreach>
+                </otherwise>
+              </choose>
             </script>
             """)
     int countUnread(@Param("playerId") @NotNull UUID playerId, @Param("now") @NotNull Instant now,
-                    @Param("dataType") @Nullable String dataType);
+                    @Param("dataTypes") @Nullable Collection<String> dataTypes);
 
     @Override
     @Insert("""

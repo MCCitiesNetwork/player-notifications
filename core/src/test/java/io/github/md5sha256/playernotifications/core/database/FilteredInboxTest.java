@@ -47,7 +47,7 @@ class FilteredInboxTest extends AbstractDatabaseTest {
         Assertions.assertEquals(2, mailPage.totalEntries());
         Assertions.assertEquals(2, mailPage.unreadCount());
 
-        InboxPage everything = service.inbox(PLAYER, 1, 10, null);
+        InboxPage everything = service.inbox(PLAYER, 1, 10, (String) null);
         Assertions.assertEquals(3, everything.totalEntries());
 
         Assertions.assertEquals(2, service.unreadCount(PLAYER, "mail"));
@@ -65,10 +65,10 @@ class FilteredInboxTest extends AbstractDatabaseTest {
         Assertions.assertEquals(0, service.unreadCount(PLAYER, "mail"));
         Assertions.assertEquals(1, service.unreadCount(PLAYER));
 
-        service.markAllSeen(PLAYER, null);
+        service.markAllSeen(PLAYER, (String) null);
         service.dismissSeen(PLAYER, "mail");
 
-        InboxPage remaining = service.inbox(PLAYER, 1, 10, null);
+        InboxPage remaining = service.inbox(PLAYER, 1, 10, (String) null);
         Assertions.assertEquals(1, remaining.totalEntries());
         Assertions.assertEquals("test-1", remaining.entries().get(0).notifKey());
     }

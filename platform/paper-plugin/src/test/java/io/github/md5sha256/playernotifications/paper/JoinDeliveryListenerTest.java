@@ -180,8 +180,16 @@ class JoinDeliveryListenerTest {
         }
 
         @Override
-        public int unreadCount(@NotNull UUID playerId, @Nullable String dataType) {
-            return this.countsByDataType.getOrDefault(dataType, 0);
+        public int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
+            // The fake is keyed by a single data type, which is all the listener asks for: the whole
+            // inbox (null) or one type. An empty filter matches nothing, per the service contract.
+            if (dataTypes == null) {
+                return this.countsByDataType.getOrDefault(null, 0);
+            }
+            if (dataTypes.isEmpty()) {
+                return 0;
+            }
+            return this.countsByDataType.getOrDefault(dataTypes.iterator().next(), 0);
         }
 
         @Override
@@ -212,7 +220,7 @@ class JoinDeliveryListenerTest {
         }
 
         @Override
-        public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable String dataType) {
+        public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 
@@ -227,12 +235,12 @@ class JoinDeliveryListenerTest {
         }
 
         @Override
-        public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
+        public void markAllSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void dismissSeen(@NotNull UUID playerId, @Nullable String dataType) {
+        public void dismissSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 

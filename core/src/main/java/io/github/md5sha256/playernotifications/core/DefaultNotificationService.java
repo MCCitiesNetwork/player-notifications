@@ -160,17 +160,18 @@ public class DefaultNotificationService implements NotificationService {
     private static final int MAX_PAGE_SIZE = 20;
 
     @Override
-    public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable String dataType) {
+    public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize,
+                                    @Nullable Collection<String> dataTypes) {
         int size = Math.clamp(pageSize, 1, MAX_PAGE_SIZE);
         Instant now = Instant.now();
         try (SqlSessionWrapper wrapper = database.openSession()) {
             NotificationMapper mapper = wrapper.notificationMapper();
-            int totalEntries = mapper.countInbox(playerId, now, dataType);
+            int totalEntries = mapper.countInbox(playerId, now, dataTypes);
             int totalPages = Math.max(1, (totalEntries + size - 1) / size);
             int clampedPage = Math.clamp(page, 1, totalPages);
-            int unread = mapper.countUnread(playerId, now, dataType);
+            int unread = mapper.countUnread(playerId, now, dataTypes);
             List<InboxNotificationEntity> rows =
-                    mapper.selectInboxPage(playerId, now, size, (clampedPage - 1) * size, dataType);
+                    mapper.selectInboxPage(playerId, now, size, (clampedPage - 1) * size, dataTypes);
             List<InboxEntry> entries = new ArrayList<>(rows.size());
             for (InboxNotificationEntity row : rows) {
                 entries.add(new InboxEntry(
@@ -187,9 +188,9 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
-    public int unreadCount(@NotNull UUID playerId, @Nullable String dataType) {
+    public int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
-            return wrapper.notificationMapper().countUnread(playerId, Instant.now(), dataType);
+            return wrapper.notificationMapper().countUnread(playerId, Instant.now(), dataTypes);
         }
     }
 
@@ -216,24 +217,24 @@ public class DefaultNotificationService implements NotificationService {
     }
 
     @Override
-    public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
+    public void markAllSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
-            wrapper.notificationTargetMapper().markAllSeenForPlayer(playerId, Instant.now(), dataType);
+            wrapper.notificationTargetMapper().markAllSeenForPlayer(playerId, Instant.now(), dataTypes);
             wrapper.session().commit();
         }
     }
 
     @Override
-    public void dismissSeen(@NotNull UUID playerId, @Nullable String dataType) {
+    public void dismissSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             NotificationTargetMapper targetMapper = wrapper.notificationTargetMapper();
-            if (dataType == null) {
+            if (dataTypes == null) {
                 targetMapper.deleteSeenForPlayer(playerId);
             } else {
                 // A filtered DELETE would need a subquery reading Notification, which MariaDB refuses
                 // while trg_delete_targetless_notification writes it — the same constraint
                 // pruneOrphanedTargets already works around. Select the keys, then delete per key.
-                for (String key : targetMapper.selectSeenKeys(playerId, dataType)) {
+                for (String key : targetMapper.selectSeenKeys(playerId, dataTypes)) {
                     deleteNotificationTargetWithin(wrapper, key, playerId);
                 }
             }

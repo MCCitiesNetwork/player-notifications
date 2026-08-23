@@ -91,12 +91,12 @@ class MailSenderTest {
         }
 
         @Override
-        public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable String dataType) {
+        public @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public int unreadCount(@NotNull UUID playerId, @Nullable String dataType) {
+        public int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 
@@ -111,12 +111,12 @@ class MailSenderTest {
         }
 
         @Override
-        public void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
+        public void markAllSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public void dismissSeen(@NotNull UUID playerId, @Nullable String dataType) {
+        public void dismissSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes) {
             throw new UnsupportedOperationException();
         }
 

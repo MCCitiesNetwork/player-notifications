@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,16 +39,18 @@ public interface NotificationMapper {
      * {@code notifKey} tiebreak so it is a total order — without one, two notifications sharing a
      * timestamp could swap between page reads and appear twice or not at all.
      *
-     * @param dataType when non-null, restricts the page to notifications of that data type
+     * @param dataTypes when non-null, restricts the page to notifications of those data types; an
+     *                  empty collection matches nothing
      */
     @NotNull List<InboxNotificationEntity> selectInboxPage(@NotNull UUID playerId, @NotNull Instant now,
-                                                           int limit, int offset, @Nullable String dataType);
+                                                           int limit, int offset,
+                                                           @Nullable Collection<String> dataTypes);
 
     /** Counts what {@link #selectInboxPage} would return unpaged. */
-    int countInbox(@NotNull UUID playerId, @NotNull Instant now, @Nullable String dataType);
+    int countInbox(@NotNull UUID playerId, @NotNull Instant now, @Nullable Collection<String> dataTypes);
 
     /** Counts the subset of {@link #countInbox} the player has not yet seen. */
-    int countUnread(@NotNull UUID playerId, @NotNull Instant now, @Nullable String dataType);
+    int countUnread(@NotNull UUID playerId, @NotNull Instant now, @Nullable Collection<String> dataTypes);
 
     int insert(@NotNull NotificationEntity notification);
 

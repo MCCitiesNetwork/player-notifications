@@ -60,21 +60,23 @@ public interface NotificationTargetMapper {
     /**
      * Stamps {@code seenTime} on every still-unread row belonging to the given player.
      *
-     * @param dataType when non-null, restricts the update to rows whose notification has that data
-     *                 type (checked via an {@code EXISTS} against {@code Notification}, since this
-     *                 table has no {@code notifPayloadType} column of its own)
+     * @param dataTypes when non-null, restricts the update to rows whose notification has one of
+     *                  those data types (checked via an {@code EXISTS} against {@code Notification},
+     *                  since this table has no {@code notifPayloadType} column of its own); an empty
+     *                  collection matches nothing
      * @return the number of rows updated
      */
-    int markAllSeenForPlayer(@NotNull UUID playerUuid, @NotNull Instant seenTime, @Nullable String dataType);
+    int markAllSeenForPlayer(@NotNull UUID playerUuid, @NotNull Instant seenTime,
+                             @Nullable Collection<String> dataTypes);
 
     /**
      * Returns the notification keys of the given player's already-seen rows, optionally restricted to
-     * one data type. Paired with {@link #deleteSeenForPlayer} in the unfiltered case, or with
+     * a set of data types ({@code null} unfiltered, empty matching nothing). Paired with {@link #deleteSeenForPlayer} in the unfiltered case, or with
      * per-key deletes for the filtered case: a filtered {@code DELETE} would need a subquery reading
      * {@code Notification}, which MariaDB refuses while {@code trg_delete_targetless_notification}
      * writes it, the same constraint {@code selectOrphanedTargetIds} already works around.
      */
-    @NotNull List<String> selectSeenKeys(@NotNull UUID playerUuid, @Nullable String dataType);
+    @NotNull List<String> selectSeenKeys(@NotNull UUID playerUuid, @Nullable Collection<String> dataTypes);
 
     /**
      * Deletes the given player's already-seen member rows. Removing the last member of a group lets the

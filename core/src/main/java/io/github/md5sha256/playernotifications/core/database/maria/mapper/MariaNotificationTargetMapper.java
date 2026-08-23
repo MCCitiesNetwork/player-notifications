@@ -83,18 +83,23 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
             <script>
             UPDATE NotificationTarget SET seenTime = #{seenTime}
             WHERE playerUuid = #{playerUuid} AND seenTime IS NULL
-            <if test="dataType != null">
-                AND EXISTS (
-                    SELECT 1 FROM Notification n
-                    WHERE n.notifTargetId = NotificationTarget.notifTargetId
-                      AND n.notifPayloadType = #{dataType}
-                )
-            </if>
+            <choose>
+                <when test="dataTypes == null"/>
+                <when test="dataTypes.isEmpty()">AND 1 = 0</when>
+                <otherwise>
+                    AND EXISTS (
+                        SELECT 1 FROM Notification n
+                        WHERE n.notifTargetId = NotificationTarget.notifTargetId
+                          AND n.notifPayloadType IN
+                          <foreach item="t" collection="dataTypes" open="(" separator="," close=")">#{t}</foreach>
+                    )
+                </otherwise>
+            </choose>
             </script>
             """)
     int markAllSeenForPlayer(@Param("playerUuid") @NotNull UUID playerUuid,
                              @Param("seenTime") @NotNull Instant seenTime,
-                             @Param("dataType") @Nullable String dataType);
+                             @Param("dataTypes") @Nullable Collection<String> dataTypes);
 
     @Override
     @Select("""
@@ -103,11 +108,18 @@ public interface MariaNotificationTargetMapper extends NotificationTargetMapper 
             FROM Notification n
             INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
             WHERE t.playerUuid = #{playerUuid} AND t.seenTime IS NOT NULL
-            <if test="dataType != null">AND n.notifPayloadType = #{dataType}</if>
+            <choose>
+                <when test="dataTypes == null"/>
+                <when test="dataTypes.isEmpty()">AND 1 = 0</when>
+                <otherwise>
+                  AND n.notifPayloadType IN
+                  <foreach item="t" collection="dataTypes" open="(" separator="," close=")">#{t}</foreach>
+                </otherwise>
+              </choose>
             </script>
             """)
     @NotNull List<String> selectSeenKeys(@Param("playerUuid") @NotNull UUID playerUuid,
-                                         @Param("dataType") @Nullable String dataType);
+                                         @Param("dataTypes") @Nullable Collection<String> dataTypes);
 
     @Override
     @Delete("""

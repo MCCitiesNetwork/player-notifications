@@ -66,24 +66,45 @@ public interface NotificationService {
      * now-4-page inbox gets page 4 instead of an error screen.
      */
     default @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize) {
-        return inbox(playerId, page, pageSize, null);
+        return inbox(playerId, page, pageSize, (Collection<String>) null);
     }
 
     /**
-     * The data-type-filtered form of {@link #inbox(UUID, int, int)}: {@code dataType} of {@code null}
-     * means unfiltered (identical to the three-argument form); a non-null value restricts every
-     * count and row to that data type, so a filtered view such as {@code /mail} agrees with its own
-     * paging rather than paging against the whole inbox.
+     * The single-data-type form of {@link #inbox(UUID, int, int, Collection)}: {@code null} means
+     * unfiltered, a non-null value filters to exactly that data type.
      */
-    @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize, @Nullable String dataType);
+    default @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize,
+                                     @Nullable String dataType) {
+        return inbox(playerId, page, pageSize, dataType == null ? null : List.of(dataType));
+    }
+
+    /**
+     * The data-type-filtered form of {@link #inbox(UUID, int, int)}, restricting every count and row
+     * to the given data types, so a filtered view such as {@code /mail} agrees with its own paging
+     * rather than paging against the whole inbox.
+     *
+     * <p><strong>{@code null} means unfiltered; an empty collection means "match nothing".</strong>
+     * These are deliberately different: a category may claim only data types nothing has registered,
+     * and that screen must show an empty inbox rather than every notification.
+     */
+    @NotNull InboxPage inbox(@NotNull UUID playerId, int page, int pageSize,
+                             @Nullable Collection<String> dataTypes);
 
     /** The number of due, unexpired notifications the player has not yet seen. */
     default int unreadCount(@NotNull UUID playerId) {
-        return unreadCount(playerId, null);
+        return unreadCount(playerId, (Collection<String>) null);
     }
 
-    /** The data-type-filtered form of {@link #unreadCount(UUID)}; {@code null} means unfiltered. */
-    int unreadCount(@NotNull UUID playerId, @Nullable String dataType);
+    /** The single-data-type form of {@link #unreadCount(UUID, Collection)}. */
+    default int unreadCount(@NotNull UUID playerId, @Nullable String dataType) {
+        return unreadCount(playerId, dataType == null ? null : List.of(dataType));
+    }
+
+    /**
+     * The data-type-filtered form of {@link #unreadCount(UUID)}; {@code null} means unfiltered, an
+     * empty collection means "match nothing".
+     */
+    int unreadCount(@NotNull UUID playerId, @Nullable Collection<String> dataTypes);
 
     /**
      * Marks one notification seen for one player. An unknown key, or a player the notification does not
@@ -107,11 +128,19 @@ public interface NotificationService {
 
     /** Marks every unread notification seen for the given player. */
     default void markAllSeen(@NotNull UUID playerId) {
-        markAllSeen(playerId, null);
+        markAllSeen(playerId, (Collection<String>) null);
     }
 
-    /** The data-type-filtered form of {@link #markAllSeen(UUID)}; {@code null} means unfiltered. */
-    void markAllSeen(@NotNull UUID playerId, @Nullable String dataType);
+    /** The single-data-type form of {@link #markAllSeen(UUID, Collection)}. */
+    default void markAllSeen(@NotNull UUID playerId, @Nullable String dataType) {
+        markAllSeen(playerId, dataType == null ? null : List.of(dataType));
+    }
+
+    /**
+     * The data-type-filtered form of {@link #markAllSeen(UUID)}; {@code null} means unfiltered, an
+     * empty collection means "match nothing" and so marks nothing.
+     */
+    void markAllSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes);
 
     /**
      * Dismisses the player's already-seen notifications: their target rows are deleted, so a dismissed
@@ -119,11 +148,19 @@ public interface NotificationService {
      * existing trigger. Unread notifications are untouched.
      */
     default void dismissSeen(@NotNull UUID playerId) {
-        dismissSeen(playerId, null);
+        dismissSeen(playerId, (Collection<String>) null);
     }
 
-    /** The data-type-filtered form of {@link #dismissSeen(UUID)}; {@code null} means unfiltered. */
-    void dismissSeen(@NotNull UUID playerId, @Nullable String dataType);
+    /** The single-data-type form of {@link #dismissSeen(UUID, Collection)}. */
+    default void dismissSeen(@NotNull UUID playerId, @Nullable String dataType) {
+        dismissSeen(playerId, dataType == null ? null : List.of(dataType));
+    }
+
+    /**
+     * The data-type-filtered form of {@link #dismissSeen(UUID)}; {@code null} means unfiltered, an
+     * empty collection means "match nothing" and so dismisses nothing.
+     */
+    void dismissSeen(@NotNull UUID playerId, @Nullable Collection<String> dataTypes);
 
     /**
      * Deletes target rows whose notification no longer exists. Notification deletes do not cascade into

@@ -53,15 +53,24 @@ final class FakeNotificationService implements NotificationService {
         return List.copyOf(this.enqueued);
     }
 
-    private List<InboxEntry> matching(String dataType) {
+    private List<InboxEntry> matching(Collection<String> dataTypes) {
+        // null is unfiltered; an empty collection matches nothing. See NotificationService.
         return this.entries.stream()
-                .filter(entry -> dataType == null || entry.notifPayloadType().equals(dataType))
+                .filter(entry -> dataTypes == null || dataTypes.contains(entry.notifPayloadType()))
                 .toList();
     }
 
+    /**
+     * The single data type a filter names, for the call log. Every view in this module filters to one
+     * type or to nothing at all, so recording more would assert on a shape nothing produces.
+     */
+    private static String soleType(Collection<String> dataTypes) {
+        return dataTypes == null || dataTypes.isEmpty() ? null : dataTypes.iterator().next();
+    }
+
     @Override
-    public InboxPage inbox(UUID playerId, int page, int pageSize, String dataType) {
-        List<InboxEntry> matching = matching(dataType);
+    public InboxPage inbox(UUID playerId, int page, int pageSize, Collection<String> dataTypes) {
+        List<InboxEntry> matching = matching(dataTypes);
         // The same clamping contract DefaultNotificationService applies, so a view relying on it is
         // exercised here rather than only in production.
         int size = Math.min(20, Math.max(1, pageSize));
@@ -74,8 +83,8 @@ final class FakeNotificationService implements NotificationService {
     }
 
     @Override
-    public int unreadCount(UUID playerId, String dataType) {
-        return (int) matching(dataType).stream().filter(InboxEntry::unread).count();
+    public int unreadCount(UUID playerId, Collection<String> dataTypes) {
+        return (int) matching(dataTypes).stream().filter(InboxEntry::unread).count();
     }
 
     @Override
@@ -98,13 +107,13 @@ final class FakeNotificationService implements NotificationService {
     }
 
     @Override
-    public void markAllSeen(UUID playerId, String dataType) {
-        this.calls.add(new Call("markAllSeen", dataType, null));
+    public void markAllSeen(UUID playerId, Collection<String> dataTypes) {
+        this.calls.add(new Call("markAllSeen", soleType(dataTypes), null));
     }
 
     @Override
-    public void dismissSeen(UUID playerId, String dataType) {
-        this.calls.add(new Call("dismissSeen", dataType, null));
+    public void dismissSeen(UUID playerId, Collection<String> dataTypes) {
+        this.calls.add(new Call("dismissSeen", soleType(dataTypes), null));
     }
 
     @Override
