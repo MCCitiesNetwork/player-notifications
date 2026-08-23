@@ -131,6 +131,10 @@ inbox:
   footer: '<previous> <gray>Page <white><page></white> of <white><total-pages></white></gray> <next>'
   footer-previous: '<yellow>«</yellow>'
   footer-next: '<yellow>»</yellow>'
+  # Shown in place of the arrow above when there is no page in that direction. Dimmed rather than
+  # hidden, so the footer keeps its width as you page through; set either to '' to hide it instead.
+  footer-previous-inert: '<dark_gray>«</dark_gray>'
+  footer-next-inert: '<dark_gray>»</dark_gray>'
   # The two lines /notifications read <entry> and /mail read <entry> reply with. <title> and <body>
   # are the notification as its renderer produced it, so both are markup rather than plain values.
   # The body continues the title's line, so only the title carries the prefix.

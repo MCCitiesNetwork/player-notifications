@@ -17,3 +17,6 @@ run/
 
 # Claude Code worktrees — nested checkouts, each with its own .git and build output
 .claude/worktrees/
+
+# Eclipse / VSCode Java build output — not Gradle's build/, and easy to sweep in with `git add -A`
+bin/

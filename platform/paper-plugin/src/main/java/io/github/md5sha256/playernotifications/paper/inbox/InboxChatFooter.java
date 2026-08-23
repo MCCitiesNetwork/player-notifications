@@ -4,7 +4,6 @@ import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContai
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -40,24 +39,31 @@ public final class InboxChatFooter {
             return null;
         }
         return messages.messageFor(MessageKeys.INBOX_FOOTER,
-                MessageContainer.markup("previous",
-                        arrow(messages, MessageKeys.INBOX_FOOTER_PREVIOUS, commandLabel, page - 1, page > 1)),
-                MessageContainer.markup("next",
-                        arrow(messages, MessageKeys.INBOX_FOOTER_NEXT, commandLabel, page + 1, page < totalPages)),
+                MessageContainer.markup("previous", arrow(messages, commandLabel, page - 1, page > 1,
+                        MessageKeys.INBOX_FOOTER_PREVIOUS, MessageKeys.INBOX_FOOTER_PREVIOUS_INERT)),
+                MessageContainer.markup("next", arrow(messages, commandLabel, page + 1, page < totalPages,
+                        MessageKeys.INBOX_FOOTER_NEXT, MessageKeys.INBOX_FOOTER_NEXT_INERT)),
                 MessageContainer.value("page", String.valueOf(page)),
                 MessageContainer.value("total-pages", String.valueOf(totalPages)));
     }
 
     /**
-     * One arrow. An arrow at the end of its range is rendered <em>inert</em> — dimmed and unclickable
-     * — rather than omitted: dropping it changes the footer's width from page to page, which reads as
-     * the pager jumping about. The cost is a click that does nothing, which is the quieter failure.
+     * One arrow. An arrow at the end of its range is rendered <em>inert</em> — dimmed and unclickable —
+     * rather than omitted: dropping it changes the footer's width from page to page, which reads as the
+     * pager jumping about. The cost is a click that does nothing, which is the quieter failure.
+     *
+     * <p>The two states are <strong>two keys</strong>, not one key recoloured here. MiniMessage renders
+     * {@code <yellow>«</yellow>} as a parent carrying a coloured child, so {@code Component#color} on
+     * what {@code messageFor} returns is a no-op and the inert arrow kept rendering yellow —
+     * indistinguishable from the live one. Keys also leave the look where the rest of it lives: an
+     * operator can restyle either state, or blank the inert one to hide it.
      */
-    private static @NotNull Component arrow(@NotNull MessageContainer messages, @NotNull String key,
-                                            @NotNull String commandLabel, int target, boolean live) {
-        Component arrow = messages.messageFor(key);
+    private static @NotNull Component arrow(@NotNull MessageContainer messages,
+                                            @NotNull String commandLabel, int target, boolean live,
+                                            @NotNull String liveKey, @NotNull String inertKey) {
         return live
-                ? arrow.clickEvent(ClickEvent.runCommand("/" + commandLabel + " list " + target))
-                : arrow.color(NamedTextColor.DARK_GRAY);
+                ? messages.messageFor(liveKey)
+                        .clickEvent(ClickEvent.runCommand("/" + commandLabel + " list " + target))
+                : messages.messageFor(inertKey);
     }
 }

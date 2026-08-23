@@ -3,7 +3,10 @@ package io.github.md5sha256.playernotifications.paper.inbox;
 import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.paper.localisation.TestMessages;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 
@@ -86,6 +89,36 @@ class InboxChatFooterTest {
         assertNotNull(footer);
         assertTrue(plain(footer).contains("»"), plain(footer));
         assertEquals(List.of("/notifications list 2"), commands(footer));
+    }
+
+    /**
+     * The inert arrow must actually <em>look</em> inert. MiniMessage renders {@code <yellow>«</yellow>}
+     * as a parent carrying a coloured child, so an earlier version that called {@code Component#color}
+     * on what {@code messageFor} returned was a no-op: the unclickable arrow still rendered yellow and
+     * was indistinguishable from the live one.
+     */
+    @Test
+    void inertArrowIsDimmed() {
+        // Page 1 of 3: « has nowhere to go, » does.
+        assertEquals(NamedTextColor.DARK_GRAY, colourOf(InboxChatFooter.build(MESSAGES, "notifications", 1, 3), "«"));
+        assertEquals(NamedTextColor.YELLOW, colourOf(InboxChatFooter.build(MESSAGES, "notifications", 1, 3), "»"));
+        // Last page: the other way round.
+        assertEquals(NamedTextColor.YELLOW, colourOf(InboxChatFooter.build(MESSAGES, "notifications", 3, 3), "«"));
+        assertEquals(NamedTextColor.DARK_GRAY, colourOf(InboxChatFooter.build(MESSAGES, "notifications", 3, 3), "»"));
+    }
+
+    /** The colour of the node whose own content is {@code glyph}, ignoring its ancestors' text. */
+    private static TextColor colourOf(Component component, String glyph) {
+        if (component instanceof TextComponent text && text.content().equals(glyph)) {
+            return text.color();
+        }
+        for (Component child : component.children()) {
+            TextColor found = colourOf(child, glyph);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     @Test

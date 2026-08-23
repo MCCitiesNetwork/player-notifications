@@ -1,6 +1,6 @@
 # Uniform message styling — design
 
-**Status:** proposed
+**Status:** implemented
 **Date:** 2026-08-23
 
 ## Goal
@@ -93,11 +93,18 @@ Two value changes carry meaning beyond colour:
 end with a usage hint and nothing else, so a chat-fallback reader on page 1 has no way to reach page
 2 but to know that `/notifications list 2` exists.
 
-New keys `inbox.footer`, `inbox.footer-previous`, `inbox.footer-next`. **The click is attached in
+New keys `inbox.footer`, `inbox.footer-previous`, `inbox.footer-next`, and the inert forms
+`inbox.footer-previous-inert` / `inbox.footer-next-inert`. **The click is attached in
 Java, not in the file** — `MessageContainer` has no way to fill a `<click>` tag *argument*, and
 realty pays for that with a `deserializeRaw` subclass this plugin deliberately does not have. So the
 two arrow keys hold arrow text only, and `paper.inbox.InboxChatFooter` wraps each in a
 `ClickEvent.runCommand`.
+
+**An arrow's live and inert forms are two keys, not one key recoloured in Java.** MiniMessage renders
+`<yellow>«</yellow>` as a parent carrying a coloured *child*, so `Component#color` on what `messageFor`
+returns is a no-op — the first implementation did exactly that and the unclickable arrow still rendered
+yellow, indistinguishable from the live one. Two keys also leave the look where the rest of it lives:
+an operator can restyle either state, or blank the inert one to hide it after all.
 
 `InboxChatFooter` is a separate class rather than a private method on `InboxRouter` for the reason
 `MailChatRow` and `InboxFilters` are: it holds a decision (when an arrow is live, what command it
@@ -162,7 +169,8 @@ worst outcome of a bad edit is an unprefixed message, never a broken reply.
 - `InboxChatFooterTest` (new): a middle page renders both arrows with the right commands; page 1 has
   an inert previous arrow; the last page has an inert next arrow; a single-page listing renders
   nothing; the command label is honoured, so `/mail list 2` is never emitted by the notifications
-  router.
+  router; and each arrow's colour is asserted per glyph, which is what caught the `Component#color`
+  no-op above.
 - Existing wording assertions constrain the restyle and must keep passing unchanged:
   `TestNotificationSenderTest` (`muted`, `silenced`, `no delivery methods`, `skipped`, and that the
   no-media reply does **not** say "silenced"), `JoinDeliveryListenerTest`
@@ -188,4 +196,5 @@ worst outcome of a bad edit is an unprefixed message, never a broken reply.
   line. This is realty's rhythm and is the deliberate trade named above; removing the `<newline>`
   from the `prefix` key is the operator's one-character escape hatch.
 - **The footer's inert arrows are dimmed, not hidden**, so a player may click one and get nothing.
-  Hiding them shifts the footer's width between pages, which reads worse.
+  Hiding them shifts the footer's width between pages, which reads worse — but the inert forms are
+  their own keys, so an operator who disagrees can blank them.
