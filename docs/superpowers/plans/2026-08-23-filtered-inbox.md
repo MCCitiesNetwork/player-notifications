@@ -125,12 +125,13 @@ verification is Task 6's checklist.
 **Live server only:** `./gradlew :platform:paper-plugin:runServer`. Needs a reachable MariaDB per
 `database.yml`. Not yet run.
 
-- [ ] `/notifications` opens the inbox with a `Filter: All` button
-- [ ] The button opens the picker; every category is listed, "All notifications" first, the active
-      row marked, and **no unread numbers anywhere on the screen**
-- [ ] Back returns to the list and Close only closes — one of each, not two Backs
-- [ ] Choosing a category reopens the list filtered, titled with the category label, button reading
-      `Filter: <label>`
+- [ ] `/notifications` opens the **filter picker**, not the list
+- [ ] Every category is listed, "All notifications" first, the active row marked with `▶`, and
+      **no unread numbers anywhere on the screen**
+- [ ] Picking a category stays on the picker with the new row marked; **View notifications** opens
+      the list; View and Close sit on the same line, one of each
+- [ ] The list is titled with the category label and its `Filter: <label>` button returns to the
+      picker
 - [ ] Paging within a filtered screen stays filtered
 - [ ] *Mark all read* on a filtered screen marks only that category
 - [ ] *Delete all read* on a filtered screen deletes only that category
@@ -141,6 +142,6 @@ verification is Task 6's checklist.
 - [ ] **With a dialog filter set, `/notifications clear` empties the whole inbox**
 - [ ] **Page the dialog, then `/notifications read 1` — it resolves against the last chat listing,
       not the dialog page** (and replies "list first" if there has been no chat listing)
-- [ ] `/mail` shows no Filter button and is otherwise unchanged
+- [ ] `/mail` opens its list directly, shows no Filter button, and is otherwise unchanged
 - [ ] `/notifications reload` after removing the filtered category leaves the player with an empty
       screen and no exception in the console

@@ -90,7 +90,7 @@ public final class NotificationsCommand {
                                                                 @NotNull Executor asyncExecutor) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
-                .executes(context -> run(messages, context, player -> inboxRouter.openInbox(player, 1)))
+                .executes(context -> run(messages, context, inboxRouter::openEntryScreen))
                 .then(Commands.literal("list")
                         .executes(context -> run(messages, context, player -> inboxRouter.listInChat(player, 1)))
                         .then(Commands.argument(PAGE_ARGUMENT, IntegerArgumentType.integer(1))

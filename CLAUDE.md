@@ -1033,9 +1033,14 @@ Plan: `docs/superpowers/plans/2026-08-23-filtered-inbox.md`.
 
 The inbox **dialog** can be narrowed to one category; the **commands cannot**, deliberately.
 
-- **`InboxDialog` carries one `Filter: <label>` button**, first in the grid, opening
-  `InboxFilterDialog` — a picker with one row per category plus an unconditional "All notifications"
-  row. That unconditional row is also what stops the picker ever handing `multiAction` an empty
+- **`/notifications` lands on the picker, not the list** (`InboxRouter.openEntryScreen`, which falls
+  back to the list on a pinned router, so bare `/mail` is unchanged). `InboxFilterDialog` carries one
+  row per category plus an unconditional "All notifications" row, then **View notifications** and
+  **Close** — both grid buttons so they share a line, with an invisible spacer padding the odd case,
+  since `exitAction` renders on its own row beneath the grid and could never sit beside View. Picking a
+  category re-opens the picker with the choice marked rather than jumping to the list; **View
+  notifications** is the way onward. `InboxDialog` keeps its `Filter: <label>` button, which is also the
+  route back to the picker. That unconditional row is also what stops the picker ever handing `multiAction` an empty
   `actions` list, the codec failure an empty inbox hits. **Rows carry names only, no unread counts** —
   a filter is a filter, unread numbers belong to the list screen for the scope you are in, and leaving
   them off means the picker issues no query at all. Every category is listed regardless of whether it
@@ -1234,9 +1239,12 @@ The single-argument `preferredMedia(player)` is the same lookup against `"*"`.
 Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Brigadier API
 (`LifecycleEvents.COMMANDS`) — **not** a `commands:` block, which `paper-plugin.yml` does not support.
 
-- `/notifications` (alias `/notifs`) — **opens the player's inbox** (`paper.inbox.InboxDialog`). The name
-  was reserved for exactly this; the preference subcommands sit under `preferences` so the top level
-  stays clear for the inbox's own verbs, which would otherwise collide with a name like `mute`.
+- `/notifications` (alias `/notifs`) — **opens the inbox's filter picker**
+  (`paper.inbox.InboxFilterDialog`), from which *View notifications* reaches the list
+  (`paper.inbox.InboxDialog`). It opened the list directly until the filter landed; see "Inbox
+  filtering". The name was reserved for the inbox; the preference subcommands sit under `preferences`
+  so the top level stays clear for the inbox's own verbs, which would otherwise collide with a name
+  like `mute`.
 - `/notifications list [page]` / `/notifications read <entry>` / `/notifications delete <entry>` — the **chat
   fallback** for clients where the dialog does not render. `<entry>` indexes the page most recently listed
   for that player, held in `InboxRouter`. Each listed row carries a hover ("Click to run /… read `<entry>`")

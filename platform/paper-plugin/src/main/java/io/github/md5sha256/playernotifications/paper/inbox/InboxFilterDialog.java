@@ -20,6 +20,11 @@ import java.util.List;
 /**
  * The filter picker: one row per category, plus an unconditional "All notifications" row.
  *
+ * <p><b>This is the inbox's landing screen</b> — {@code /notifications} opens it, and the list is
+ * reached from its "View notifications" button. Picking a category re-opens this screen with the new
+ * choice marked rather than jumping straight to the list, so choosing a scope and looking at it stay
+ * two separate acts and a mis-click costs one more click rather than a screen transition.
+ *
  * <p>Unverified by automated tests — dialogs need a live server, the same exception every other screen
  * in this tree sits under. What could be pulled out already has been: the key-to-data-type resolution,
  * into {@link InboxFilters}.
@@ -27,7 +32,7 @@ import java.util.List;
 final class InboxFilterDialog {
 
     private static final Component TITLE = Component.text("Filter inbox");
-    private static final Component BACK_LABEL = Component.text("Back");
+    private static final Component VIEW_LABEL = Component.text("View notifications");
     private static final Component CLOSE_LABEL = Component.text("Close");
 
     /**
@@ -57,7 +62,7 @@ final class InboxFilterDialog {
     void show(@NotNull Player player, @NotNull List<Row> rows, @Nullable String activeCategory) {
         List<DialogBody> body = new ArrayList<>();
         body.add(DialogBody.plainMessage(Component.text(
-                "Choose which notifications this screen shows.", NamedTextColor.GRAY)));
+                "Choose which notifications to show, then view them.", NamedTextColor.GRAY)));
 
         List<ActionButton> buttons = new ArrayList<>();
         for (Row row : rows) {
@@ -67,12 +72,22 @@ final class InboxFilterDialog {
                             DialogSupport.callbackOptions()))
                     .build());
         }
-        // Back returns to the list; the exit action below only closes. Two different outcomes, so they
-        // are worded apart — an exit action labelled "Back" alongside this one read as a duplicate.
-        buttons.add(ActionButton.builder(BACK_LABEL)
+        // View and Close are both grid buttons so they sit side by side. exitAction is a separate field
+        // rendered on its own row beneath the grid, so a Close there could never share this line.
+        // Dropping it costs nothing: canCloseWithEscape defaults to true, so Escape still closes.
+        //
+        // They pair only when an even number of rows precedes them — with two columns, button i sits at
+        // (i / 2, i % 2). An odd count would put View beside the last category instead, which is what
+        // the spacer prevents: an empty trailing slot in a 2-column grid reads as alignment, whereas a
+        // split pair reads as two unrelated buttons.
+        if (buttons.size() % 2 != 0) {
+            buttons.add(ActionButton.builder(Component.empty()).build());
+        }
+        buttons.add(ActionButton.builder(VIEW_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.openInbox(player, 1), DialogSupport.callbackOptions()))
                 .build());
+        buttons.add(ActionButton.builder(CLOSE_LABEL).build());
 
         DialogBase base = DialogBase.builder(TITLE)
                 .body(body)
@@ -80,8 +95,8 @@ final class InboxFilterDialog {
                 .build();
         Dialog dialog = Dialog.create(factory -> {
             DialogRegistryEntry.Builder builder = factory.empty();
+            // No exitAction: Close is in the grid above, and setting both would render the word twice.
             builder.base(base).type(DialogType.multiAction(buttons)
-                    .exitAction(ActionButton.builder(CLOSE_LABEL).build())
                     .columns(2)
                     .build());
         });

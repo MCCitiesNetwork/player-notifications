@@ -184,10 +184,27 @@ public final class InboxRouter {
     }
 
     /**
-     * Applies a picked category and reopens the list at page 1. A {@code null} key clears the filter.
+     * The screen {@code /notifications} lands on: the filter picker where there is one, the list
+     * otherwise. A pinned router ({@code /mail}) has no picker, so it opens its list exactly as before.
+     */
+    public void openEntryScreen(@NotNull Player player) {
+        if (filterable()) {
+            openFilterPicker(player);
+        } else {
+            openInbox(player, 1);
+        }
+    }
+
+    /**
+     * Applies a picked category and re-opens the <b>picker</b> with it marked. A {@code null} key clears
+     * the filter.
      *
-     * <p>Page 1 rather than the page they were on: the old page number means nothing against a different
-     * result set, and landing on "page 3 of 1" clamped back would look like the filter had failed.
+     * <p>It deliberately does not jump to the list: the picker is the landing screen and "View
+     * notifications" is the way onward, so choosing a scope and looking at it are two separate acts. A
+     * mis-click therefore costs one more click rather than a screen transition and a trip back.
+     *
+     * <p>Re-opening rather than mutating is forced anyway — a shown dialog is immutable, so the marked
+     * row can only change by sending the screen again.
      */
     public void applyDialogFilter(@NotNull Player player, @Nullable String categoryKey) {
         UUID id = player.getUniqueId();
@@ -196,7 +213,7 @@ public final class InboxRouter {
         } else {
             this.dialogCategory.put(id, categoryKey);
         }
-        openInbox(player, 1);
+        openFilterPicker(player);
     }
 
     /**
