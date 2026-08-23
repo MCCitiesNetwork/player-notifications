@@ -136,8 +136,8 @@ verification is Task 6's checklist.
 - [ ] *Mark all read* on a filtered screen marks only that category
 - [ ] *Delete all read* on a filtered screen deletes only that category
 - [ ] Opening an entry and pressing Back returns to the **filtered** list
-- [ ] A category claiming only unregistered data types opens the empty-inbox chat reply **and then the
-      picker**, so the filter can still be cleared (the trap case)
+- [ ] A category claiming only unregistered data types gives the empty-inbox chat reply and closes,
+      opening no further screen; `/notifications` then reopens the picker so the filter can be changed
 - [ ] **With a dialog filter set, `/notifications list` shows the whole inbox**
 - [ ] **With a dialog filter set, `/notifications clear` empties the whole inbox**
 - [ ] **Page the dialog, then `/notifications read 1` — it resolves against the last chat listing,

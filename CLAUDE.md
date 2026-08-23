@@ -1061,10 +1061,10 @@ The inbox **dialog** can be narrowed to one category; the **commands cannot**, d
   `/notifications read 1` resolved against — which, once the dialog could filter, would have let a
   filtered page silently redefine an unfiltered command. **Behaviour change:** a player who has only
   used the dialog and then types `read 1` is now told to list first.
-- **An empty *filtered* screen opens the picker** after the chat reply. The list screen is the only
-  route to the Filter button, so without this a filter matching nothing is a trap: reopening
-  `/notifications` re-reads the same filter and the player cannot clear their own choice short of
-  quitting. The picker cannot itself be empty, so it cannot bounce.
+- **An empty inbox replies in chat and closes**, opening no screen in its place — filtered or not. An
+  earlier version reopened the picker on a filtered miss, because the list was then the only route to
+  the Filter button; once `/notifications` began landing on the picker, that route back existed anyway
+  and the bounce only dropped the player into a screen they had not asked for.
 - **Unverified on a live server.** `InboxFilterDialog`, the button, the counts and the whole
   interaction need `runServer` — the same exception every dialog here sits under. The 14-item
   checklist in the plan's Task 6 **has not been run.** What is tested: `InboxFiltersTest` (9),

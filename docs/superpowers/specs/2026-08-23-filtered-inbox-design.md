@@ -252,12 +252,11 @@ this plugin and dialog strings arrive as `Component` parameters rather than from
 ## Error handling
 
 - A category that resolves to an empty set opens an empty inbox — which, per `InboxRouter.openInbox`,
-  replies `INBOX_EMPTY` in chat rather than opening a dialog with no rows. **When a filter is active it
-  then opens the picker**, because the list screen is the only route to the Filter button: an empty
-  filtered screen would otherwise be a trap, with reopening `/notifications` re-reading the same filter
-  and no way for the player to clear their own choice short of quitting. The picker can never itself be
-  empty, so this cannot bounce between the two screens. *(Found during implementation; the original
-  draft of this section stopped at the chat reply.)*
+  replies `INBOX_EMPTY` in chat and lets the dialog close, rather than opening a dialog with no rows.
+  **No screen replaces it, filtered or not.** An earlier version reopened the picker when a filter was
+  active, because the list was then the only route to the Filter button and an empty filtered screen
+  was a trap the player could not leave. Once `/notifications` began landing on the picker that route
+  back existed anyway, so the bounce was removed — it put a player in a screen they had not asked for.
 - A filter naming a data type whose payload no longer renders is unaffected: `InboxEntryRenderer`
   already yields a placeholder naming the data type rather than hiding the entry.
 - A `/notifications reload` that removes the category a player is currently filtered to leaves a stale

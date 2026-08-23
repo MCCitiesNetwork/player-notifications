@@ -227,15 +227,12 @@ public final class InboxRouter {
     public void openInbox(@NotNull Player player, int page) {
         withPage(player, page, activeFilter(player.getUniqueId()), Surface.DIALOG, read -> {
             if (read.entries().isEmpty()) {
+                // Nothing to show: reply in chat and let the dialog close. No screen is opened in its
+                // place, not even when a filter is active — reopening the picker there was guarding
+                // against a filter the player could not clear, and /notifications now lands on the
+                // picker anyway, so that route back exists without bouncing them into a screen they
+                // did not ask for.
                 player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_EMPTY));
-                // An empty *filtered* screen opens the picker instead of leaving the player in chat.
-                // Without this the filter is a trap: the list screen is the only route to the Filter
-                // button, an empty one never opens, and reopening /notifications re-reads the same
-                // filter — so the player could not clear their own choice short of quitting. The
-                // picker cannot itself be empty, so this cannot bounce.
-                if (this.dialogCategory.containsKey(player.getUniqueId())) {
-                    openFilterPicker(player);
-                }
                 return;
             }
             DialogSupport.onMainThread(this.plugin, player, () -> this.listDialog.show(player, read));
