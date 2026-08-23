@@ -516,6 +516,12 @@ the JDA listeners over them logic-free.
   silently dead there. An unresolved user is told to run `/notifications link discord`.
 - **`commands-enabled: false` leaves `/link` registered** and withholds the other two, for a server that
   wants Discord as a delivery medium only.
+- **Type labels come from the host, not from this module.** `PreferenceView` takes a
+  `Function<String, String>` label seam — a function rather than the host's `TypeNames` so the view
+  stays unit-testable with no host plugin, the same device `TestNotificationRenderer` and
+  `MailRecipients` use — and `DiscordModule` wires `plugin.typeNames()::plainName`. So a rename in
+  `type-names.yml` reads the same here as in game, minus colour: a select option carries a string, not
+  a component. See "Type names".
 - **Discord's 25-option select cap** truncates the data-type and media lists, with a warning naming the
   overflow. An empty page carries no components at all, because Discord rejects an empty select outright
   — the same shape of bug as vanilla's empty `multiAction` dialog. A listing or preference message stops
@@ -1066,6 +1072,60 @@ button on the preference screen at all), and the screen's own buttons read "Sile
   muted, since a burst on unmute is precisely the interruption being avoided; and there is no admin
   surface, so a stuck mute needs a manual `DELETE` against `PlayerNotificationMute`.
 
+## Type names
+
+Design doc: `docs/superpowers/specs/2026-08-23-configurable-type-names-design.md`.
+Plan: `docs/superpowers/plans/2026-08-23-configurable-type-names.md`.
+
+A `dataType` is a registry key chosen by a module author. `paper.localisation.TypeNames` resolves it to
+the name a player sees, through three layers, **live on every call** — there is no snapshot, so unlike
+the category registry this needs no change listener and a module registering late is picked up by the
+next render:
+
+| Source | Format |
+|---|---|
+| the operator's `type-names.yml` entry | MiniMessage — always wins |
+| `NotificationDataTypeRegistry#displayName`, registered by a module | MiniMessage |
+| `TypeNames.titleCase` over the key | plain |
+
+- **The module default lives on `NotificationDataTypeRegistry`, not a new registry** —
+  `registerDisplayName`/`displayName`/`unregisterDisplayName`. That class already keys on `dataType` and
+  owns the payload class, processor, serializer and renderer for it, so a display name is one more fact
+  about the same key. It is a concrete class with no implementors, so the new methods break nothing
+  compiled against it. A display name is **independent of the payload mapping**: naming a type does not
+  make `dataTypes()` report it, so a name for a type nothing registers is inert rather than conjuring a
+  row into the preference screens.
+- **An entry renames the type only, not the whole row.** The in-game medium editor row is
+  `primaryCategory.label + ": " + TypeNames#name` (`PreferenceDialogs.dataTypeLabel`) — the category
+  prefix stays, because it is what makes that flat checkbox list read as grouped, and a file with some
+  types renamed and some not would show two row shapes in one list. Discord's select has no prefix, so
+  there the name is the whole visible label.
+- **Both surfaces read it.** `discord.command.PreferenceView` takes a `Function<String, String>` label
+  seam (so it stays unit-testable with no host plugin) and `DiscordModule` wires
+  `plugin.typeNames()::plainName`. Colour is dropped there: a Discord select option carries a string,
+  not a component — the same trade `NotificationSink#displayName` already makes.
+- **The two malformed cases warn differently, on purpose.** An operator value is parse-checked in
+  `load`, logged once at `WARNING` naming the key, and **dropped** — warning in `name` would reprint on
+  every preference screen open and bury itself, whereas deciding it at load puts the line in the console
+  when the edit is read and makes `/notifications reload` the thing that reprints it. A module default
+  cannot be validated at load (a module may register later), so it is caught at render and warned **once
+  per `dataType`**, guarded by a set `load` clears. A **blank** value at either layer falls through
+  silently: emptying an entry is how an override is deleted, not a mistake.
+- **`load` collects then `putAll`+`retainAll`**, never `clear()`-then-fill, so the map is never
+  observably empty to a screen opening mid-reload. `MessageContainer.load` takes the same care.
+- **`type-names-defaults.yml` lists every registered type, not only those a module named** — a
+  deliberate divergence from `categories-defaults.yml`. The file answers "what can I rename and what does
+  it say now", and a module-only dump would omit exactly the types most worth renaming: the ones with an
+  ugly key and nobody supplying a name. It reports the **default**, never `TypeNames#name`, which would
+  echo the operator's own override back as though a module had supplied it. Provenance is in the header
+  (three sorted lists: module-supplied, title-cased fallback, already overridden) rather than per-entry
+  comments, because Configurate's YAML comment emission is version-dependent and the body must stay a
+  flat map so a line copies straight across.
+- **It is deliberately excluded from `warnAboutMissingConfigKeys`** — a partial override map has no
+  missing keys, so listing it would warn on every startup for the normal case.
+- `core.config.GeneratedYaml` carries the shared write contract for both generated files (never throws,
+  plain-text header, deliberately non-atomic); `CategoryDefaultsWriter` delegates to it.
+
 ## Notification categories
 
 Design doc: `docs/superpowers/specs/2026-07-28-categorised-notification-preferences-design.md`.
@@ -1234,9 +1294,10 @@ shared `PreferenceSessionManager` (`paper.preferences.session`):
   `addEditorCommitButtons`, plus a Back that returns to the root. The flip is staged by **Apply's commit
   callback**, not on the way in, so Back genuinely changes nothing.
 - `MediumPickerDialog` → `MediumEditorDialog` — pick a medium, then one checkbox per **`dataType`**
-  (grouped/labeled by its primary category for readability, and title-cased rather than shown as the
-  raw registry key — see `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`), e.g. "which
-  notifications reach me on Discord".
+  (grouped/labeled by its primary category for readability), e.g. "which notifications reach me on
+  Discord". A row reads `<category label>: <type name>`; the type name comes from `TypeNames` and is
+  configurable in `type-names.yml`, the category prefix is not — see "Type names" and
+  `PreferenceDialogs.sortedDataTypes`/`dataTypeLabel`.
 - `CategoryPickerDialog` → `CategoryEditorDialog` — pick a category, then one checkbox per **medium**;
   each medium's checkbox fans out to every `dataType` the category claims
   (`NotificationCategories#dataTypesForCategory`), and shows "(partly on)" when the category's member
@@ -1374,6 +1435,8 @@ The files:
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
 - `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`); `inbox-page-size` (`int`, default 7) — how many inbox entries `/notifications` shows per page, clamped to `1..20` in the compact constructor, with `0` (the value an absent key deserializes to) falling back to the default. The three primitive keys and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
 - `categories-defaults.yml` — **generated, and never read.** Written by `core.category.CategoryDefaultsWriter`; not a bundled resource, so `copyDefaultsYaml` does not apply to it. See "Notification categories".
+- `type-names.yml` → `paper.localisation.TypeNames` — a flat map of `dataType` → display name, MiniMessage, renaming the notification types players see in `/notifications preferences`. Not a `@ConfigSerializable` record: the keys are per-`dataType` and unknown at compile time, so it is read with `childrenMap()` the way `MessageContainer` reads its own file. Ships with every example commented out. See "Type names".
+- `type-names-defaults.yml` — **generated, and never read.** Written by `paper.localisation.TypeNameDefaultsWriter`. See "Type names".
 - `categories.yml` → `NotificationCategoriesConfig` (in `core`, package `category`): `uncategorized-label` — the label for the catch-all category; `categories` — a map of category key → `{label, description, types}`, each `types` entry a registered `dataType` string. See "Notification categories".
 - `messages.yml` → a `MessageContainer` rather than a record, since its shape is a flat key/value map and not a fixed set of fields. See "Messages".
 
@@ -1421,6 +1484,11 @@ it; `paper.localisation.MessageKeys` declares every key.
   a rule test. Note `discord-adapter`'s `DiscordMailService` consumes `MailRecipients.Result` too —
   every feature module compiles against `paper-plugin`, so "internal to the host" does not mean
   "unreferenced".
+
+**Notification type names are a separate file, not keys here.** `MessageKeysTest` walks `MessageKeys`
+by reflection in **both** directions against the shipped file, so a key nothing reads fails it — and
+type-name keys are per-`dataType` and unknown at compile time. `type-names.yml` has no such contract.
+See "Type names".
 
 **Deliberately still hardcoded:**
 
@@ -1471,7 +1539,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **118 tests in `:core:test`, 34 in `:api:test`, 165 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 551 in total, all passing. Every figure was verified by a single `./gradlew test` after the category-defaults and config-write work, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (The previous entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
+Current baseline: **118 tests in `:core:test`, 39 in `:api:test`, 188 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 580 in total, all passing. Every figure was verified by a single `./gradlew test` after the type-names work, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (The previous entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
 
 ## Current state
 
@@ -1497,6 +1565,19 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   unit tests. Moving the three host categories out of `categories.yml` into the code registry was
   considered as a live consumer and rejected — it would change what a stock install's preference
   dialogs are built from.
+- **The module-supplied type-name layer has no in-tree consumer.** Nothing calls
+  `NotificationDataTypeRegistry#registerDisplayName`, so on a stock install every entry in
+  `type-names-defaults.yml` is a title-cased fallback and the module-default branch of `TypeNames` runs
+  only in unit tests. Registering names for the host's own three types was considered and left out: it
+  would make the shipped dump non-empty, which is a separate call from adding the mechanism.
+- **Configurable type names are unverified on a live server.** `type-names.yml` being created, a rename
+  reaching the medium editor, the malformed-value warning firing exactly once, the Discord select
+  picking up the host's name, and `type-names-defaults.yml` being regenerated on reload all need
+  `:platform:paper-plugin:runServer`. **Task 7's checklist in
+  `docs/superpowers/plans/2026-08-23-configurable-type-names.md` has not been run.** Everything
+  underneath is unit tested — `TypeNamesTest` (13), `TypeNameDefaultsWriterTest` (9), the api registry
+  cases (5), and one `PreferenceDialogsTest` case pinning that only the row's second half is
+  configurable.
 - **Delivery has two triggers: joining, and `/notifications test`.** `paper.JoinDeliveryListener` and
   `TestNotificationSender` are the only callers of `deliver(UUID)`. The remaining gap is that a
   notification enqueued for an **already-online** player still waits until their next join — there is no
