@@ -128,8 +128,8 @@ verification is Task 6's checklist.
 - [ ] `/notifications` opens the **filter picker**, not the list
 - [ ] Every category is listed, "All notifications" first, the active row marked with `▶`, and
       **no unread numbers anywhere on the screen**
-- [ ] Picking a category stays on the picker with the new row marked; **View notifications** opens
-      the list; View and Close sit on the same line, one of each
+- [ ] Clicking a category row opens the list in that scope directly; clicking "All notifications"
+      opens the unfiltered list; Close is the only non-row button
 - [ ] The list is titled with the category label and its `Filter: <label>` button returns to the
       picker
 - [ ] Paging within a filtered screen stays filtered

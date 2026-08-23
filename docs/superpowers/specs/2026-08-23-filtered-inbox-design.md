@@ -162,23 +162,23 @@ way `PreferenceDialogRouter` already takes it.
 ### Dialogs
 
 **`/notifications` lands on the picker, not the list.** `InboxFilterDialog` is the entry screen: an
-"All notifications" row, one row per category (active row marked with a `▶`), then **View
-notifications** and **Close**. Picking a category re-opens the picker with the new choice marked
-rather than jumping to the list, so choosing a scope and looking at it stay two separate acts — a
-mis-click costs one more click instead of a screen transition and a trip back. (Re-opening is forced
-anyway: a shown dialog is immutable, so the marked row can only change by sending the screen again.)
+"All notifications" row, one row per category (active row marked with a `▶`), and **Close**.
 
-`InboxDialog` still carries its **`Filter: <label>`** button, first in the grid, which is also how a
-player gets back to the picker from the list.
+**Clicking a row is the search.** It applies that scope and opens the list in one gesture — there is
+no confirm step and no separate "view" button, and "All notifications" is therefore also how the
+unfiltered list is reached. A mis-click costs a click back through the list's `Filter:` button, which
+is the price of the common case being one click instead of two.
+
+`InboxDialog` still carries its **`Filter: <label>`** button, first in the grid, which is how a player
+returns to the picker from the list.
 
 `/mail` is pinned and has no picker, so bare `/mail` opens its list exactly as before —
 `InboxRouter.openEntryScreen` picks the picker only when the router is filterable.
 
-**View and Close are both grid buttons**, so they share a line. `exitAction` is a separate field
-rendered on its own row beneath the grid, so a Close there could never sit beside View; dropping it
-costs nothing because `canCloseWithEscape` defaults to `true`. With two columns, button *i* sits at
-`(i / 2, i % 2)`, so the pair only lands together when an even number of rows precedes it — an
-invisible spacer button pads the odd case rather than letting the pair split.
+**Close is a grid button, not the `exitAction`**, which renders on its own row beneath the grid;
+setting both would render the word twice. Dropping `exitAction` costs nothing because
+`canCloseWithEscape` defaults to `true`, so Escape still closes the screen. Nothing is padded to
+control the grid layout — Close is the only trailing button, so there is no pair to keep together.
 
 **The rows carry names only — no unread or total counts.** A filter is a filter: this screen chooses
 what the inbox shows, and unread numbers are the inbox's own business, stated by the list screen for
