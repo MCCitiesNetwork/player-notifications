@@ -5,6 +5,7 @@ import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
+import io.github.md5sha256.playernotifications.paper.localisation.TypeNames;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import io.github.md5sha256.playernotifications.paper.ui.DialogSupport;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
@@ -208,32 +209,7 @@ final class PreferenceDialogs {
     @NotNull
     static Component dataTypeLabel(@NotNull NotificationCategories categories, @NotNull String dataType) {
         String category = primaryCategoryFor(categories, dataType);
-        return Component.text(categories.label(category) + ": " + titleCase(dataType));
-    }
-
-    /**
-     * Title-cases a registry key: {@code '-'} and {@code '_'} separate words, each word is capitalized,
-     * and words are rejoined with spaces. A deliberate third copy of the helper on
-     * {@code NotificationSink} and {@code AccountLinkProvider} — those live in {@code api} and neither
-     * should become public API for the sake of fifteen lines, which is the reasoning their own javadoc
-     * already records.
-     */
-    @NotNull
-    private static String titleCase(@NotNull String key) {
-        StringBuilder builder = new StringBuilder(key.length());
-        boolean startOfWord = true;
-        for (int i = 0; i < key.length(); i++) {
-            char c = key.charAt(i);
-            if (c == '-' || c == '_') {
-                builder.append(' ');
-                startOfWord = true;
-                continue;
-            }
-            builder.append(startOfWord ? Character.toUpperCase(c) : Character.toLowerCase(c));
-            startOfWord = false;
-        }
-        String titled = builder.toString();
-        return titled.isEmpty() ? key : titled;
+        return Component.text(categories.label(category) + ": " + TypeNames.titleCase(dataType));
     }
 
     /**
