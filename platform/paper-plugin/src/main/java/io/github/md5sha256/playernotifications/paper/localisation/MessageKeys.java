@@ -77,6 +77,8 @@ public final class MessageKeys {
     public static final String INBOX_FOOTER = "inbox.footer";
     public static final String INBOX_FOOTER_PREVIOUS = "inbox.footer-previous";
     public static final String INBOX_FOOTER_NEXT = "inbox.footer-next";
+    public static final String INBOX_READ_TITLE = "inbox.read-title";
+    public static final String INBOX_READ_BODY = "inbox.read-body";
     public static final String INBOX_ROW_TITLE_ONLY_UNREAD = "inbox.row.title-only-unread";
     public static final String INBOX_ROW_TITLE_ONLY_READ = "inbox.row.title-only-read";
 

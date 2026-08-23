@@ -10,7 +10,6 @@ import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -343,6 +342,12 @@ public final class InboxRouter {
             }
             player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_USAGE,
                     MessageContainer.value("command", this.commandLabel)));
+            // Null on a single-page listing, which ends at the hint: see InboxChatFooter.
+            Component footer = InboxChatFooter.build(this.messages, this.commandLabel,
+                    read.page(), read.totalPages());
+            if (footer != null) {
+                player.sendMessage(footer);
+            }
         });
     }
 
@@ -355,8 +360,12 @@ public final class InboxRouter {
             }
             this.service.markSeen(entry.notifKey(), player.getUniqueId());
             var rendered = this.renderer.render(entry, player.getUniqueId());
-            player.sendMessage(rendered.title().colorIfAbsent(NamedTextColor.GOLD));
-            player.sendMessage(rendered.body());
+            // markup(), not value(): both halves are Components this plugin's renderer built, so
+            // nothing in them is re-parsed. The title carries the prefix and the body continues it.
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_READ_TITLE,
+                    MessageContainer.markup("title", rendered.title())));
+            player.sendMessage(this.messages.messageFor(MessageKeys.INBOX_READ_BODY,
+                    MessageContainer.markup("body", rendered.body())));
         });
     }
 
