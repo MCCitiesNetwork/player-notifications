@@ -1,14 +1,15 @@
 package io.github.md5sha256.playernotifications.paper.preferences;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferences;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
+import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import io.github.md5sha256.playernotifications.paper.localisation.TypeNames;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceEditSession;
 import io.github.md5sha256.playernotifications.paper.preferences.session.PreferenceSessionManager;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -24,6 +25,7 @@ import java.util.UUID;
  */
 public final class PreferenceDialogRouter {
 
+    private final MessageContainer messages;
     private final Plugin plugin;
     private final NotificationSinkRegistry sinkRegistry;
     private volatile NotificationCategories categories;
@@ -39,12 +41,14 @@ public final class PreferenceDialogRouter {
     private final CategoryEditorDialog categoryEditorDialog;
     private final MuteConfirmDialog muteConfirmDialog;
 
-    public PreferenceDialogRouter(@NotNull Plugin plugin,
+    public PreferenceDialogRouter(@NotNull MessageContainer messages,
+                                  @NotNull Plugin plugin,
                                   @NotNull NotificationSinkRegistry sinkRegistry,
                                   @NotNull NotificationCategories categories,
                                   @NotNull NotificationDataTypeRegistry dataTypeRegistry,
                                   @NotNull TypeNames typeNames,
                                   @NotNull DatabaseNotificationPreferences preferences) {
+        this.messages = messages;
         this.plugin = plugin;
         this.sinkRegistry = sinkRegistry;
         this.categories = categories;
@@ -174,14 +178,13 @@ public final class PreferenceDialogRouter {
             } catch (RuntimeException ex) {
                 this.plugin.getLogger().warning(
                         "Failed to apply notification preferences for " + uuid + ": " + ex.getMessage());
-                PreferenceDialogs.message(this.plugin, player, Component.text(
-                        "Could not save your notification preferences; please try again.",
-                        NamedTextColor.RED));
+                PreferenceDialogs.message(this.plugin, player,
+                        this.messages.messageFor(MessageKeys.PREFERENCES_SAVE_FAILED));
                 return;
             }
             this.sessions.drop(uuid);
             PreferenceDialogs.message(this.plugin, player,
-                    Component.text("Notification preferences saved.", NamedTextColor.GREEN));
+                    this.messages.messageFor(MessageKeys.PREFERENCES_SAVED));
             PreferenceDialogs.onMainThread(this.plugin, player, onSaved);
         });
     }
@@ -194,7 +197,7 @@ public final class PreferenceDialogRouter {
     void discard(@NotNull Player player, @NotNull Runnable reopen) {
         this.sessions.drop(player.getUniqueId());
         PreferenceDialogs.message(this.plugin, player,
-                Component.text("Changes discarded.", NamedTextColor.YELLOW));
+                this.messages.messageFor(MessageKeys.PREFERENCES_DISCARDED));
         PreferenceDialogs.onMainThread(this.plugin, player, reopen);
     }
 
@@ -206,7 +209,7 @@ public final class PreferenceDialogRouter {
      */
     public void muteImmediately(@NotNull Player player) {
         setMutedImmediately(player, true,
-                "All notifications muted until you unmute. Your inbox still fills up.");
+                MessageKeys.PREFERENCES_MUTED, MessageKeys.PREFERENCES_MUTE_FAILED);
     }
 
     /**
@@ -215,10 +218,17 @@ public final class PreferenceDialogRouter {
      */
     public void unmuteImmediately(@NotNull Player player) {
         setMutedImmediately(player, false,
-                "Notifications unmuted. Your delivery preferences are exactly as you left them.");
+                MessageKeys.PREFERENCES_UNMUTED, MessageKeys.PREFERENCES_UNMUTE_FAILED);
     }
 
-    private void setMutedImmediately(@NotNull Player player, boolean muted, @NotNull String successMessage) {
+    /**
+     * @param successKey the reply when the write lands, and {@code failureKey} when it does not — a key
+     *                   per direction rather than one with the verb substituted into it, which is this
+     *                   repo's standing rule for text that varies per call and the reason
+     *                   {@code join.unread-one} and {@code -many} are already separate keys
+     */
+    private void setMutedImmediately(@NotNull Player player, boolean muted,
+                                     @NotNull String successKey, @NotNull String failureKey) {
         UUID uuid = player.getUniqueId();
         boolean hadSession = this.sessions.get(uuid).isPresent();
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
@@ -232,16 +242,15 @@ public final class PreferenceDialogRouter {
                 this.plugin.getLogger().warning(
                         "Failed to " + (muted ? "mute" : "unmute") + " notifications for " + uuid + ": "
                                 + ex.getMessage());
-                PreferenceDialogs.message(this.plugin, player, Component.text(
-                        "Could not " + (muted ? "mute" : "unmute")
-                                + " your notifications; please try again.", NamedTextColor.RED));
+                PreferenceDialogs.message(this.plugin, player,
+                        this.messages.messageFor(failureKey));
                 return;
             }
             this.sessions.drop(uuid);
-            Component message = Component.text(successMessage, NamedTextColor.YELLOW);
+            Component message = this.messages.messageFor(successKey);
             if (hadSession) {
-                message = message.append(Component.text(" Any unsaved preference changes were discarded.",
-                        NamedTextColor.GRAY));
+                message = message.append(
+                        this.messages.messageFor(MessageKeys.PREFERENCES_SESSION_DISCARDED));
             }
             PreferenceDialogs.message(this.plugin, player, message);
         });

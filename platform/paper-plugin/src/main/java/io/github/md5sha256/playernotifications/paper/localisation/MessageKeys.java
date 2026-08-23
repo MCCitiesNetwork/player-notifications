@@ -74,6 +74,13 @@ public final class MessageKeys {
     public static final String INBOX_LIST_FIRST = "inbox.list-first";
     public static final String INBOX_NO_ENTRY = "inbox.no-entry";
     public static final String INBOX_ROW_HOVER = "inbox.row-hover";
+    public static final String INBOX_FOOTER = "inbox.footer";
+    public static final String INBOX_FOOTER_PREVIOUS = "inbox.footer-previous";
+    public static final String INBOX_FOOTER_NEXT = "inbox.footer-next";
+    public static final String INBOX_FOOTER_PREVIOUS_INERT = "inbox.footer-previous-inert";
+    public static final String INBOX_FOOTER_NEXT_INERT = "inbox.footer-next-inert";
+    public static final String INBOX_READ_TITLE = "inbox.read-title";
+    public static final String INBOX_READ_BODY = "inbox.read-body";
     public static final String INBOX_ROW_TITLE_ONLY_UNREAD = "inbox.row.title-only-unread";
     public static final String INBOX_ROW_TITLE_ONLY_READ = "inbox.row.title-only-read";
 
@@ -82,6 +89,16 @@ public final class MessageKeys {
     public static final String LINK_HEADER = "link.header";
     public static final String LINK_ENTRY = "link.entry";
     public static final String LINK_UNAVAILABLE = "link.unavailable";
+
+    // preferences
+    public static final String PREFERENCES_SAVED = "preferences.saved";
+    public static final String PREFERENCES_SAVE_FAILED = "preferences.save-failed";
+    public static final String PREFERENCES_DISCARDED = "preferences.discarded";
+    public static final String PREFERENCES_MUTED = "preferences.muted";
+    public static final String PREFERENCES_UNMUTED = "preferences.unmuted";
+    public static final String PREFERENCES_MUTE_FAILED = "preferences.mute-failed";
+    public static final String PREFERENCES_UNMUTE_FAILED = "preferences.unmute-failed";
+    public static final String PREFERENCES_SESSION_DISCARDED = "preferences.session-discarded";
 
     // test
     public static final String TEST_SENT = "test.sent";

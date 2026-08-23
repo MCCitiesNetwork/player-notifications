@@ -1,121 +1,183 @@
 # Player-facing text for PlayerNotifications.
 #
 # Every value is MiniMessage: https://docs.advntr.dev/minimessage/format.html
+# Placeholders written as <name> are filled in by the plugin; the ones each message accepts are
+# listed in the comment above it. A placeholder the plugin does not supply is left in the text
+# as-is, so a typo shows up in game rather than silently blanking the line.
+#
+# Keys are matched exactly. A key that is missing or renamed renders as its own name (you would see
+# "mail.sent" in chat), so remove a line only if you mean to.
+#
+# An escaped tag such as \<entry> is literal text a player is meant to read, not a placeholder —
+# leave the backslash in place. Only the opening angle bracket is escaped; a backslash before the
+# closing one is not an escape and would be printed.
+#
+# ---------------------------------------------------------------------------------------------
+# The vocabulary
+#
+# Every message here is built from one small palette, so that replies from different commands still
+# read as the same plugin talking. If you edit a line, match it:
+#
+#   <green>       something happened          <red>       something did not
+#   <yellow>      a state you are in          <gold>      the thing being acted on
+#   <white>       a live value, or a command you can type
+#   <gray>        the hint under a reply, and anything already read
+#   <dark_gray>   structure only — brackets, separators, the # before a row number
+#
+# ---------------------------------------------------------------------------------------------
+# The prefix
+#
 # <prefix> resolves to the "prefix" key below and may be used in any other message.
-# Placeholders written as <name> are filled in by the plugin; the ones each message
-# accepts are listed in the comment above it. A placeholder the plugin does not
-# supply is left in the text as-is, so a typo shows up in game rather than silently
-# blanking the line.
 #
-# Keys are matched exactly. A key that is missing or renamed renders as its own name
-# (you would see "mail.sent" in chat), so remove a line only if you mean to.
+# It is deliberately NOT on every line. A message carries the prefix when it is the plugin speaking
+# on its own initiative, or answering a command in one line — that is, when it could be the first
+# thing you see. A line that sits *inside* something already introduced does not: listing rows, the
+# hint and pager under a listing, the entries under a header, and any fragment appended to the line
+# above it. Prefixing those stutters the brand mark down the screen and is the single thing that
+# makes chat output look unplanned.
 #
-# Escaped tags such as \<entry\> are literal text a player is meant to read, not
-# placeholders — leave the backslashes in place.
+# The leading <newline> gives every reply a gap above it, so a block is not swallowed by whatever
+# else is in chat. Delete it if you would rather replies sat tight against the surrounding text —
+# it is the one edit here that changes the rhythm of everything at once.
 
-prefix: '<gray>[<aqua>Notifications<gray>]<reset> '
+prefix: '<newline><gradient:#00E0C0:#00A8FF><b>Notifications</b> <dark_gray>»<reset>'
 
 common:
   # <error> is not supplied: the underlying failure is logged, never shown to a player.
-  error: '<red>Something went wrong — try again shortly.</red>'
+  error: '<prefix> <red>Something went wrong — try again shortly.</red>'
 
 notifications:
-  players-only: '<red>Only players have notification preferences.</red>'
+  players-only: '<prefix> <red>Only players have notification preferences.</red>'
 
 reload:
-  success: '<green>PlayerNotifications configuration reloaded.</green>'
+  success: '<prefix> <green>PlayerNotifications configuration reloaded.</green>'
   # <error> — the failure detail; the full stack trace goes to the server console.
-  failed: '<red>Failed to reload configuration: <error></red>'
+  failed: '<prefix> <red>Failed to reload configuration:</red> <gray><error></gray>'
 
 mail:
-  # The mail screen's name, the /mail counterpart of inbox.title.
+  # The mail screen's name, the /mail counterpart of inbox.title. A name, so no prefix.
   title: 'Mail'
-  players-only: '<red>Only players can use mail.</red>'
+  players-only: '<prefix> <red>Only players can use mail.</red>'
   # <recipient>
-  sent: '<green>Mail sent to <recipient>.</green>'
+  sent: '<prefix> <green>Mail sent to</green> <gold><recipient></gold><green>.</green>'
   # <name>
-  unknown-player: '<red>Player <name> has never played on this server.</red>'
-  blank-message: '<red>Mail cannot be blank.</red>'
+  unknown-player: '<prefix> <red>Player</red> <gold><name></gold> <red>has never played on this server.</red>'
+  blank-message: '<prefix> <red>Mail cannot be blank.</red>'
   # <max>
-  message-too-long: '<red>Mail must be at most <max> characters.</red>'
+  message-too-long: '<prefix> <red>Mail must be at most</red> <white><max></white> <red>characters.</red>'
   row:
-    # One row of /mail list. Assembled from these three keys in order.
+    # One row of /mail list. Assembled from these three keys in order, and never prefixed — the
+    # listing's header carried the brand mark already.
     # <entry> <time>
     prefix: '<dark_gray>#<entry> </dark_gray><gray>[<time>] </gray>'
     # <sender>
-    sender: '<aqua>[<sender>] </aqua>'
+    sender: '<dark_gray>[</dark_gray><aqua><sender></aqua><dark_gray>] </dark_gray>'
     # <content> — the message preview, or the rendered title when the payload will not decode.
     # Two keys so unread and already-read mail can be styled apart.
     content-unread: '<white><content></white>'
     content-read: '<gray><content></gray>'
 
 broadcast:
-  # The title every broadcast is delivered under.
+  # The title every broadcast is delivered under. A name, so no prefix.
   title: 'Broadcast'
-  no-audience: '<red>No online player matched those permissions.</red>'
-  nothing-enabled: '<red>No recipient had broadcasts enabled. Use --bypass to deliver regardless.</red>'
-  blank-content: '<red>Broadcast content cannot be blank.</red>'
+  no-audience: '<prefix> <red>No online player matched those permissions.</red>'
+  nothing-enabled: '<prefix> <red>No recipient had broadcasts enabled.</red><gray> Use </gray><white>--bypass</white><gray> to deliver regardless.</gray>'
+  blank-content: '<prefix> <red>Broadcast content cannot be blank.</red>'
   # <flag>
-  flag-missing-value: '<red><flag> requires a value.</red>'
+  flag-missing-value: '<prefix> <white><flag></white> <red>requires a value.</red>'
   # <token>
-  unrecognised-token: '<red>Unrecognised token: <token></red>'
+  unrecognised-token: '<prefix> <red>Unrecognised token:</red> <white><token></white>'
   # <error> — why the content would not parse as MiniMessage, e.g. a legacy section-sign code.
-  parse-failed: '<red>Could not parse broadcast content: <error></red>'
+  parse-failed: '<prefix> <red>Could not parse broadcast content:</red> <gray><error></gray>'
   # <count> — the original wording avoids singular/plural, so this is deliberately one key.
-  sent: '<green>Broadcast sent to <count> player(s).</green>'
+  sent: '<prefix> <green>Broadcast sent to</green> <white><count></white> <green>player(s).</green>'
 
 join:
-  # Sent on join, outside the deliver-on-join setting: a player who turned push off
-  # still needs to know something arrived. A muted player is sent none of these.
-  unread-one: '<yellow>You have 1 unread notification. </yellow><gray>Use /notifications to read them.</gray>'
+  # Sent on join, outside the deliver-on-join setting: a player who turned push off still needs to
+  # know something arrived. A muted player is sent none of these. Each is an unprompted line of its
+  # own, so each carries the prefix.
+  unread-one: '<prefix> <yellow>You have 1 unread notification.</yellow><gray> Use </gray><white>/notifications</white><gray> to read them.</gray>'
   # <count>
-  unread-many: '<yellow>You have <count> unread notifications. </yellow><gray>Use /notifications to read them.</gray>'
-  unread-mail: '<yellow>You have unread mail. </yellow><gray>Use /mail to read it.</gray>'
+  unread-many: '<prefix> <yellow>You have</yellow> <white><count></white> <yellow>unread notifications.</yellow><gray> Use </gray><white>/notifications</white><gray> to read them.</gray>'
+  unread-mail: '<prefix> <yellow>You have unread mail.</yellow><gray> Use </gray><white>/mail</white><gray> to read it.</gray>'
 
 inbox:
-  # The screen's own name, used as the dialog title and as <title> in the header below.
-  title: 'Notifications'
+  # The screen's own name, used as the dialog title and as <title> in the header below. Kept short
+  # because the header renders it straight after the prefix: "Notifications » Inbox » page 1 of 3".
+  title: 'Inbox'
   # Shared by the dialog and the chat listing, so the two cannot word it differently.
-  empty: '<gray>Your inbox is empty.</gray>'
-  already-empty: '<gray>Your inbox is already empty.</gray>'
-  gone: '<red>That notification is no longer in your inbox.</red>'
-  cleared-one: '<green>Cleared 1 notification.</green>'
+  empty: '<prefix> <gray>Your inbox is empty.</gray>'
+  already-empty: '<prefix> <gray>Your inbox is already empty.</gray>'
+  gone: '<prefix> <red>That notification is no longer in your inbox.</red>'
+  cleared-one: '<prefix> <green>Cleared 1 notification.</green>'
   # <count>
-  cleared-many: '<green>Cleared <count> notifications.</green>'
+  cleared-many: '<prefix> <green>Cleared</green> <white><count></white> <green>notifications.</green>'
   # <title> <page> <total-pages> <unread>
-  header: '<gold><title> — page <page> of <total-pages> (<unread> unread)</gold>'
-  # <command> — "notifications" or "mail", depending on which listing this is.
-  usage: '<gray>Use /<command> read \<entry\> or /<command> delete \<entry\>.</gray>'
+  header: '<prefix> <white><title></white> <dark_gray>»</dark_gray> <gray>page <white><page></white> of <white><total-pages></white>, <yellow><unread></yellow> unread</gray>'
+  # The hint under a listing, so no prefix. <command> — "notifications" or "mail".
+  usage: '<gray>Use </gray><white>/<command> read \<entry></white><gray> or </gray><white>/<command> delete \<entry></white><gray>.</gray>'
   # <title>
-  deleted: '<green>Deleted: <title></green>'
+  deleted: '<prefix> <red>Deleted:</red> <gold><title></gold>'
   # <command>
-  list-first: '<red>Run /<command> list first.</red>'
+  list-first: '<prefix> <red>Run</red> <white>/<command> list</white> <red>first.</red>'
   # <entry>
-  no-entry: '<red>No entry <entry> on that page.</red>'
+  no-entry: '<prefix> <red>No entry</red> <white><entry></white> <red>on that page.</red>'
   # Hover text on a listing row. <command> is the full command clicking the row runs.
-  row-hover: '<gray>Click to run <command></gray>'
+  row-hover: '<gray>Click to run </gray><white><command></white>'
+  # The pager under a chat listing, shown only when there is more than one page.
+  # <previous> and <next> are the two arrow keys below. The plugin attaches their click itself, so
+  # a <click> tag here would not receive the page number — leave the arrows as plain text.
+  # <page> <total-pages>
+  footer: '<previous> <gray>Page <white><page></white> of <white><total-pages></white></gray> <next>'
+  footer-previous: '<yellow>«</yellow>'
+  footer-next: '<yellow>»</yellow>'
+  # Shown in place of the arrow above when there is no page in that direction. Dimmed rather than
+  # hidden, so the footer keeps its width as you page through; set either to '' to hide it instead.
+  footer-previous-inert: '<dark_gray>«</dark_gray>'
+  footer-next-inert: '<dark_gray>»</dark_gray>'
+  # The two lines /notifications read <entry> and /mail read <entry> reply with. <title> and <body>
+  # are the notification as its renderer produced it, so both are markup rather than plain values.
+  # The body continues the title's line, so only the title carries the prefix.
+  read-title: '<prefix> <gold><title></gold>'
+  read-body: '<white><body></white>'
   row:
-    # One row of /notifications list. <entry> <title>
-    title-only-unread: '<white><entry>. <title></white>'
-    title-only-read: '<gray><entry>. <title></gray>'
+    # One row of /notifications list. Shares its leading column with mail.row.prefix so the two
+    # listings read as the same screen. <entry> <title>
+    title-only-unread: '<dark_gray>#<entry></dark_gray> <white><title></white>'
+    title-only-read: '<dark_gray>#<entry></dark_gray> <gray><title></gray>'
 
 link:
-  none-available: '<yellow>There is no account linking available on this server.</yellow>'
-  header: '<green>Accounts you can link:</green>'
-  # One line per linkable account. <name> <key>
-  entry: '  <gold><name></gold><gray> — run </gray><aqua>/notifications link <key></aqua>'
+  none-available: '<prefix> <yellow>There is no account linking available on this server.</yellow>'
+  header: '<prefix> <green>Accounts you can link:</green>'
+  # One line per linkable account, under that header, so no prefix. <name> <key>
+  entry: ' <#00A8FF><b>»</b></#00A8FF> <gold><name></gold><gray> — run </gray><white>/notifications link <key></white>'
   # <name>
-  unavailable: '<gold><name></gold><yellow> linking is not available on this server.</yellow>'
+  unavailable: '<prefix> <gold><name></gold> <yellow>linking is not available on this server.</yellow>'
+
+preferences:
+  # The replies from the preference screens' Apply and Discard, and from /notifications mute|unmute.
+  saved: '<prefix> <green>Notification preferences saved.</green>'
+  save-failed: '<prefix> <red>Could not save your notification preferences; please try again.</red>'
+  discarded: '<prefix> <yellow>Changes discarded.</yellow>'
+  muted: '<prefix> <yellow>All notifications muted until you unmute.</yellow><gray> Your inbox still fills up.</gray>'
+  unmuted: '<prefix> <green>Notifications unmuted.</green><gray> Your delivery preferences are exactly as you left them.</gray>'
+  # A key per direction rather than one with the verb substituted: an operator translating this
+  # needs both forms in the file, and the same rule already splits join.unread-one from -many.
+  mute-failed: '<prefix> <red>Could not mute your notifications; please try again.</red>'
+  unmute-failed: '<prefix> <red>Could not unmute your notifications; please try again.</red>'
+  # Appended to muted/unmuted when the player had an unapplied screen open, so no prefix of its own.
+  session-discarded: '<gray> Any unsaved preference changes were discarded.</gray>'
 
 test:
   # The reply to /notifications test. <media> is the list of media delivery was attempted on.
-  sent: '<green>Test notification sent. Delivery attempted via: </green><media>'
+  sent: '<prefix> <green>Test notification sent.</green><gray> Delivery attempted via: </gray><media>'
   # What joins two media in that list.
   separator: '<gray>, </gray>'
-  muted: '<yellow>Your notifications are muted, so it was suppressed. </yellow><gray>Use </gray><white>/notifications unmute</white><gray> to receive notifications again.</gray>'
-  silenced: '<yellow>Test notifications are silenced for you, so it was suppressed. </yellow><gray>Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
-  no-media: '<yellow>Nothing was sent: you have no delivery methods chosen for test notifications. </yellow><gray>Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
-  # <media> — the preferred media that no installed module provides a sink for.
-  no-sink: '<yellow>Not set up on this server, so it was skipped: <media></yellow>'
+  muted: '<prefix> <yellow>Your notifications are muted, so it was suppressed.</yellow><gray> Use </gray><white>/notifications unmute</white><gray> to receive notifications again.</gray>'
+  silenced: '<prefix> <yellow>Test notifications are silenced for you, so it was suppressed.</yellow><gray> Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
+  no-media: '<prefix> <yellow>Nothing was sent: you have no delivery methods chosen for test notifications.</yellow><gray> Use </gray><white>/notifications preferences</white><gray> to choose how test notifications reach you.</gray>'
+  # <media> — the preferred media that no installed module provides a sink for. Appended under
+  # test.sent as a second line of the same reply, so it carries no prefix of its own.
+  no-sink: '<yellow>Not set up on this server, so it was skipped:</yellow> <white><media></white>'
   # <error> — the exception message; the full detail goes to the server console.
-  failed: '<red>The test notification could not be sent. The details are in the server console: <error></red>'
+  failed: '<prefix> <red>The test notification could not be sent.</red><gray> The details are in the server console: <error></gray>'

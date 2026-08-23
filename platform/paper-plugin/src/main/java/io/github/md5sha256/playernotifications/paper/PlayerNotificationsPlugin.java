@@ -374,8 +374,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     @SuppressWarnings("UnstableApiUsage")
     private void registerCommands(int inboxPageSize) {
         this.preferenceDialogRouter = new PreferenceDialogRouter(
-                this, this.sinkRegistry, this.categories, this.notificationService.dataTypeRegistry(),
-                this.typeNames, this.preferences);
+                this.messages, this, this.sinkRegistry, this.categories,
+                this.notificationService.dataTypeRegistry(), this.typeNames, this.preferences);
         getServer().getPluginManager().registerEvents(
                 new PreferenceQuitListener(this.preferenceDialogRouter.sessions()), this);
         InboxEntryRenderer inboxRenderer = new InboxEntryRenderer(this.notificationService.dataTypeRegistry(), getLogger());

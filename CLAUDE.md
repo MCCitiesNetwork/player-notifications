@@ -826,7 +826,7 @@ reappear" true without any query knowing the rule, and it reuses `trg_delete_tar
   button** — the inbox is for reading, and jumping into preferences left the player with no way back to
   what they were reading. **A chat listing's row wording is `paper.inbox.InboxChatRow`**, a per-instance
   constructor argument like the title, command label and filter — so `/mail` gets its own format without
-  the listing loop learning that `mail` is special. `InboxChatRow.titleOnly()` (`<entry>. <title>`) is what
+  the listing loop learning that `mail` is special. `InboxChatRow.titleOnly()` (`#<entry> <title>`, sharing its leading column with the mail row) is what
   `/notifications` uses; `paper.mail.MailChatRow` is the mail one: `#<entry> [Time] [Sender] <content>`,
   time as `HH:mm` today, `d MMM` this year and `d MMM yyyy` beyond (mail never expires and an import can be
   years old), content flattened to one line and cut at 40 characters — the row clicks through to `read`
@@ -1033,7 +1033,9 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
 - `/notifications list [page]` / `read <entry>` / `delete <entry>` — the **chat fallback** for clients where
   the dialog does not render. `<entry>` indexes the page most recently listed for that player. Each row
   carries a hover and a `runCommand` click for its own `read`, worded from the router's `commandLabel` so
-  the same rows work under `/mail list`. Player-only, under `playernotifications.command.preferences`, off
+  the same rows work under `/mail list`, and a listing running to more than one page ends with
+  `InboxChatFooter`'s clickable pager. `read` frames the entry with `inbox.read-title` and
+  `inbox.read-body` rather than printing the raw title and body. Player-only, under `playernotifications.command.preferences`, off
   the main thread.
 - `/notifications clear` — empties the inbox outright, **unread included**, as a shorthand for "Mark all
   read" then "Delete all read". Composed from `markAllSeen` + `dismissSeen` rather than a new service
@@ -1295,13 +1297,59 @@ Player-facing chat text lives in `messages.yml` as MiniMessage, loaded into `plu
 **Notification type names are a separate file, not keys here** — `MessageKeysTest` walks both directions,
 and type-name keys are per-`dataType` and unknown at compile time. `type-names.yml` has no such contract.
 
+### Message styling
+
+Design doc: `…/specs/2026-08-23-message-styling-design.md`. Plan:
+`…/plans/2026-08-23-message-styling.md`.
+
+The file is written to one vocabulary borrowed from `realty`, so replies from different commands read
+as the same plugin talking. `<green>` a thing that happened, `<red>` a thing that did not, `<yellow>`
+a state the player is in, `<gold>` the thing being acted on, `<white>` a live value or a command they
+can type, `<gray>` the hint under a reply and anything already read, `<dark_gray>` structure only. The
+vocabulary and the prefix rule are restated in the file's own comment header, which is where an
+operator will look.
+
+- **`<prefix>` is on some keys and deliberately not others.** A message carries it when it is the
+  plugin speaking unprompted or answering a command in one line — when it could be the first thing a
+  player sees. A line sitting *inside* something already introduced does not: listing rows, the usage
+  hint and pager under a listing, `link.entry` under `link.header`, `test.no-sink` (appended to
+  `test.sent`), `preferences.session-discarded` (appended to `muted`/`unmuted`), `inbox.read-body`
+  (under `inbox.read-title`), and the three `*.title` keys, which are screen **names** rather than
+  messages. Before this the `prefix` key existed and **no message referenced it**, so the brand mark
+  had never appeared in game at all.
+- **The prefix opens with `<newline>`**, realty's rhythm: every reply gets a gap above it so a block
+  is not swallowed by surrounding chat. It applies to one-line replies too. Deleting that one tag is
+  the operator's escape hatch, and it is the single edit that changes everything at once.
+- **`inbox.title` is `Inbox`, not `Notifications`.** It is both the dialog's title and the `<title>`
+  of `inbox.header`, so with the prefix applied the header read "Notifications » Notifications —
+  page 1 of 3". `/mail` titles the same screen `Mail`; the two now read as siblings.
+- **`inbox.row.title-only-*` leads with `#<entry>`**, sharing its column with `mail.row.prefix` so a
+  notification listing and a mail listing read as one screen.
+- **A backslash escapes only the *opening* bracket.** `inbox.usage` shipped `\<entry\>` for years;
+  `\>` is not a MiniMessage escape, so the backslash reached players as text.
+- **`paper.inbox.InboxChatFooter` is the chat listing's pager** (`« Page 2 of 3 »`), returning `null`
+  below two pages so a single-page listing ends at its usage hint. Its own class, not a private
+  method, for the reason `InboxFilters` is: it holds a decision and names no Bukkit type, so
+  `InboxChatFooterTest` covers it with no server. **The click is attached in Java** — a `<click>` tag
+  *argument* is the position no `TagResolver` can fill, and the arrow keys hold arrow text only. An
+  arrow at the end of its range is dimmed and inert rather than omitted, so the footer keeps its width
+  from page to page — and its **live and inert forms are two keys**, because MiniMessage renders
+  `<yellow>«</yellow>` as a parent carrying a coloured child, so `Component#color` on what `messageFor`
+  returns is a no-op and the first version's inert arrow still rendered yellow. The command label is a constructor argument because both routers share the class;
+  hardcoding it would let a mail listing page the other inbox.
+- **`PreferenceDialogRouter` takes a `MessageContainer`.** Its seven replies — save succeeded/failed,
+  discarded, muted, unmuted, mute failed, unmute failed — were hardcoded `Component.text(...)`, and the
+  two failures were built as `"Could not " + (muted ? "mute" : "unmute")`, the exact construction the
+  key-per-case rule exists to prevent. `setMutedImmediately` now takes a success key and a failure key.
+
 **Deliberately still hardcoded:**
 
 - **`MailNotifier.ARRIVAL_NOTICE`** — the Discord adapter recognises it by **reference identity**
   (`MailNoticeButton.java:39`). A configurable notice is rebuilt on reload, changing its identity and
   dropping the button *silently*. Configuring it needs a marker a reload cannot invalidate.
-- **The dialogs** — the six preference screens, both inbox dialogs, and `ui/PagedDialogs`. Additive when
-  wanted, but `paper.ui` must import nothing from this plugin, so its strings have to arrive as `Component`
+- **The dialogs** — the six preference screens, the three inbox screens, and `ui/PagedDialogs`. Their
+  *chat replies* now come from the container; their on-screen text does not. Additive when wanted, but
+  `paper.ui` must import nothing from this plugin, so its strings have to arrive as `Component`
   parameters rather than as a container.
 - **Renderer titles** (`MailRenderer`, `TestNotificationRenderer`) — these render *stored* notifications, so
   editing them changes how old notifications read, a different question from changing a command reply.
@@ -1366,11 +1414,13 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 - `--tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing.** Check the result count, not
   the exit status.
 
-Current baseline: **126 in `:core:test`, 39 in `:api:test`, 206 in `:platform:paper-plugin:test`, 214 in
-`:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 606 total, all
-passing, verified by a single `./gradlew test` with Docker available after the filtered inbox landed. (An
-earlier entry recorded 30 for `:api:test` against an actual 34, so treat these as needing a fresh run
-rather than arithmetic on the last one.)
+Current baseline: **39 in `:api:test`, 217 in `:platform:paper-plugin:test`, 21 in
+`:platform:essentials-mail-converter:test`** — all passing, from a fresh run after the message restyle
+landed. **`:core:test` and `:platform:discord-adapter:test` were not re-run** (no Docker daemon
+available on that run); the last recorded figures are **126** and **214**, and both need confirming
+against a real run rather than carrying forward. The entry before this one recorded 206 for
+`:platform:paper-plugin:test` against an actual 212, and one before that 30 for `:api:test` against an
+actual 34 — so treat every number here as needing a fresh run rather than arithmetic on the last one.
 
 ## Current state
 
