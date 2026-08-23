@@ -607,10 +607,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * Requests a category rebuild on behalf of a registration that arrived after startup.
      *
      * <p>Coalescing is the point. Listeners fire once per mutating call, so a plugin claiming five data
-     * types fires five times, and each rebuild re-reads and re-writes {@code categories.yml}; without
-     * this guard a single registrant would cause five file round-trips. The flag is cleared inside the
-     * scheduled task, so claims arriving after it runs schedule a fresh rebuild rather than being
-     * swallowed.
+     * types fires five times, and each rebuild re-reads {@code categories.yml} and rewrites
+     * {@code categories-defaults.yml}; without this guard a single registrant would cause five file
+     * round-trips. The flag is cleared inside the scheduled task, so claims arriving after it runs
+     * schedule a fresh rebuild rather than being swallowed.
+     *
+     * <p>Note the rebuild no longer <em>writes</em> {@code categories.yml} — no config file is
+     * rewritten after its first copy (see {@link #copyDefaultsYaml}).
      *
      * <p>The rebuild is marshalled onto the main thread because it touches the dialog router, and is
      * skipped entirely once the plugin is disabled — scheduling against a disabled plugin throws, and a

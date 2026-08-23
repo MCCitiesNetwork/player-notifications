@@ -1088,6 +1088,29 @@ that claims the type; a `dataType` claimed by two categories resolves to both, n
 after modules load, to warn about a category referencing a `dataType` nothing registered). A category-key
 collision (code and config both defining the same key) logs at `fine`; config's label/description wins.
 
+**The code registry is also dumped to `<dataFolder>/categories-defaults.yml`, which is written and
+never read.** `core.category.CategoryDefaultsWriter` renders every category the registry holds — only
+the `categories:` subtree, reusing `NotificationCategoryDefinition` so the shape cannot drift from the
+live file's — so an operator can see what a module registered and copy the block into `categories.yml`
+by hand. Points to know:
+
+- **It changes no resolution behaviour.** Nothing loads it; deleting it costs only the reference copy
+  until the next write. Reading it back as a middle layer was rejected — it is regenerated from the
+  registry every reload, so it would be a loaded copy of state already in memory, and anything deleted
+  from it would reappear.
+- **Keys and each category's `types` are sorted**, so two writes of the same registry are byte-identical.
+  The operator's workflow is diffing this against `categories.yml`; `HashSet` order would churn it on
+  every reload.
+- **Written from three places**: the coalesced `rebuildCategories` (covering both the
+  post-`startModules()` rebuild and the late-registration path), `/notifications reload`, and a one-tick
+  task at the end of `onEnable`. That last one is not redundant with the change listener —
+  `addChangeListener` has a `default {}` body for binary compatibility, so a third-party registry
+  implementation never notifies the host at all. In the ordinary case it rewrites identical bytes.
+- **It rots once copied.** A block copied into `categories.yml` does not track the module's later
+  rewording; that is the price of the operator holding sole authority. Revisit if operators report stale
+  labels — the fix then is making `categories.yml` entries field-wise patches, not changing this file.
+  Design doc: `docs/superpowers/specs/2026-08-23-module-category-defaults-design.md`.
+
 A `dataType` no category claims resolves to `Set.of(NotificationCategories.UNCATEGORIZED)`
 (`"uncategorized"`), which is always a real, selectable category — a newly installed module's
 notifications are configurable immediately, without an operator editing `categories.yml` first.
@@ -1156,7 +1179,7 @@ player has never configured — it is just no longer reachable once they have. `
   debug message. It names the target rather than printing its raw UUID, taking a
   `Function<UUID, String>` name lookup so it stays unit-testable; `TestNotificationRenderer.usingServerNames()`
   is the production wiring over `Bukkit.getOfflinePlayer`.
-- `/notifications reload` — reloads `categories.yml`, `settings.yml` and `messages.yml` without a restart. Admin-only
+- `/notifications reload` — re-reads `categories.yml`, `settings.yml` and `messages.yml` without a restart (re-reads only: it writes to none of them, and regenerates `categories-defaults.yml`). Admin-only
   (`playernotifications.command.reload`, `default: op`), and usable from console, unlike every other
   subcommand — it operates on plugin configuration, not a specific player, so `NotificationsCommand`
   dispatches it outside the player-only `run()` helper the rest of the tree uses. Deliberately does
@@ -1340,9 +1363,17 @@ Implementation notes:
 
 ## Configuration
 
-All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getConfig()`. On enable the plugin copies bundled defaults into the data folder, merges in any new keys, and deserializes into `@ConfigSerializable` records:
+All config uses **Configurate** (`YamlConfigurationLoader`), not Bukkit's `getConfig()`. On enable the plugin copies a bundled default into the data folder **only when the file is absent**, then loads it and deserializes into `@ConfigSerializable` records.
+
+**No config file is ever rewritten after that first copy.** `copyDefaultsYaml` used to load, `mergeFrom` the bundled resource and `save` the result back on every call — so `categories.yml` was re-emitted at startup, on every `/notifications reload` *and* on every late-registration category rebuild, stripping the operator's comments and reordering their keys each time. Two things replace what that merge delivered:
+
+- **`messages.yml` gets a defaults-underlay, in memory only.** `reloadMessages` loads the bundled resource and calls `mergeFrom(operatorNode)` on it, so the operator's values win and an absent key resolves to the shipped wording. It is the one file with this treatment, because a missing key there is not a neutral absence — `MessageContainer` renders an unknown key as its own name, so a message added in a later release would print `mail.sent` to players, and `MessageKeysTest` cannot catch it (it checks the shipped resource, not the operator's file). Note the merge direction: `a.mergeFrom(b)` fills keys absent from `a`, so the **bundled** node must be the receiver.
+- **The other three get `warnAboutMissingConfigKeys`**, which logs one warning per file naming any key the bundle has and theirs lacks, without touching the file. `paper.config.ConfigKeyGaps` is the diff (dotted leaf paths, sorted, one-directional, a list node treated as a single leaf so trimming `default-media` is not reported as a gap). This is load-bearing, not belt-and-braces: without it an added primitive key arrives as `0`/`false` and an added `@Required` reference key throws and disables the plugin, with nothing in the log naming the cause. It cannot distinguish an operator's deliberate deletion from an upgrade's new key, so a removed category warns on every startup — accepted, since suppressing it needs a state file, which is the thing this change exists to stop writing. Design doc: `docs/superpowers/specs/2026-08-23-config-files-are-never-rewritten-design.md`.
+
+The files:
 - `database.yml` → `DatabaseSettings` (in `core`): `url` (JDBC url **without** the `jdbc:` prefix), `username`, `password`.
 - `settings.yml` → `PluginSettings` (in `paper-plugin`): `prune-interval-seconds` (default 3600) — how often the async task deletes expired notifications; `default-media` (`List<String>`, default `[chat]`) — the media a player is assumed to prefer when they have no stored preference rows; `deliver-on-join` (`boolean`, default `true`) — whether joining triggers delivery of that player's due notifications; `join-delivery-delay-seconds` (`long`, default 3) — how long after the join event delivery runs, `0` meaning immediately and a negative value clamped to `0` (not defaulted, unlike `prune-interval-seconds`); `inbox-page-size` (`int`, default 7) — how many inbox entries `/notifications` shows per page, clamped to `1..20` in the compact constructor, with `0` (the value an absent key deserializes to) falling back to the default. The three primitive keys and so deliberately **not** `@Required` — that rule guards against a missing key deserializing to `null`, which a primitive cannot do.
+- `categories-defaults.yml` — **generated, and never read.** Written by `core.category.CategoryDefaultsWriter`; not a bundled resource, so `copyDefaultsYaml` does not apply to it. See "Notification categories".
 - `categories.yml` → `NotificationCategoriesConfig` (in `core`, package `category`): `uncategorized-label` — the label for the catch-all category; `categories` — a map of category key → `{label, description, types}`, each `types` entry a registered `dataType` string. See "Notification categories".
 - `messages.yml` → a `MessageContainer` rather than a record, since its shape is a flat key/value map and not a fixed set of fields. See "Messages".
 
@@ -1440,7 +1471,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **111 tests in `:core:test`, 30 in `:api:test`, 157 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 532 in total, all passing. Every figure was verified by a single `./gradlew test` after the configurable-messages work, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over.
+Current baseline: **118 tests in `:core:test`, 34 in `:api:test`, 165 in `:platform:paper-plugin:test`, 213 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 551 in total, all passing. Every figure was verified by a single `./gradlew test` after the category-defaults and config-write work, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (The previous entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
 
 ## Current state
 
@@ -1460,7 +1491,12 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   `mail` category is declared in `categories.yml`, not through the code registry), so the code-registry
   half of the category system (and the two-pass rebuild-after-`startModules()` ordering in
   `PlayerNotificationsPlugin.onEnable()`) is exercised only by unit tests against a hand-built registry,
-  never end-to-end by a real module through the real module class loader.
+  never end-to-end by a real module through the real module class loader. **The same applies to
+  `categories-defaults.yml`**: with nothing registering in code, a stock install writes an empty
+  `categories` node forever, so `CategoryDefaultsWriter`'s interesting output is covered only by its
+  unit tests. Moving the three host categories out of `categories.yml` into the code registry was
+  considered as a live consumer and rejected — it would change what a stock install's preference
+  dialogs are built from.
 - **Delivery has two triggers: joining, and `/notifications test`.** `paper.JoinDeliveryListener` and
   `TestNotificationSender` are the only callers of `deliver(UUID)`. The remaining gap is that a
   notification enqueued for an **already-online** player still waits until their next join — there is no
