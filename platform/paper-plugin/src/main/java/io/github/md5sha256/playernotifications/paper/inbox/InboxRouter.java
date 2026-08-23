@@ -149,6 +149,11 @@ public final class InboxRouter {
         return category == null ? null : this.filters.resolve(category);
     }
 
+    /** Whether this player has the dialog narrowed to a category, as opposed to showing everything. */
+    boolean isFiltered(@NotNull UUID playerId) {
+        return this.dialogCategory.containsKey(playerId);
+    }
+
     /** The label for the dialog's Filter button: the picked category's name, or "All notifications". */
     @NotNull Component filterLabel(@NotNull UUID playerId) {
         return this.filters == null

@@ -95,7 +95,12 @@ final class InboxDialog {
         // by their own command. A jump into the preference screens from here left the player with no
         // way back to what they were reading.
 
-        DialogBase base = DialogBase.builder(this.title)
+        // A filtered screen titles itself with the category, so its scope is stated in two places: the
+        // title and the Filter button. An unfiltered or pinned screen keeps its own name.
+        Component screenTitle = this.router.filterable() && this.router.isFiltered(player.getUniqueId())
+                ? this.router.filterLabel(player.getUniqueId())
+                : this.title;
+        DialogBase base = DialogBase.builder(screenTitle)
                 .body(body)
                 .afterAction(DialogBase.DialogAfterAction.CLOSE)
                 .build();

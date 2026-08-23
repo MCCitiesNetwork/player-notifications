@@ -956,17 +956,26 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   screen. The page query's `ORDER BY n.notifScheduledTime DESC, n.notifPriority DESC, n.notifKey DESC`
   is a **total** order; without the key tiebreak two notifications sharing a timestamp could swap
   between page reads and appear twice or not at all.
-- **Data-type-filtered overloads**, added for `/mail` (see "Mail"): `inbox(playerId, page, pageSize,
-  dataType)`, `unreadCount(playerId, dataType)`, `markAllSeen(playerId, dataType)`, `dismissSeen(playerId,
-  dataType)`, each taking a `@Nullable String dataType` — `null` means "no filter" rather than a parallel
-  method set or an `Optional`. The existing unfiltered forms are now `default` methods delegating with
-  `null`, so no pre-existing caller changed. On the mapper side the filter is one extra `<if test="dataType
-  != null">AND n.notifPayloadType = #{dataType}</if>` predicate (`NotificationMapper`'s
-  `selectInboxPage`/`countInbox`/`countUnread`); `NotificationTarget` has no `notifPayloadType` column, so
+- **Data-type-filtered overloads**, added for `/mail` (see "Mail") and since **widened to a set** for
+  the filtered inbox (see "Inbox filtering"): `inbox(playerId, page, pageSize, dataTypes)`,
+  `unreadCount(playerId, dataTypes)`, `markAllSeen(playerId, dataTypes)`, `dismissSeen(playerId,
+  dataTypes)`, each taking a `@Nullable Collection<String>`. **`null` means "no filter"; an *empty*
+  collection means "match nothing"** — deliberately different, because a category may claim only data
+  types nothing has registered, and collapsing empty onto `null` would show a player every notification
+  they have under a heading claiming to contain none of them. The single-`String` forms and the
+  unfiltered forms are both `default` delegates, so no pre-existing caller changed **except one passing a
+  bare `null`**, which is now `reference to inbox is ambiguous` and needs a `(Collection<String>) null`
+  cast. Note the four in-tree `NotificationService` test fakes (in `paper-plugin` ×2,
+  `discord-adapter`, `essentials-mail-converter`) implement these, so widening them is not confined to
+  `core`. On the mapper side the filter is a `<choose>` with three branches — nothing when `dataTypes ==
+  null`, **`AND 1 = 0` when it is empty**, and `AND n.notifPayloadType IN <foreach>` otherwise
+  (`NotificationMapper`'s `selectInboxPage`/`countInbox`/`countUnread`). The empty branch is load-bearing,
+  not defensive: `<foreach>` over an empty collection emits `IN ()`, which MariaDB rejects as a syntax
+  error. `NotificationTarget` has no `notifPayloadType` column, so
   `markAllSeen`'s filter is an `EXISTS` against `Notification` rather than a join. Filtered `dismissSeen`
   cannot be one `DELETE`: its subquery would read `Notification` while
   `trg_delete_targetless_notification` writes it, the same constraint `pruneOrphanedTargets` already works
-  around, so it is select-then-delete — `NotificationTargetMapper.selectSeenKeys(playerId, dataType)`
+  around, so it is select-then-delete — `NotificationTargetMapper.selectSeenKeys(playerId, dataTypes)`
   followed by one `deleteNotificationTarget(key, playerId)` per key. The clamping contract (`page` into
   `1..totalPages`, `pageSize` into `1..20`) is unchanged, applied against the **filtered** total.
 - **`resolveNotifications` is deliberately unchanged** and still unfiltered: it means "every
@@ -981,8 +990,8 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   missing, or a decode or render throwing, yields a **placeholder** naming the data type — hiding the
   entry would leave it counted in `totalEntries` and read as a bug. Mail needs a renderer registered
   alongside its RETAIN processor for exactly this reason — see "Mail".
-- **Paper UI:** `paper.inbox.InboxRouter` owns both screens, the per-player page cursor (dropped by
-  `InboxQuitListener` on quit) and the async marshalling — the same shape as `PreferenceDialogRouter`,
+- **Paper UI:** `paper.inbox.InboxRouter` owns the screens, the per-player cursors (in
+  `paper.inbox.InboxCursors`, dropped by `InboxQuitListener` on quit) and the async marshalling — the same shape as `PreferenceDialogRouter`,
   for the same reason. `InboxDialog` is the paged list (unread rows bold, *Mark all read*, *Delete all
   read*, Previous/Next); **no inbox screen carries a *Preferences* button** — the inbox is for
   reading, and preferences are reached by their own command; jumping into the preference screens from
@@ -1016,6 +1025,42 @@ Dismissal **deletes the target row** rather than setting a third timestamp: an a
   crash between a sink delivering and the `seenTime` write leaves the notification unread and it is
   pushed again. Chat is not idempotent, so that can duplicate a message. Accepted: the window is
   milliseconds and the alternative holds a transaction across a Discord round trip.
+
+### Inbox filtering
+
+Design doc: `docs/superpowers/specs/2026-08-23-filtered-inbox-design.md`.
+Plan: `docs/superpowers/plans/2026-08-23-filtered-inbox.md`.
+
+The inbox **dialog** can be narrowed to one category; the **commands cannot**, deliberately.
+
+- **`InboxDialog` carries one `Filter: <label>` button**, first in the grid, opening
+  `InboxFilterDialog` — a picker with one row per category plus an unconditional "All notifications"
+  row, each labelled `<label> — <unread> unread of <total>`. That unconditional row is also what stops
+  the picker ever handing `multiAction` an empty `actions` list, the codec failure an empty inbox hits.
+  Empty categories are shown greyed rather than hidden, so rows do not move under a player between
+  opens. A filtered screen titles itself with the category label, so its scope is stated twice.
+- **`paper.inbox.InboxFilters`** resolves a category key to its data-type set via
+  `NotificationCategories#dataTypesForCategory`, reading the categories **and** the registry live on
+  every call rather than snapshotting — so a late module registration and `/notifications reload` are
+  both picked up with no change listener. It holds no Bukkit type and is unit tested. `resolve(null)`
+  is `null` (unfiltered); every other key yields a possibly-empty set (match nothing).
+- **The filter lives in `InboxRouter.dialogCategory`, which no command reads.**
+  `/notifications list|read|delete|clear` are unchanged and act on the whole inbox — filtering is a
+  browsing affordance, and a filter set ten minutes ago is invisible in a command surface. `/mail` is
+  pinned (`pinnedFilter`, and no `InboxFilters` at all), so it shows no button.
+- **The page cursor is split per surface** (`InboxCursors`: `dialogCursor`/`dialogListed` vs
+  `chatListed`). Previously both wrote one shared pair of maps, so paging a dialog changed what
+  `/notifications read 1` resolved against — which, once the dialog could filter, would have let a
+  filtered page silently redefine an unfiltered command. **Behaviour change:** a player who has only
+  used the dialog and then types `read 1` is now told to list first.
+- **An empty *filtered* screen opens the picker** after the chat reply. The list screen is the only
+  route to the Filter button, so without this a filter matching nothing is a trap: reopening
+  `/notifications` re-reads the same filter and the player cannot clear their own choice short of
+  quitting. The picker cannot itself be empty, so it cannot bounce.
+- **Unverified on a live server.** `InboxFilterDialog`, the button, the counts and the whole
+  interaction need `runServer` — the same exception every dialog here sits under. The 14-item
+  checklist in the plan's Task 6 **has not been run.** What is tested: `InboxFiltersTest` (9),
+  `InboxCursorsTest` (9), and `core`'s `FilteredInboxSetTest` (5, against a real MariaDB).
 
 ## Global mute
 
@@ -1540,7 +1585,7 @@ Schema (`V1__maria_initial_schema.sql`), three tables:
 - **Counting results: glob `*.xml`, not `TEST-*.xml`.** On Windows, Gradle shortens result filenames for `@Nested` classes to dodge the path-length limit, producing `__TEST-<hash>...` names. Several test classes here (`NotificationMapperTest`, `PlayerNotificationPreferenceTest`) put **all** their `@Test` methods inside `@Nested` inner classes, so a `TEST-*.xml` glob silently omits them and makes passing tests look like they never ran.
 - `./gradlew :core:test --tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing meaningful**. Check the result count, not the exit status.
 
-Current baseline: **121 tests in `:core:test`, 39 in `:api:test`, 188 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 583 in total, all passing. Every figure was verified by a single `./gradlew test` after moving the generated files into `defaults/`, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (The previous entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
+Current baseline: **126 tests in `:core:test`, 39 in `:api:test`, 206 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — 606 in total, all passing. Every figure was verified by a single `./gradlew test` after the filtered inbox landed, with a Docker daemon available, so the Testcontainers suites are included in that run rather than carried over. (An earlier entry recorded 30 for `:api:test` against an actual 34, so treat these counts as needing a fresh run rather than arithmetic on the last one.)
 
 ## Current state
 
@@ -1666,6 +1711,13 @@ claims, merged with `categories.yml` by `NotificationCategories`, many-to-many).
   `docs/superpowers/plans/2026-08-20-essentials-mail-converter.md` has not been run** — it needs an
   EssentialsX jar dropped into `platform/paper-plugin/run/plugins/` by hand, deliberately not added to
   `downloadPlugins` since the host does not depend on it.
+- **The inbox filter's player-facing surface is unverified.** `InboxFilterDialog`, the `Filter:` button,
+  the per-category counts, the filtered title, and the empty-filter escape into the picker all need
+  `:platform:paper-plugin:runServer`. **Task 6's 14-item checklist in
+  `docs/superpowers/plans/2026-08-23-filtered-inbox.md` has not been run** — it includes the two
+  regressions that matter most: that a dialog filter does **not** reach `/notifications list` or
+  `clear`, and that `read <entry>` now resolves against the last *chat* listing only. Everything
+  underneath is covered — `InboxFiltersTest` (9), `InboxCursorsTest` (9), `FilteredInboxSetTest` (5).
 - **Inbox size is unbounded** and **seen is per player, not per medium** — both accepted; see the design
   doc's "Known limitations".
 - **The orphaned-target leak is fixed.** `deleteExpired`/`deleteByKey`/`deleteByPayloadType`/
