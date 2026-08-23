@@ -1,20 +1,13 @@
 package io.github.md5sha256.playernotifications.core.category;
 
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
+import io.github.md5sha256.playernotifications.core.config.GeneratedYaml;
 import io.leangen.geantyref.TypeToken;
 import org.jetbrains.annotations.NotNull;
-import org.spongepowered.configurate.ConfigurationNode;
-import org.spongepowered.configurate.yaml.NodeStyle;
-import org.spongepowered.configurate.yaml.YamlConfigurationLoader;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.StringWriter;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -78,29 +71,18 @@ public final class CategoryDefaultsWriter {
     /**
      * Renders the registry to {@link #FILE_NAME} at this writer's path.
      *
-     * <p><b>Never throws.</b> Failing to write an operator's reference copy must not fail a reload or a
-     * module registration, so an {@link IOException} — including the {@code ConfigurateException}
-     * subtype the render itself can raise — is logged at {@link Level#WARNING} naming the path and
-     * swallowed. An unwritable data folder degrades to "no reference copy", not to a broken reload.
-     *
-     * <p>The write is deliberately not atomic: nothing reads the file, so a torn write costs the
-     * operator one reload to correct, which does not justify the extra failure mode of a temp file.
+     * <p>Delegates to {@link GeneratedYaml#write}, which carries the contracts this write depends on:
+     * it <b>never throws</b> (an unwritable data folder must not fail a reload or a module
+     * registration), its header is plain text rather than a Configurate node comment, and the write is
+     * deliberately not atomic because nothing reads the file back.
      */
     public void write(@NotNull NotificationCategoryRegistry registry) {
-        try {
-            StringWriter out = new StringWriter();
-            YamlConfigurationLoader loader = YamlConfigurationLoader.builder()
-                    .nodeStyle(NodeStyle.BLOCK)
-                    .sink(() -> new BufferedWriter(out))
-                    .build();
-            ConfigurationNode root = loader.createNode();
-            root.node("categories").set(new TypeToken<Map<String, NotificationCategoryDefinition>>() {},
-                    snapshot(registry));
-            loader.save(root);
-            Files.writeString(this.file, HEADER + out);
-        } catch (IOException ex) {
-            this.logger.log(Level.WARNING, "Failed to write " + this.file, ex);
-        }
+        GeneratedYaml.write(this.file,
+                HEADER,
+                "categories",
+                new TypeToken<Map<String, NotificationCategoryDefinition>>() {},
+                snapshot(registry),
+                this.logger);
     }
 
     /**
