@@ -36,6 +36,7 @@ import io.github.md5sha256.playernotifications.core.DatabaseNotificationPreferen
 import io.github.md5sha256.playernotifications.core.DatabaseSettings;
 import io.github.md5sha256.playernotifications.core.DefaultNotificationService;
 import io.github.md5sha256.playernotifications.core.NotificationDelivery;
+import io.github.md5sha256.playernotifications.core.category.CategoryDefaultsWriter;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategories;
 import io.github.md5sha256.playernotifications.core.category.NotificationCategoriesConfig;
 import io.github.md5sha256.playernotifications.core.database.Database;
@@ -79,6 +80,11 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
     private DatabaseNotificationPreferences preferences;
     private NotificationDelivery notificationDelivery;
     private NotificationCategories categories;
+    /**
+     * Writes {@code categories-defaults.yml}, the generated reference copy of everything the code-side
+     * category registry holds. Written, never read — see {@link CategoryDefaultsWriter}.
+     */
+    private CategoryDefaultsWriter categoryDefaultsWriter;
     /** Guards {@link #scheduleCategoryRebuild()} so a burst of late claims causes one rebuild, not one each. */
     private final AtomicBoolean categoryRebuildPending = new AtomicBoolean();
     /**
@@ -193,6 +199,9 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 ServicePriority.Normal
         );
 
+        this.categoryDefaultsWriter = new CategoryDefaultsWriter(
+                getDataFolder().toPath().resolve(CategoryDefaultsWriter.FILE_NAME), getLogger());
+
         try {
             this.categories = loadCategories();
         } catch (IOException ex) {
@@ -278,6 +287,25 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         warnAboutUnmappedCategoryTypes();
         warnAboutMissingConfigKeys();
+
+        // One tick: this runs on the server's first tick, after every other plugin's onEnable has
+        // returned, so whatever the registry holds once the server is fully up is what the operator's
+        // reference copy says. The change listener above does not make this redundant --
+        // NotificationCategoryRegistry#addChangeListener has a default no-op body (deliberately, for
+        // binary compatibility), so a third-party registry implementation never notifies us at all and
+        // its defaults file would otherwise be frozen at whatever startModules() produced.
+        //
+        // In the ordinary case the listener has already scheduled a rebuild that also lands on this
+        // tick, so this simply writes the same bytes again -- the output is sorted and deterministic,
+        // so which of the two runs last cannot matter. A flag to suppress it would add ordering
+        // reasoning to save one file write per server start.
+        getServer().getScheduler().runTask(this, () -> {
+            if (!isEnabled()) {
+                return;
+            }
+            this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
+        });
+
         getLogger().info("PlayerNotifications enabled");
     }
 
@@ -395,6 +423,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
 
         this.categories = newCategories;
         this.preferenceDialogRouter.reloadCategories(newCategories);
+        this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
         this.notificationDelivery = new NotificationDelivery(
                 this.database,
                 this.notificationService.dataTypeRegistry(),
@@ -490,6 +519,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.preferences = null;
         this.notificationDelivery = null;
         this.categories = null;
+        this.categoryDefaultsWriter = null;
         this.preferenceDialogRouter = null;
         this.inboxRouter = null;
         this.mailRouter = null;
@@ -567,6 +597,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         try {
             this.categories = loadCategories();
             this.preferenceDialogRouter.reloadCategories(this.categories);
+            this.categoryDefaultsWriter.write(this.notificationService.categoryRegistry());
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to rebuild categories " + when + ".", ex);
         }
