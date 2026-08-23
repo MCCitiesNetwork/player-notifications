@@ -162,34 +162,25 @@ public final class InboxRouter {
     }
 
     /**
-     * Opens the filter picker, reading each category's counts off the main thread.
+     * Opens the filter picker.
      *
-     * <p>One count pair per category. Categories are few and this read is already async; if a server ever
-     * defines enough of them for it to hurt, the fix is one grouped count folded together in Java rather
-     * than a different screen.
+     * <p>Reads nothing from the database: the rows are category names, so there is no query to marshal
+     * off the main thread and none of the per-category counting an earlier version did. It is called from
+     * a dialog button, so it is already on the main thread; {@code onMainThread} is kept because that is
+     * a fact about the caller rather than a guarantee of this method.
      */
     public void openFilterPicker(@NotNull Player player) {
         if (!filterable()) {
             return;
         }
-        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, () -> {
-            UUID id = player.getUniqueId();
-            List<InboxFilterDialog.Row> rows = new ArrayList<>();
-            rows.add(row(id, null));
-            for (String key : this.filters.categoryKeys()) {
-                rows.add(row(id, key));
-            }
-            String active = this.dialogCategory.get(id);
-            DialogSupport.onMainThread(this.plugin, player,
-                    () -> this.filterDialog.show(player, rows, active));
-        });
-    }
-
-    private InboxFilterDialog.Row row(@NotNull UUID playerId, @Nullable String categoryKey) {
-        Set<String> filter = categoryKey == null ? null : this.filters.resolve(categoryKey);
-        int total = this.service.inbox(playerId, 1, 1, filter).totalEntries();
-        int unread = this.service.unreadCount(playerId, filter);
-        return new InboxFilterDialog.Row(categoryKey, this.filters.label(categoryKey), unread, total);
+        List<InboxFilterDialog.Row> rows = new ArrayList<>();
+        rows.add(new InboxFilterDialog.Row(null, this.filters.label(null)));
+        for (String key : this.filters.categoryKeys()) {
+            rows.add(new InboxFilterDialog.Row(key, this.filters.label(key)));
+        }
+        String active = this.dialogCategory.get(player.getUniqueId());
+        DialogSupport.onMainThread(this.plugin, player,
+                () -> this.filterDialog.show(player, rows, active));
     }
 
     /**

@@ -98,9 +98,8 @@ verification is Task 6's checklist.
 - [ ] `InboxRouter` gains `dialogCategory` (`Map<UUID, String>`), a `setDialogFilter` used by the
       picker, and `openFilterPicker(Player)`
 - [ ] `InboxFilterDialog` renders one row per `InboxFilters#categoryKeys` plus an unconditional
-      "All notifications" row and a Back button, each row labelled
-      `<label> — <unread> unread of <total>` from one filtered count pair, empty categories greyed
-      rather than hidden
+      "All notifications" row and a Back button, each row labelled with the category name only — no
+      counts, so the picker issues no query at all
 - [ ] `InboxDialog` gains a `Filter: <label>` button, first in the grid, omitted entirely when the
       router is pinned
 - [ ] `PlayerNotificationsPlugin` builds `InboxFilters` and swaps the reloaded
@@ -127,8 +126,9 @@ verification is Task 6's checklist.
 `database.yml`. Not yet run.
 
 - [ ] `/notifications` opens the inbox with a `Filter: All` button
-- [ ] The button opens the picker; every category is listed, empties greyed, "All notifications" first
-- [ ] Per-category unread/total counts are correct
+- [ ] The button opens the picker; every category is listed, "All notifications" first, the active
+      row marked, and **no unread numbers anywhere on the screen**
+- [ ] Back returns to the list and Close only closes — one of each, not two Backs
 - [ ] Choosing a category reopens the list filtered, titled with the category label, button reading
       `Filter: <label>`
 - [ ] Paging within a filtered screen stays filtered

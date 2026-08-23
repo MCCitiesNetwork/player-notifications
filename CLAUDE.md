@@ -1035,10 +1035,13 @@ The inbox **dialog** can be narrowed to one category; the **commands cannot**, d
 
 - **`InboxDialog` carries one `Filter: <label>` button**, first in the grid, opening
   `InboxFilterDialog` — a picker with one row per category plus an unconditional "All notifications"
-  row, each labelled `<label> — <unread> unread of <total>`. That unconditional row is also what stops
-  the picker ever handing `multiAction` an empty `actions` list, the codec failure an empty inbox hits.
-  Empty categories are shown greyed rather than hidden, so rows do not move under a player between
-  opens. A filtered screen titles itself with the category label, so its scope is stated twice.
+  row. That unconditional row is also what stops the picker ever handing `multiAction` an empty
+  `actions` list, the codec failure an empty inbox hits. **Rows carry names only, no unread counts** —
+  a filter is a filter, unread numbers belong to the list screen for the scope you are in, and leaving
+  them off means the picker issues no query at all. Every category is listed regardless of whether it
+  holds anything, so rows do not move under a player between opens. Back returns to the list while the
+  exit action only closes, so the two are worded apart rather than both reading "Back". A filtered
+  screen titles itself with the category label, so its scope is stated twice.
 - **`paper.inbox.InboxFilters`** resolves a category key to its data-type set via
   `NotificationCategories#dataTypesForCategory`, reading the categories **and** the registry live on
   every call rather than snapshotting — so a late module registration and `/notifications reload` are

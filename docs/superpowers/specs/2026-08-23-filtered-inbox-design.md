@@ -162,22 +162,24 @@ way `PreferenceDialogRouter` already takes it.
 ### Dialogs
 
 `InboxDialog` gains one `ActionButton`, first in the grid, reading **`Filter: All`** or
-**`Filter: <category label>`**. It opens `InboxFilterDialog`, a new `multiAction` picker:
+**`Filter: <category label>`**. It opens `InboxFilterDialog`, a new `multiAction` picker: an
+"All notifications" row, one row per category, and Back. The active row is marked with a `▶`.
 
-| Row | Reads |
-|---|---|
-| All notifications | `All notifications — 3 unread of 12` |
-| one per category | `Mail — 2 unread of 5` |
-| … | `Broadcasts — 0 unread of 0` (grey) |
+**The rows carry names only — no unread or total counts.** A filter is a filter: this screen chooses
+what the inbox shows, and unread numbers are the inbox's own business, stated by the list screen for
+the scope the player is actually in. Keeping them off also means the picker reads nothing from the
+database at all, which removes the one per-category cost this design otherwise carried.
 
-plus Back. Choosing a row reopens `InboxDialog` at page 1 with that filter; choosing "All
-notifications" clears it. The title becomes the category label, so the screen names its own scope in
-two places.
+Choosing a row reopens `InboxDialog` at page 1 with that filter; choosing "All notifications" clears
+it. The title becomes the category label, so the screen names its own scope in two places.
 
-**Every category is listed, including empty ones, greyed rather than hidden.** A picker whose rows
-appear and disappear as mail arrives makes the row a player is reaching for move under their cursor,
-and "nothing here yet" is itself the answer to "where is my mail". It also keeps the row set stable
-between opens, which is what makes the screen learnable.
+**Every category is listed, including ones holding nothing.** A picker whose rows appear and
+disappear as mail arrives makes the row a player is reaching for move under their cursor, and a
+stable row set is what makes the screen learnable. (With counts gone there is nothing to distinguish
+an empty category by anyway.)
+
+**Back and the exit action are worded apart** — Back returns to the list, the exit action only
+closes. Both labelled "Back" read as one button duplicated.
 
 The picker can never be empty — the "All notifications" row is unconditional — so it does not hit
 vanilla's `MultiActionDialog` empty-`actions` codec failure that `InboxRouter.openInbox` guards
@@ -279,9 +281,6 @@ and `/notifications clear`, both of which must still act on the whole inbox.**
   is still visible under "All notifications", which is why this is a wart rather than data loss. Fixing
   it means resolving the complement against the data types actually present in the player's inbox — a
   second query per screen open, for a case that only arises after a module is removed.
-- **The picker runs one count pair per category.** Categories are few and the read is already async,
-  but this is the part that would hurt first if a server defined dozens. The fallback, if it ever
-  bites, is a single grouped `COUNT(*) … GROUP BY notifPayloadType` folded into categories in Java.
 - **The filter does not survive a quit.** It is dropped with the page cursor by `InboxQuitListener`,
   because it is view state rather than a preference: a filter that persisted would need storage, and
   more importantly would need an escape hatch for a player who set one, forgot, and later concludes
@@ -301,9 +300,11 @@ and `/notifications clear`, both of which must still act on the whole inbox.**
   listing* without storing anything — not a stateful `filter` subcommand.
 - **Only one category at a time.** Multi-select is expressible in the set-taking API — that is what
   the set is — but there is no UI for it, and no reported want.
-- **Empty categories are shown greyed rather than hidden**, deliberately (see UI flow). If operators
-  define many categories that a given server never populates, this becomes noise, and the fix is a
-  config toggle rather than a redesign.
+- **The picker does not say which categories hold anything.** Listing every category with no counts
+  means a player may filter to one that turns out to be empty; they get the empty reply and the picker
+  straight back. Deliberate — see UI flow — and the escape is cheap. If it ever proves annoying, a
+  presence marker is a smaller change than counts, since it needs one grouped query rather than a pair
+  per category.
 - **No filtered unread count on join.** `JoinDeliveryListener`'s lines stay whole-inbox plus mail, as
   now. A per-category join summary is a different feature and would compete with the mail line for the
   same screen space.

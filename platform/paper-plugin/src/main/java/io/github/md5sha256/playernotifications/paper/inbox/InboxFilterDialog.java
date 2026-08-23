@@ -21,20 +21,26 @@ import java.util.List;
  * The filter picker: one row per category, plus an unconditional "All notifications" row.
  *
  * <p>Unverified by automated tests — dialogs need a live server, the same exception every other screen
- * in this tree sits under. What could be pulled out already has been: the key-to-data-type resolution
- * into {@link InboxFilters}, and the counts into the router's async read.
+ * in this tree sits under. What could be pulled out already has been: the key-to-data-type resolution,
+ * into {@link InboxFilters}.
  */
 final class InboxFilterDialog {
 
     private static final Component TITLE = Component.text("Filter inbox");
     private static final Component BACK_LABEL = Component.text("Back");
+    private static final Component CLOSE_LABEL = Component.text("Close");
 
     /**
-     * One row's worth of already-read state. {@code categoryKey} is {@code null} for the unfiltered row,
-     * matching {@link InboxFilters#resolve} — so the row a player picks is the argument the router takes,
-     * with nothing to translate in between.
+     * One row. {@code categoryKey} is {@code null} for the unfiltered row, matching
+     * {@link InboxFilters#resolve} — so the row a player picks is the argument the router takes, with
+     * nothing to translate in between.
+     *
+     * <p>Carries no counts. A filter is a filter: this screen chooses what the inbox shows, and unread
+     * totals are the inbox's own business — the list screen states them for the scope you are actually
+     * in. Putting them here also meant a count pair per category on every open, for numbers nobody had
+     * asked this screen for.
      */
-    record Row(@Nullable String categoryKey, @NotNull Component label, int unread, int total) {
+    record Row(@Nullable String categoryKey, @NotNull Component label) {
     }
 
     private final InboxRouter router;
@@ -61,6 +67,8 @@ final class InboxFilterDialog {
                             DialogSupport.callbackOptions()))
                     .build());
         }
+        // Back returns to the list; the exit action below only closes. Two different outcomes, so they
+        // are worded apart — an exit action labelled "Back" alongside this one read as a duplicate.
         buttons.add(ActionButton.builder(BACK_LABEL)
                 .action(DialogAction.customClick((response, audience) ->
                         this.router.openInbox(player, 1), DialogSupport.callbackOptions()))
@@ -73,7 +81,7 @@ final class InboxFilterDialog {
         Dialog dialog = Dialog.create(factory -> {
             DialogRegistryEntry.Builder builder = factory.empty();
             builder.base(base).type(DialogType.multiAction(buttons)
-                    .exitAction(ActionButton.builder(BACK_LABEL).build())
+                    .exitAction(ActionButton.builder(CLOSE_LABEL).build())
                     .columns(2)
                     .build());
         });
@@ -81,18 +89,16 @@ final class InboxFilterDialog {
     }
 
     /**
-     * {@code <label> — <unread> unread of <total>}, greyed when the category holds nothing.
+     * The category's name, with the active one marked so the screen says what it is currently showing.
      *
-     * <p>Empty categories are shown rather than hidden: a picker whose rows come and go as mail arrives
-     * moves the row a player is reaching for, and "nothing here yet" is itself the answer to "where is
-     * my mail". The active row is marked so the screen says what it is currently showing.
+     * <p>Every category is listed, including ones holding nothing: a picker whose rows come and go as
+     * mail arrives moves the row a player is reaching for, and the row set staying put is what makes the
+     * screen learnable.
      */
     private static Component rowLabel(@NotNull InboxFilterDialog.Row row, @Nullable String activeCategory) {
-        boolean active = java.util.Objects.equals(row.categoryKey(), activeCategory);
-        NamedTextColor colour = row.total() == 0 ? NamedTextColor.DARK_GRAY : NamedTextColor.WHITE;
-        Component label = row.label().colorIfAbsent(colour)
-                .append(Component.text(" — " + row.unread() + " unread of " + row.total(),
-                        NamedTextColor.GRAY));
-        return active ? Component.text("▶ ", NamedTextColor.YELLOW).append(label) : label;
+        Component label = row.label().colorIfAbsent(NamedTextColor.WHITE);
+        return java.util.Objects.equals(row.categoryKey(), activeCategory)
+                ? Component.text("▶ ", NamedTextColor.YELLOW).append(label)
+                : label;
     }
 }
