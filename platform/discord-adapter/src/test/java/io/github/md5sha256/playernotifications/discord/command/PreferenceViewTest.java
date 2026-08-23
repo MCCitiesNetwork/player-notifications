@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 class PreferenceViewTest {
@@ -116,8 +117,41 @@ class PreferenceViewTest {
     }
 
     private PreferenceView view() {
+        return view(PreferenceViewTest::titleCase);
+    }
+
+    private PreferenceView view(@NotNull Function<String, String> typeLabel) {
         return new PreferenceView(this.preferences, this.sinks, () -> this.dataTypes,
-                new PreferenceSessionManager(), LOGGER);
+                new PreferenceSessionManager(), LOGGER, typeLabel);
+    }
+
+    /**
+     * The label function production used to hardcode. Kept here so the assertions about today's labels
+     * still describe today's behaviour now that the view no longer decides them for itself.
+     */
+    private static @NotNull String titleCase(@NotNull String dataType) {
+        String spaced = dataType.replace('-', ' ').replace('_', ' ');
+        StringBuilder builder = new StringBuilder(spaced.length());
+        boolean capitalise = true;
+        for (char character : spaced.toCharArray()) {
+            builder.append(capitalise ? Character.toUpperCase(character) : character);
+            capitalise = character == ' ';
+        }
+        return builder.toString();
+    }
+
+    @Test
+    void theTypeLabelIsSuppliedByTheCallerRatherThanDecidedHere() {
+        // The seam exists so the host can resolve an operator override -> module default -> title-case
+        // without this class knowing anything about configuration.
+        PreferenceView.State state = view(dataType -> "Custom " + dataType).open(PLAYER, null);
+
+        Assertions.assertEquals("Custom mail",
+                state.dataTypes().stream()
+                        .filter(choice -> choice.key().equals("mail"))
+                        .findFirst()
+                        .orElseThrow()
+                        .label());
     }
 
     @Test

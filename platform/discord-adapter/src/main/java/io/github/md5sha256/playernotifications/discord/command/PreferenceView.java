@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
@@ -43,6 +44,19 @@ public final class PreferenceView {
     private final Supplier<Set<String>> knownDataTypes;
     private final PreferenceSessionManager sessions;
     private final Logger logger;
+    /**
+     * How a {@code dataType} is labelled in the type select.
+     *
+     * <p>A {@link Function} rather than the host's {@code TypeNames} so this class stays unit-testable
+     * with no host plugin, no configuration and no Bukkit — the same seam
+     * {@code TestNotificationRenderer} and {@code MailRecipients} already use for their own lookups.
+     * In production {@code DiscordModule} wires it to the host's {@code TypeNames}, which resolves an
+     * operator override, then the module-supplied default, then the title-cased key.
+     *
+     * <p>The label arrives already flattened to plain text: a Discord select option carries a string,
+     * not a component, so nothing here could render formatting even if it were given some.
+     */
+    private final Function<String, String> typeLabel;
 
     /**
      * No clock seam: {@link PreferenceSessionManager} stamps and expires sessions with
@@ -53,12 +67,37 @@ public final class PreferenceView {
                           @NotNull NotificationSinkRegistry sinks,
                           @NotNull Supplier<Set<String>> knownDataTypes,
                           @NotNull PreferenceSessionManager sessions,
-                          @NotNull Logger logger) {
+                          @NotNull Logger logger,
+                          @NotNull Function<String, String> typeLabel) {
         this.preferences = preferences;
         this.sinks = sinks;
         this.knownDataTypes = knownDataTypes;
         this.sessions = sessions;
         this.logger = logger;
+        this.typeLabel = typeLabel;
+    }
+
+    /**
+     * Transitional: the label function defaults to the title-casing this class used to hardcode.
+     *
+     * <p>Exists only so {@code DiscordModule} keeps compiling until it is wired to the host's
+     * {@code TypeNames}; delete it with that wiring.
+     */
+    public PreferenceView(@NotNull DatabaseNotificationPreferences preferences,
+                          @NotNull NotificationSinkRegistry sinks,
+                          @NotNull Supplier<Set<String>> knownDataTypes,
+                          @NotNull PreferenceSessionManager sessions,
+                          @NotNull Logger logger) {
+        this(preferences, sinks, knownDataTypes, sessions, logger, dataType -> {
+            String spaced = dataType.replace('-', ' ').replace('_', ' ');
+            StringBuilder builder = new StringBuilder(spaced.length());
+            boolean capitalise = true;
+            for (char character : spaced.toCharArray()) {
+                builder.append(capitalise ? Character.toUpperCase(character) : character);
+                capitalise = character == ' ';
+            }
+            return builder.toString();
+        });
     }
 
     /** Opens (or resumes) the player's staged edit, showing {@code selectedDataType} or the first one. */
@@ -210,7 +249,7 @@ public final class PreferenceView {
         Set<String> selectedMedia = session.mediaFor(selected);
         List<Choice> typeChoices = new ArrayList<>(dataTypes.size());
         for (String dataType : dataTypes) {
-            typeChoices.add(new Choice(dataType, label(dataType), dataType.equals(selected)));
+            typeChoices.add(new Choice(dataType, this.typeLabel.apply(dataType), dataType.equals(selected)));
         }
 
         List<Choice> mediaChoices = new ArrayList<>();
@@ -232,18 +271,6 @@ public final class PreferenceView {
         Set<String> media = new LinkedHashSet<>(new TreeSet<>(this.sinks.registeredMedia()));
         List<String> keys = new ArrayList<>(media);
         return keys.size() > MAX_CHOICES ? keys.subList(0, MAX_CHOICES) : keys;
-    }
-
-    /** Title-cased, matching how the in-game dialogs label a data type rather than showing a raw key. */
-    private static @NotNull String label(@NotNull String dataType) {
-        String spaced = dataType.replace('-', ' ').replace('_', ' ');
-        StringBuilder builder = new StringBuilder(spaced.length());
-        boolean capitalise = true;
-        for (char character : spaced.toCharArray()) {
-            builder.append(capitalise ? Character.toUpperCase(character) : character);
-            capitalise = character == ' ';
-        }
-        return builder.toString();
     }
 
     /**
