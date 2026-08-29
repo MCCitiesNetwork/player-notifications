@@ -639,10 +639,18 @@ written to the database.
   in a single `NotificationTarget`**; `notifExpiryTime` is `null`, matching mail.
 
 **`--offline` requires `--persistent` *and* at least one `--perm`**, both rejected naming the reason.
-The first because `ChatSink` reports `DELIVERED` for an absent player — the trap `JoinDeliveryListener`
-re-checks `isOnline()` to avoid — so a transient offline broadcast would claim a success nobody saw. The
-second because the permission filter is the only thing bounding the *shape* of an offline audience;
-without it, `--offline` addresses every player the permission backend has ever heard of.
+The first because a transient broadcast leaves no record: an offline recipient no sink could reach right
+now has lost it for good, and on a stock server chat is the only registered medium. The second because
+the permission filter is the only thing bounding the *shape* of an offline audience; without it,
+`--offline` addresses every player the permission backend has ever heard of.
+
+**`ChatSink` returns `UNREACHABLE` for an absent player** — it looks the `Player` up and null-checks it.
+An earlier version of this documentation claimed the opposite in several places, and that false premise
+caused a real bug: `PersistentBroadcaster` skipped offline recipients to avoid a phantom "marked seen for
+someone who saw nothing", which made `--offline` fail to deliver the Discord DMs it exists for. **Every
+recipient now gets a delivery pass and the sinks decide.** MARK_SEEN-wins then does the right thing by
+itself: seen only if something genuinely delivered, and a chat-only recipient who is offline gets
+all-`UNREACHABLE`, stays unread, and is pushed on their next join.
 
 **`--limit <n>` bounds the *size*.** Absent means unlimited on both paths, so existing commands are
 unchanged and the flag is purely opt-in. **`--limit 0` is rejected**, not treated as unlimited: zero
@@ -707,10 +715,13 @@ command reduced to wiring, the same split `/mail` uses:
   indistinguishable from one never run, apart from the queries it took to count.
 - **The persistent push uses `NotificationDelivery.deliver`, not `Broadcaster`** — because it stamps
   `seenTime`, so a recipient who read it live is not pushed it again on their next join. It also honours
-  the mute gate and per-`dataType` preferences. **Offline recipients are not pushed**, deliberately: a
-  false `DELIVERED` from `ChatSink` would mark it seen unread. So an offline recipient with a linked
-  Discord account waits until their next join; reaching them sooner needs per-medium delivery tracking,
-  still deferred.
+  the mute gate and per-`dataType` preferences. **Every recipient is pushed, online or not**, and each
+  sink decides what it can reach: `ChatSink` answers `UNREACHABLE` for an absent player, `DiscordDmSink`
+  delivers to a linked one regardless. That is what makes `--offline` deliver a DM at send time.
+- **The reply says "delivery attempted for N", not "reached N".** `NotificationDelivery.deliver` returns
+  `void`, so nothing upstream knows whether a sink got through — the same honesty `/notifications test`
+  observes. A push that *throws* is counted separately (`broadcast.push-failed`), because an attempted
+  count of zero would otherwise read identically whether nobody was reachable or every delivery blew up.
 - **An enqueue failure propagates**; a single failed push is logged and the rest still run. Announcing a
   broadcast the inbox cannot show is worse than the command failing outright.
 - **The `--bypass` fallback is `chat`, and only when nothing else remains.** A bypassed recipient with

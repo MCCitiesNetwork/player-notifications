@@ -104,11 +104,16 @@ broadcast:
   # <error> — why the permission backend could not be queried. Deliberately NOT parse-failed: that key
   # blames the sender's MiniMessage, and this failure is the server's.
   lookup-failed: '<prefix> <red>Could not work out who to send to:</red> <gray><error></gray><gray> Nothing was sent.</gray>'
-  # <stored> recipients the notification was stored for, <pushed> of them reached right now.
-  stored-one: '<prefix> <green>Broadcast stored for</green> <white><stored></white> <green>player,</green> <white><pushed></white> <green>reached now.</green>'
-  stored-many: '<prefix> <green>Broadcast stored for</green> <white><stored></white> <green>players,</green> <white><pushed></white> <green>reached now.</green>'
+  # <stored> recipients the notification was stored for, <attempted> of them a delivery pass ran for.
+  # Deliberately "delivery attempted", not "reached": NotificationDelivery.deliver returns void, so
+  # nothing here knows whether a sink actually got through. Same honesty as /notifications test.
+  stored-one: '<prefix> <green>Broadcast stored for</green> <white><stored></white> <green>player, delivery attempted for</green> <white><attempted></white><green>.</green>'
+  stored-many: '<prefix> <green>Broadcast stored for</green> <white><stored></white> <green>players, delivery attempted for</green> <white><attempted></white><green>.</green>'
   # <count> — appended after a stored/sent reply, so no prefix.
   bypassed: '<gray>Bypassed mute or silence for</gray> <white><count></white> <gray>player(s).</gray>'
+  # <count> — appended when a delivery pass threw. Its own line so that an attempted count of zero is
+  # never ambiguous between nobody being reachable and everything failing.
+  push-failed: '<red>Delivery failed for</red> <white><count></white> <red>player(s)</red><gray> — see the console. They keep an unread inbox copy.</gray>'
 
 join:
   # Sent on join, outside the deliver-on-join setting: a player who turned push off still needs to

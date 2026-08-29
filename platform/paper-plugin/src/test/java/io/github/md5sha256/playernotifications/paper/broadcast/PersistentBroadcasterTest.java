@@ -205,8 +205,7 @@ class PersistentBroadcasterTest {
         RecordingService service = new RecordingService();
         UUID alice = UUID.randomUUID();
         UUID bob = UUID.randomUUID();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> false,
-                uuid -> { }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         broadcaster.broadcast(Component.text("rendered"), "<red>raw</red>", List.of(alice, bob), false);
 
@@ -221,8 +220,7 @@ class PersistentBroadcasterTest {
     @Test
     void storesTheRawMiniMessageRatherThanTheRenderedComponent() {
         RecordingService service = new RecordingService();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> false,
-                uuid -> { }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         broadcaster.broadcast(Component.text("rendered"), "<red>raw</red>",
                 List.of(UUID.randomUUID()), false);
@@ -232,20 +230,25 @@ class PersistentBroadcasterTest {
     }
 
     @Test
-    void pushesOnlyTheOnlineRecipients() {
+    void pushesEveryRecipientIncludingOnesWhoAreOffline() {
+        // The bug this pins: offline recipients used to be skipped, on the false premise that ChatSink
+        // reports DELIVERED for an absent player. It does not — it returns UNREACHABLE — so the sinks
+        // can be trusted to decide, and DiscordDmSink reaches a linked player who is not logged in.
+        // Skipping them made --offline fail at the one thing it exists for.
         RecordingService service = new RecordingService();
         UUID online = UUID.randomUUID();
         UUID offline = UUID.randomUUID();
         List<UUID> pushed = new ArrayList<>();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service,
-                online::equals, pushed::add, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, pushed::add,
+                broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         PersistentBroadcaster.Result result = broadcaster.broadcast(Component.text("hi"), "hi",
                 List.of(online, offline), false);
 
-        assertEquals(List.of(online), pushed);
+        assertEquals(List.of(online, offline), pushed);
         assertEquals(2, result.stored());
-        assertEquals(1, result.pushed());
+        assertEquals(2, result.attempted());
+        assertEquals(0, result.failed());
     }
 
     @Test
@@ -253,8 +256,7 @@ class PersistentBroadcasterTest {
         RecordingService service = new RecordingService();
         UUID muted = UUID.randomUUID();
         RecordingChatSink sink = new RecordingChatSink();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> true,
-                uuid -> { }, broadcasterWith(Map.of(), Set.of(muted), sink), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { }, broadcasterWith(Map.of(), Set.of(muted), sink), LOGGER);
 
         PersistentBroadcaster.Result result =
                 broadcaster.broadcast(Component.text("hi"), "hi", List.of(muted), false);
@@ -269,8 +271,7 @@ class PersistentBroadcasterTest {
         UUID muted = UUID.randomUUID();
         UUID reachable = UUID.randomUUID();
         RecordingChatSink sink = new RecordingChatSink();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> true,
-                uuid -> { },
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { },
                 broadcasterWith(Map.of(reachable, Set.of("chat")), Set.of(muted), sink), LOGGER);
 
         PersistentBroadcaster.Result result = broadcaster.broadcast(Component.text("hi"), "hi",
@@ -282,12 +283,12 @@ class PersistentBroadcasterTest {
     }
 
     @Test
-    void aThrowingPushDoesNotStopTheRemainingRecipients() {
+    void aThrowingPushIsCountedAsFailedAndDoesNotStopTheRest() {
         RecordingService service = new RecordingService();
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         List<UUID> pushed = new ArrayList<>();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> true, uuid -> {
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> {
             if (uuid.equals(first)) {
                 throw new RuntimeException("boom");
             }
@@ -298,8 +299,11 @@ class PersistentBroadcasterTest {
                 broadcaster.broadcast(Component.text("hi"), "hi", List.of(first, second), false);
 
         assertEquals(List.of(second), pushed);
-        assertEquals(1, result.pushed());
         assertEquals(2, result.stored());
+        assertEquals(1, result.attempted());
+        // Counted, not silent: "attempted 0" must not be ambiguous between nobody being reachable and
+        // every delivery blowing up, since those need completely different responses from an operator.
+        assertEquals(1, result.failed());
     }
 
     @Test
@@ -312,8 +316,8 @@ class PersistentBroadcasterTest {
             }
         };
         List<UUID> pushed = new ArrayList<>();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(failing, uuid -> true,
-                pushed::add, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(failing, pushed::add,
+                broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         Assertions.assertThrows(IllegalStateException.class,
                 () -> broadcaster.broadcast(Component.text("hi"), "hi",

@@ -207,9 +207,11 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
         }
 
         /**
-         * {@code --offline} without {@code --persistent}. An offline player has no chat, and
-         * {@code ChatSink} reports {@code DELIVERED} for an absent player, so a transient offline
-         * broadcast would claim a success nobody saw.
+         * {@code --offline} without {@code --persistent}. A transient broadcast leaves no record, so an
+         * offline recipient it could not reach right now has lost it for good — and for most of them it
+         * cannot: chat is the only medium a stock server registers, and {@code ChatSink} correctly
+         * reports {@code UNREACHABLE} for an absent player. Requiring {@code --persistent} means the
+         * message waits in the inbox for everyone the sinks could not reach.
          */
         record OfflineRequiresPersistent() implements Result {
         }

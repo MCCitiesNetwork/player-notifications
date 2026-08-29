@@ -28,12 +28,19 @@ the first without the second.
 
 ## The two prerequisites on `--offline`
 
-**`--offline` requires `--persistent`.** An offline player has no chat. `ChatSink` reports `DELIVERED`
-for an absent player — the trap `JoinDeliveryListener` re-checks `isOnline()` to avoid — so a transient
-fan-out to offline recipients would report a success nobody saw, for everyone without a linked Discord
-account. Rather than make the transient path presence-aware, the combination is **rejected naming the
-reason**: it has no honest implementation, and silently upgrading it to persistent would store rows the
-operator did not ask for.
+**`--offline` requires `--persistent`.** A transient broadcast leaves no record, so an offline recipient
+that no sink could reach right now has lost it permanently — and on a stock server chat is the only
+registered medium, so that is most of them. Requiring `--persistent` means the message waits in the inbox
+for everyone the sinks could not reach. Silently upgrading the combination to persistent was rejected as
+well: it would store rows the operator did not ask for.
+
+> **Corrected 2026-08-29, after a live-server bug report.** This rule was originally justified by
+> "`ChatSink` reports `DELIVERED` for an absent player, so a transient offline broadcast would claim a
+> success nobody saw". **That premise is false** — `ChatSink` null-checks the `Player` and returns
+> `UNREACHABLE`. The claim came from several stale statements in `CLAUDE.md` and older specs, and it
+> caused a real bug: `PersistentBroadcaster` skipped offline recipients entirely, which made `--offline`
+> fail to send the Discord DMs it exists for. The rule above survives on its own merits; the reasoning
+> did not. See "Step 2 pushes every recipient" below.
 
 **`--offline` requires at least one `--perm`.** With no permission node the offline audience is "every
 player the permission backend has ever heard of", which is unbounded, grows forever, and would write a
@@ -53,7 +60,7 @@ BroadcastCommand
   ├── BroadcastRecipients.select(cands, perms, chain)   (+ AND, online path only)
   ├── the --limit check                         (new — one condition, after resolve)
   ├── Broadcaster.broadcast / .suppressed       (+ suppressed)
-  └── PersistentBroadcaster                     (new — enqueue, then push the online recipients)
+  └── PersistentBroadcaster                     (new — enqueue, then push every recipient)
 ```
 
 ### `BroadcastArguments` — the flag grammar
@@ -339,18 +346,40 @@ Three steps, in order:
    `notifScheduledTime` is now, `notifExpiryTime` is `null`, `notifPriority` is `0`. The payload carries
    the **raw MiniMessage string**, not the rendered `Component`, so the stored form is the source text and
    the renderer is the only thing deciding how it reads.
-2. **Push the online recipients.** For each recipient with a live `Player`, call
-   `NotificationDelivery.deliver(uuid)`. This is the existing push path: it honours the mute gate and the
-   per-`dataType` preferences, fans out through the registered sinks, and — the reason it is used rather
-   than `Broadcaster` — **stamps `seenTime`**, so a recipient who read it live is not pushed it again on
-   their next join. Offline recipients are not pushed; `JoinDeliveryListener` reaches them.
+2. **Push every recipient** (see "Step 2 pushes every recipient" below). Call
+   `NotificationDelivery.deliver(uuid)` for each. This is the existing push path: it honours the mute gate
+   and the per-`dataType` preferences, fans out through the registered sinks, and — the reason it is used
+   rather than `Broadcaster` — **stamps `seenTime`**, so a recipient who read it live is not pushed it
+   again on their next join.
 3. **Bypass the suppressed, if asked.** When `bypass` is set, `Broadcaster.suppressed(recipients)` returns
    the recipients step 2 would have delivered nothing to — muted, or silenced down to no usable medium —
    and `Broadcaster.broadcast(content, those, true)` delivers to them transiently with the existing `chat`
    fallback. They keep their **unread** inbox copy, which is correct: they were reached out of band, and
    the stored record is what makes the message recoverable.
 
-Steps 2 and 3 cannot overlap: step 3's set is by construction the set step 2 skipped.
+Steps 2 and 3 do not double up. Step 2 runs for everyone, but a muted recipient is stopped by the gate at
+the top of `NotificationDelivery.deliver` and a silenced one by `RenderingProcessor`, so neither receives
+anything from it — and those are exactly the recipients `Broadcaster.suppressed` returns for step 3.
+
+### Step 2 pushes every recipient
+
+**Every recipient gets a delivery pass, online or not, and the sinks decide who they can reach.**
+`ChatSink` returns `UNREACHABLE` for an absent player; `DiscordDmSink` delivers to a linked one whether or
+not they are logged in. MARK_SEEN-wins then behaves correctly with no help: seen only if something
+genuinely delivered, and a chat-only recipient who is offline gets all-`UNREACHABLE`, stays unread, and is
+pushed on their next join.
+
+The first implementation gated this on `Server#getPlayer(uuid) != null`, to avoid marking a notification
+seen for someone who saw nothing. **That was a workaround for a bug that does not exist**, and it made
+`--offline --persistent` store a notification and deliver nothing — no DM at send time, for exactly the
+absent, linked players the flag was built to reach. Reported from a live server and fixed by deleting the
+gate.
+
+The reply says **"delivery attempted for N", not "reached N"**: `NotificationDelivery.deliver` returns
+`void`, so nothing here knows whether a sink got through — the same honesty `/notifications test`
+observes. A pass that *throws* is counted separately in `Result.failed` and reported on its own line,
+because an attempted count of zero would otherwise read identically whether nobody was reachable or every
+delivery blew up.
 
 `Broadcaster` gains one method for step 3, reusing the rule it already applies internally so the two
 cannot drift:
@@ -577,10 +606,6 @@ No schema change, no migration and no config change: a persistent broadcast is a
 - **A persistent broadcast never expires.** `notifExpiryTime` is `null`, matching mail, so the rows live
   until dismissed. An announcement is more perishable than correspondence, so `--expires <days>` is a
   likely follow-up; the field is already nullable, so it is a pure addition.
-- **An offline recipient with a linked Discord account waits until their next join.** Step 2 pushes only
-  online recipients, because `deliver` stamps `seenTime` and `ChatSink` would report a false `DELIVERED`
-  for an absent player. Reaching absent players immediately on out-of-game media requires per-medium
-  delivery tracking, which remains deferred.
 - **`--bypass` does not override the mute for the *stored* copy**, only for the transient step-3 delivery.
   The mute gate sits above the whole delivery loop in `NotificationDelivery.deliver`, and no
   per-notification flag can reach it. The stored copy is unaffected either way — a mute has never stopped

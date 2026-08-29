@@ -65,6 +65,7 @@ public final class MessageKeys {
     public static final String BROADCAST_STORED_ONE = "broadcast.stored-one";
     public static final String BROADCAST_STORED_MANY = "broadcast.stored-many";
     public static final String BROADCAST_BYPASSED = "broadcast.bypassed";
+    public static final String BROADCAST_PUSH_FAILED = "broadcast.push-failed";
 
     // join
     public static final String JOIN_UNREAD_ONE = "join.unread-one";

@@ -184,7 +184,13 @@ public final class BroadcastCommand {
                     result.stored() == 1 ? MessageKeys.BROADCAST_STORED_ONE
                             : MessageKeys.BROADCAST_STORED_MANY,
                     MessageContainer.value("stored", String.valueOf(result.stored())),
-                    MessageContainer.value("pushed", String.valueOf(result.pushed()))));
+                    MessageContainer.value("attempted", String.valueOf(result.attempted()))));
+            if (result.failed() > 0) {
+                // Reported separately because "attempted 0" would otherwise read the same whether
+                // nobody was reachable or every delivery blew up.
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_PUSH_FAILED,
+                        MessageContainer.value("count", String.valueOf(result.failed()))));
+            }
             if (result.bypassed() > 0) {
                 sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_BYPASSED,
                         MessageContainer.value("count", String.valueOf(result.bypassed()))));

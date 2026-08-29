@@ -91,8 +91,10 @@ public final class JoinDeliveryListener implements Listener {
         // on the main thread outright.
         Runnable task = () -> {
             // The player may have left during the delay. Delivering anyway would mark the notification
-            // seen for nothing: ChatSink reports DELIVERED against an offline Audience, and the
-            // MARK_SEEN-wins fan-out would then hide it from their unread list.
+            // Skipped for a player who left during the delay: not for correctness — ChatSink returns
+            // UNREACHABLE for an absent player, so nothing would be wrongly marked seen — but because
+            // the delivery pass is a database round trip plus sink calls that nobody is there to read.
+            // Their notifications stay unread and are delivered on their next join.
             if (player.isOnline()) {
                 deliver(player.getUniqueId());
             }

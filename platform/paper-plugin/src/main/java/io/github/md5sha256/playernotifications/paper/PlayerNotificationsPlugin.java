@@ -421,7 +421,6 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         // notificationDelivery with a new object, and the push must reach the current one.
         PersistentBroadcaster persistentBroadcaster = new PersistentBroadcaster(
                 this.notificationService,
-                uuid -> getServer().getPlayer(uuid) != null,
                 uuid -> this.notificationDelivery.deliver(uuid),
                 broadcaster, getLogger());
         // Absent when LuckPerms is not installed: --offline then explains its own unavailability rather
