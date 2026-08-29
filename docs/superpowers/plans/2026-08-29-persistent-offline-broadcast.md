@@ -4,9 +4,19 @@
 reach players who are not online and send a broadcast that survives being missed.
 **Spec:** `docs/superpowers/specs/2026-08-29-persistent-offline-broadcast-design.md`
 
-**Baseline before any change:** `:api:test` 39, `:platform:paper-plugin:test` 218,
-`:platform:essentials-mail-converter:test` 21 — all green. `:core:test` and
-`:platform:discord-adapter:test` need Docker and were not run.
+**Baseline before any change:** `:api:test` 39, `:core:test` 131, `:platform:paper-plugin:test` 218,
+`:platform:discord-adapter:test` 214, `:platform:essentials-mail-converter:test` 21 — all green.
+
+**After:** 39 / 136 / 258 / 214 / 21, all green, every module run with a live Docker daemon.
+
+**Deviations from the spec, both deliberate:**
+- `PersistentBroadcaster` takes `Predicate<UUID> isOnline` and `Consumer<UUID> push` rather than a
+  `Server` and a `Supplier<NotificationDelivery>`. The original signature put the class beyond unit
+  testing; production wires `push` to read the `notificationDelivery` field at call time, which is the
+  property the supplier existed for. The spec has been updated to match.
+- `LuckPermsPermissionLookup.create` is the factory, not a private method on `LuckPermsBinding`, so the
+  binding names no LuckPerms type in its bytecode either — HotSpot may load types named in a method body
+  while verifying it, and the binding loads on every server.
 
 ## Task 1: `BroadcastArguments` — the four flags
 

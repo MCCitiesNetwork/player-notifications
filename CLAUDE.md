@@ -613,67 +613,164 @@ non-mail one reaches a recording sink, the mail's `seenTime` stays null and it i
 
 ## Broadcast
 
-Design doc: `…/specs/2026-08-21-broadcast-command-design.md`. Plan: `…/plans/2026-08-21-broadcast-command.md`.
+Design docs: `…/specs/2026-08-21-broadcast-command-design.md` (the transient original) and
+`…/specs/2026-08-29-persistent-offline-broadcast-design.md` (`--chain`, `--persistent`, `--offline`,
+`--limit`). Plans alongside both.
 
-`/broadcast <content> --perm [perm] --perm [perm] [--bypass]` — a one-shot announcement delivered
-*immediately* to matching online players through each one's preferred media, and **never written to the
-database**. Op-only (`playernotifications.command.broadcast`) and usable from the console. Permissions
-combine with **OR**; with no `--perm` at all, every online player matches.
+```
+/broadcast <content> [--perm <node>]… [--chain and|or] [--persistent] [--offline] [--limit <n>] [--bypass]
+```
 
-**It is not a `Notification`, and that is the central decision.** Its audience is "whoever is online and
-holds the permission right now", which does not survive being written down: a player joining ten minutes
-later was never a recipient, and storing it would put it in their inbox as though they were. So it follows
-`MailNotifier`'s precedent — fan a `RenderableNotification` out with no payload, key or disposition. No new
-registry axis, sink, processor or migration. Nothing is enqueued, so nothing is prunable, readable in the
-inbox, or recoverable once missed.
+An announcement to matching players through each one's preferred media. Op-only
+(`playernotifications.command.broadcast`) and usable from the console. **None of the flags carries a
+permission of its own** — a second gate on a flag of an op-only command distinguishes nothing.
 
-**Mute and silence both apply; `--bypass` overrides both together.** `--bypass` is for the announcement
-class that is not a subscription — a restart warning — and carries no permission of its own, the command
-being op-only. There is deliberately no flag overriding only one of the two.
+**Two independent axes.** `--persistent` decides *whether the message is stored*; `--offline` decides
+*who it goes to*. Default (neither) is the original behaviour exactly: transient, online-only, never
+written to the database.
 
-**A player can silence broadcasts because the type is registered as a payload mapping and nothing else.**
-The dialogs enumerate `dataTypes()`, so `onEnable` calls `registerPayloadMapping(Broadcaster.BROADCAST_DATA_TYPE,
-BroadcastPayload.class)` — no serializer, renderer or processor, and nothing ever enqueues one. It is the
-one registered type that cannot round-trip through storage; `BroadcastPayload` exists to be that key.
-Adding a serializer and renderer is the upgrade path to a *storable* broadcast, which is why the mapping is
-registered now. `categories.yml` ships a `broadcast` category so it groups under a readable name.
+- **Transient (no `--persistent`)** — fanned out immediately and **never written to the database**. Its
+  audience is "whoever is online and holds the permission right now", which does not survive being
+  written down: a player joining ten minutes later was never a recipient. Follows `MailNotifier`'s
+  precedent — a `RenderableNotification` with no payload, key or disposition. Nothing enqueued, so
+  nothing prunable, readable in the inbox, or recoverable once missed.
+- **Persistent (`--persistent`)** — a real `Notification` row, so it lands in the inbox, is pushed on the
+  recipient's next join, and stays readable until dismissed. One notification carrying **every recipient
+  in a single `NotificationTarget`**; `notifExpiryTime` is `null`, matching mail.
+
+**`--offline` requires `--persistent` *and* at least one `--perm`**, both rejected naming the reason.
+The first because `ChatSink` reports `DELIVERED` for an absent player — the trap `JoinDeliveryListener`
+re-checks `isOnline()` to avoid — so a transient offline broadcast would claim a success nobody saw. The
+second because the permission filter is the only thing bounding the *shape* of an offline audience;
+without it, `--offline` addresses every player the permission backend has ever heard of.
+
+**`--limit <n>` bounds the *size*.** Absent means unlimited on both paths, so existing commands are
+unchanged and the flag is purely opt-in. **`--limit 0` is rejected**, not treated as unlimited: zero
+reads as "send to nobody", and overloading it would make the most dangerous setting look like the
+safest. There is no magic value. The check runs after `resolve` and before anything is enqueued or
+delivered, and the reply **names the resolved count**, which is what the operator types back as
+`--limit` to confirm — so that key must keep quoting `<count>` through any rewording.
+
+**Mute and silence both apply; `--bypass` overrides both together** — for the announcement class that is
+not a subscription, a restart warning. There is deliberately no flag overriding only one. On the
+persistent path `--bypass` reaches only the recipients the push skipped (`Broadcaster.suppressed`), who
+keep their **unread** inbox copy: they were reached out of band, and the stored record is what makes the
+message recoverable. It does **not** override the mute for the stored copy — the gate sits above the
+whole delivery loop in `NotificationDelivery.deliver`, and no per-notification flag can reach it. A
+bypassed recipient can therefore be told twice (now, and on next join while still unread), the same
+trade `JoinDeliveryListener`'s mail line already accepts.
+
+**`broadcast` is now a fully registered renderable type**, not a mapping-only key. `onEnable` calls
+`registerJsonRenderable(BROADCAST_DATA_TYPE, BroadcastPayload.class, new BroadcastRenderer(messages))`,
+so a stored broadcast round-trips and reads properly. **Still no processor**, deliberately: an explicit
+processor wins dispatch and would bypass preferences and sinks entirely — right for `mail`, wrong here.
+The mapping is also what makes `broadcast` enumerate in `dataTypes()`, which the preference dialogs walk,
+so a player can silence it. `categories.yml` ships a `broadcast` category.
 
 The types, in `paper.broadcast` unless noted — every decision in a class with no Bukkit dependency, the
 command reduced to wiring, the same split `/mail` uses:
 
 | Type | Holds |
 |---|---|
-| `BroadcastArguments` | The flag syntax. Brigadier cannot express repeated flags, so `<content>` is one greedy string and the flags are parsed out of it. |
-| `BroadcastAudience` | One method — permissions in, UUIDs out. The seam for future offline delivery. |
-| `OnlineBroadcastAudience` | Today's only implementation. **Main thread only.** |
-| `BroadcastRecipients` | The OR match, over a `Predicate<String>` seam. |
-| `Broadcaster` | The per-recipient sink fan-out, mirroring `MailNotifier.notifyArrival`. |
+| `BroadcastArguments` | The flag syntax and every rejection case. Brigadier cannot express repeated flags, so `<content>` is one greedy string and the flags are parsed out of it. |
+| `BroadcastAudience` | Permissions + chain in, UUIDs out. **Called off the command thread.** |
+| `OnlineBroadcastAudience` | Online players. Marshals to the main thread *itself*. |
+| `OfflineBroadcastAudience` | Delegates to `PermissionLookup`, drops anyone online. **Blocks.** |
+| `PermissionLookup` | "Who holds these nodes", set-valued. The one question Bukkit cannot answer. |
+| `LuckPermsPermissionLookup` | The only implementation. The three-stage group resolution below. |
+| `LuckPermsBinding` | The isolation guard. **Names no LuckPerms type at all.** |
+| `BroadcastRecipients` | The AND/OR match, over a `Predicate<String>` seam. Online path only. |
+| `Broadcaster` | The transient per-recipient sink fan-out, plus `suppressed`. |
+| `PersistentBroadcaster` | Enqueue once, push the online, bypass the suppressed. |
+| `BroadcastRenderer` | Renders a stored broadcast for the inbox. |
 | `paper.command.BroadcastCommand` | The Brigadier node. Wiring only. |
 
 - **Parsing rule.** Everything before the **first** flag token is the content, taken from the raw string so
-  interior spacing survives; the remainder must be `--perm <value>` pairs and bare `--bypass` tokens in any
-  order. Anything else is **rejected naming the token**, which is what lets a later flag be added without
-  changing an existing command's meaning. Cost, accepted: the literal tokens cannot appear in the text.
+  interior spacing survives; the remainder must be value-taking flags (`--perm`, `--chain`, `--limit`) and
+  bare ones (`--bypass`, `--persistent`, `--offline`) in any order. Anything else is **rejected naming the
+  token** — which is exactly what made adding four flags a pure addition: it can only turn text that was
+  already a hard error into a flag, never change the meaning of a command that parsed before. Cost,
+  accepted: none of the literal flag tokens can appear in the text. `--chain` and `--limit` take the last
+  occurrence when repeated, consistent with `--bypass`'s idempotence. The two `--offline` prerequisites
+  are checked **after** the token loop, since flags may appear in any order relative to it.
 - **`<content>` is full MiniMessage with no per-tag gate** — unlike `/mail send`, whose fifteen nodes exist
   because a mail is stored and rendered later for a *recipient* from a *sender* who may be gone. A parse
   failure is reported to the sender; there is no fallback to literal text, because the sender can fix it.
-- **Permissions resolve on the command thread, delivery does not.** Only the resulting `List<UUID>` crosses
-  into `runTaskAsynchronously` — the same rule `MailCommand.send` follows.
+  The **stored** payload holds the raw MiniMessage, not the rendered component, so `BroadcastRenderer` is
+  the only thing deciding how a stored broadcast reads.
+- **Resolution moved off the command thread**, inverting the original rule, because the offline lookup
+  blocks on a permission backend. `OnlineBroadcastAudience` still needs the main thread for
+  `Player#hasPermission` and marshals back via `callSyncMethod` — with an `isPrimaryThread()`
+  short-circuit that is **not tidiness**: without it a main-thread call deadlocks waiting on a task only
+  the main thread can run. Each audience owning its own threading is what keeps the command branch-free.
+- **The async order is fixed:** `resolve` → `--limit` → empty-audience → fan-out. A refused command is
+  indistinguishable from one never run, apart from the queries it took to count.
+- **The persistent push uses `NotificationDelivery.deliver`, not `Broadcaster`** — because it stamps
+  `seenTime`, so a recipient who read it live is not pushed it again on their next join. It also honours
+  the mute gate and per-`dataType` preferences. **Offline recipients are not pushed**, deliberately: a
+  false `DELIVERED` from `ChatSink` would mark it seen unread. So an offline recipient with a linked
+  Discord account waits until their next join; reaching them sooner needs per-medium delivery tracking,
+  still deferred.
+- **An enqueue failure propagates**; a single failed push is logged and the rest still run. Announcing a
+  broadcast the inbox cannot show is worse than the command failing outright.
 - **The `--bypass` fallback is `chat`, and only when nothing else remains.** A bypassed recipient with
   usable media is delivered to *those* — bypass overrides suppression, not choice of medium. Only an empty
   resolved set falls back to `Broadcaster.FALLBACK_MEDIUM`, chosen because `ChatSink` is registered
   unconditionally; `default-media` was rejected because a misconfigured server would make bypass silently
   deliver nothing, the exact failure the flag exists to rule out.
-- **The two failure replies are worded apart on purpose** — "No online player matched those permissions."
-  vs. "No recipient had broadcasts enabled. Use --bypass to deliver regardless." Only the second is fixable
-  with the flag.
-- **`BroadcastAudience` is the seam for offline delivery later**, which is wanted and **not designed**. The
-  other three types are already audience-neutral. The open questions are in the spec's "Room for offline
-  delivery", including two traps: **`ChatSink` reports `DELIVERED` for an offline player**, so the chat
-  fallback would claim a success nobody saw; and **"never stored" may not survive**.
-- **Tested:** `BroadcastArgumentsTest` (17), `BroadcastRecipientsTest` (5), `BroadcasterTest` (10).
-  `BroadcastCommand` and `OnlineBroadcastAudience` are not covered — they need a live server, and the
-  latter is kept a map-and-delegate so nothing worth testing lives in it.
+- **The failure replies are worded apart on purpose** — "No online player matched those permissions." vs.
+  "No recipient had broadcasts enabled. Use --bypass to deliver regardless." Only the second is fixable
+  with the flag. And a persistent send where every recipient was suppressed reports **stored, pushed 0**
+  rather than "nothing enabled": it *was* stored and is readable.
+
+### The offline permission lookup
+
+**`PermissionLookup` is set-valued (`matching(nodes, chain) : Set<UUID>`), not per-player.** The obvious
+shape — `Optional<Predicate<String>> forOfflinePlayer(UUID)`, feeding `BroadcastRecipients` like an
+online candidate — was designed first and rejected: it forces one backend load per candidate, N storage
+round trips for a set the backend can compute in a handful of queries. Cost, accepted: **the two paths
+match by different code** and can disagree, most plausibly on context-conditional nodes. Sharing one
+matcher is impossible while one side answers "who" and the other "whether".
+
+**`searchAll(NodeMatcher.key(permission))` alone is wrong** — it matches nodes as *stored*, and an
+inherited permission is not stored on the user. Only their group membership is. That is the way in;
+`LuckPermsPermissionLookup` does three stages per node:
+
+1. **Which groups grant it** — `getLoadedGroups()` filtered by each group's *resolved* `checkPermission`.
+   No I/O (groups are in memory) and inheritance is resolved, so a group inheriting from a granting group
+   is caught. `loadAllGroups()` is awaited once first so the set is complete.
+2. **Who is in those groups** — one `searchAll(NodeMatcher.key(InheritanceNode.builder(group).build()))`
+   each. Group membership *is* stored, which is why this works where stage 3 alone does not.
+3. **Who holds it directly** — one `searchAll(NodeMatcher.key(node))`, adding holders and **subtracting
+   explicit negations**, dropping `hasExpired()` nodes.
+
+Two to four queries per node. `Chain.OR` unions the per-node sets, `Chain.AND` intersects (and
+short-circuits once empty). **The `default` group is special-cased**: it grants implicitly and is stored
+on nobody, so stage 2 would find no one — that case falls back to `getUniqueUsers()`.
+
+- **`LuckPermsBinding` names no LuckPerms type in any signature *or bytecode*.** The factory lives on
+  `LuckPermsPermissionLookup.create` precisely so nothing can be loaded before `isPluginEnabled` has
+  passed — lazy constant-pool resolution would probably suffice, but HotSpot's verifier may load types
+  named in a method body while verifying it, and the binding loads on every server. Verify with
+  `javap -c -p …/LuckPermsBinding.class | grep -i luckperms`: string literals and the call to our own
+  `create` only, never a `net/luckperms` type. Same shape as `EssentialsMailBinding`.
+- **A `LinkageError` is caught**, as in the converter module: it is not a `RuntimeException`, so nothing
+  above would handle it, and an optional capability failing to load must not disable the plugin.
+- **LuckPerms is a third `join-classpath: true` server dependency** in `paper-plugin.yml`, alongside
+  DiscordSRV and Essentials — so it is a **third source of the unloaded-dependency class-loading hazard**
+  documented under "Discord adapter". Same fix: remove the jar rather than leave it unloaded.
+- **A lookup failure fails the whole command** rather than proceeding with a partial audience — the
+  recipients it would miss are not present to notice they were missed.
+- **Approximations, both inherent:** context-conditional nodes are answered in
+  `QueryOptions.defaultContextualOptions()` (there is no per-player context for an absent player), and a
+  player with no stored LuckPerms data is never matched except via the default-group fallback.
+
+**Tested:** `BroadcastArgumentsTest` (38), `BroadcastRecipientsTest` (9), `BroadcasterTest` (15),
+`PersistentBroadcasterTest` (7), `BroadcastRendererTest` (4). **Not covered, needing a live server and a
+real LuckPerms install:** `BroadcastCommand`, both audiences, `LuckPermsPermissionLookup` and
+`LuckPermsBinding`. The three-stage lookup is the one piece with real logic that cannot be unit tested —
+the price of it being a query against someone else's storage. **The 13-item manual checklist in
+`…/plans/2026-08-29-persistent-offline-broadcast.md` has not been run.**
 
 ## EssentialsX mail converter
 
@@ -1078,8 +1175,9 @@ the only way out is to pick different media or silence the type. `default-media`
 still tested) for a future admin command.
 
 **`/mail` and `/broadcast` are sibling command trees**, not subcommands — see their sections. `/broadcast`
-is gated by `playernotifications.command.broadcast` (`default: op`, the only op-only root here), open to
-the console, and is the one player-reaching path that never stores anything.
+is gated by `playernotifications.command.broadcast` (`default: op`, the only op-only root here) and is
+open to the console. It no longer *never* stores anything: `--persistent` writes a real notification, and
+`--offline` (which requires it) reaches players who are not connected.
 
 The player-facing subcommands are player-only under `playernotifications.command.preferences`
 (`default: true`). `link`/`unlink` carry an **additional** `playernotifications.command.link` (also
@@ -1414,13 +1512,15 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 - `--tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing.** Check the result count, not
   the exit status.
 
-Current baseline: **39 in `:api:test`, 217 in `:platform:paper-plugin:test`, 21 in
-`:platform:essentials-mail-converter:test`** — all passing, from a fresh run after the message restyle
-landed. **`:core:test` and `:platform:discord-adapter:test` were not re-run** (no Docker daemon
-available on that run); the last recorded figures are **126** and **214**, and both need confirming
-against a real run rather than carrying forward. The entry before this one recorded 206 for
-`:platform:paper-plugin:test` against an actual 212, and one before that 30 for `:api:test` against an
-actual 34 — so treat every number here as needing a fresh run rather than arithmetic on the last one.
+Current baseline, **every module run fresh with Docker available**: **39 in `:api:test`, 136 in
+`:core:test`, 258 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in
+`:platform:essentials-mail-converter:test`** — all passing, after persistent/offline broadcasts landed.
+
+Two of these correct long-stale entries rather than growing: `:core:test` was recorded as 126 and was
+actually **131** before this change (136 after the five new `PersistentBroadcastTest` cases), and
+`:platform:paper-plugin:test` was recorded as 217 and was actually **218**. Every previous entry here has
+been wrong by a few — 206 against an actual 212, 30 against an actual 34 — so treat these as needing a
+fresh run rather than arithmetic on the last one.
 
 ## Current state
 
@@ -1490,9 +1590,13 @@ Known gaps / notes:
   3's six-item checklist in `…/plans/2026-08-20-console-mail-and-minimessage.md`** (console `/mail send`,
   the "Mail from Server" title, a plain player getting literal text until a format node is granted, a
   non-op's `<click>` arriving literal, an op's arriving live, a tag-only message rejected as blank).
-- **`/broadcast` has never run on a live server.** **Task 4's 14-item checklist in
-  `…/plans/2026-08-21-broadcast-command.md` has not been run.** Underneath: 32 unit tests, no Docker or
-  server needed.
+- **`/broadcast` has never run on a live server**, transient or persistent. **Task 4's 14-item checklist
+  in `…/plans/2026-08-21-broadcast-command.md` and the 13-item one in
+  `…/plans/2026-08-29-persistent-offline-broadcast.md` have both not been run.** Underneath: 73 unit
+  tests, no Docker or server needed. The offline path additionally needs a **real LuckPerms install** —
+  `LuckPermsPermissionLookup`'s three-stage group resolution is the one piece of real logic in this
+  feature with no automated coverage at all, and the two cases most worth checking by hand are a
+  permission held only through a group (stage 1) and a server with no LuckPerms at all (the guard).
 - **The global mute's player-facing surface is unverified.** **The 12-item checklist in
   `…/plans/2026-08-20-global-mute.md` has not been run.** Covered: `PlayerMuteTest` and `MutedDeliveryTest`
   (against real MariaDB, including a case proving a *bespoke processor* is gated too), plus

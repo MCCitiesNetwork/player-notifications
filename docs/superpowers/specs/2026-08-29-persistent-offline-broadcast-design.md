@@ -274,14 +274,27 @@ that has it, which is where the original design said the constraint belonged.
 
 ```java
 public PersistentBroadcaster(@NotNull NotificationService service,
-                             @NotNull Supplier<NotificationDelivery> delivery,
+                             @NotNull Predicate<UUID> isOnline,
+                             @NotNull Consumer<UUID> push,
                              @NotNull Broadcaster broadcaster,
-                             @NotNull Server server,
                              @NotNull Logger logger)
 public Result broadcast(@NotNull Component content, @NotNull String rawContent,
                         @NotNull Collection<UUID> recipients, boolean bypass)
 public record Result(int stored, int pushed, int bypassed) {}
 ```
+
+**The seams are a `Predicate` and a `Consumer`, not a `Server` and a `NotificationDelivery`** — both of
+those need a live server to construct, and neither contributes a decision this class makes. Production
+wires `push` as `uuid -> notificationDelivery.deliver(uuid)`, reading the field at call time so
+`/notifications reload` replacing that object still reaches the current one. This is a change from the
+approved design, made because the original signature put the whole class beyond unit testing.
+
+**The seams are a `Predicate` and a `Consumer`, not a `Server` and a `NotificationDelivery`.** Both of
+those need a live server to construct, and neither contributes a decision this class makes. Production
+wires `push` as `uuid -> notificationDelivery.deliver(uuid)`, reading the field at call time so that
+`/notifications reload` replacing that object still reaches the current one — the property the
+`Supplier` in the original design was there to give. **This is a change from the approved design**, made
+because the original signature put the whole class beyond unit testing.
 
 Three steps, in order:
 
