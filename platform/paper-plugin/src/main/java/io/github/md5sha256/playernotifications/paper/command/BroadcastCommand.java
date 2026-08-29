@@ -82,6 +82,26 @@ public final class BroadcastCommand {
                         MessageContainer.value("token", unrecognised.token())));
                 return 0;
             }
+            case BroadcastArguments.Result.UnknownChainValue unknown -> {
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_UNKNOWN_CHAIN,
+                        MessageContainer.value("value", unknown.value())));
+                return 0;
+            }
+            case BroadcastArguments.Result.InvalidLimitValue invalid -> {
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_INVALID_LIMIT,
+                        MessageContainer.value("value", invalid.value())));
+                return 0;
+            }
+            case BroadcastArguments.Result.OfflineRequiresPersistent ignored -> {
+                sender.sendMessage(
+                        messages.messageFor(MessageKeys.BROADCAST_OFFLINE_REQUIRES_PERSISTENT));
+                return 0;
+            }
+            case BroadcastArguments.Result.OfflineRequiresPermission ignored -> {
+                sender.sendMessage(
+                        messages.messageFor(MessageKeys.BROADCAST_OFFLINE_REQUIRES_PERMISSION));
+                return 0;
+            }
             case BroadcastArguments.Result.Parsed ignored -> {
                 // Fall through to the send below.
             }

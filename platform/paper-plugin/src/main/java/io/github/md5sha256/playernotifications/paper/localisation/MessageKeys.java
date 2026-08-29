@@ -55,6 +55,15 @@ public final class MessageKeys {
     public static final String BROADCAST_UNRECOGNISED_TOKEN = "broadcast.unrecognised-token";
     public static final String BROADCAST_PARSE_FAILED = "broadcast.parse-failed";
     public static final String BROADCAST_SENT = "broadcast.sent";
+    public static final String BROADCAST_UNKNOWN_CHAIN = "broadcast.unknown-chain";
+    public static final String BROADCAST_INVALID_LIMIT = "broadcast.invalid-limit";
+    public static final String BROADCAST_LIMIT_EXCEEDED = "broadcast.limit-exceeded";
+    public static final String BROADCAST_OFFLINE_REQUIRES_PERSISTENT = "broadcast.offline-requires-persistent";
+    public static final String BROADCAST_OFFLINE_REQUIRES_PERMISSION = "broadcast.offline-requires-permission";
+    public static final String BROADCAST_OFFLINE_UNAVAILABLE = "broadcast.offline-unavailable";
+    public static final String BROADCAST_STORED_ONE = "broadcast.stored-one";
+    public static final String BROADCAST_STORED_MANY = "broadcast.stored-many";
+    public static final String BROADCAST_BYPASSED = "broadcast.bypassed";
 
     // join
     public static final String JOIN_UNREAD_ONE = "join.unread-one";

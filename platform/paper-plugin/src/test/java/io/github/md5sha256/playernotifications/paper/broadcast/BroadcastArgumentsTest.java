@@ -8,6 +8,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -145,5 +146,131 @@ class BroadcastArgumentsTest {
     void blankContentIsItsOwnRejectionCase() {
         assertInstanceOf(BroadcastArguments.Result.BlankContent.class,
                 BroadcastArguments.parse("   "));
+    }
+
+    // --- Task 1: --chain, --persistent, --offline, --limit ---
+
+    @Test
+    void chainDefaultsToOrWhenAbsent() {
+        assertEquals(BroadcastArguments.Chain.OR, parsed("hi --perm a").chain());
+    }
+
+    @Test
+    void chainAndIsParsed() {
+        assertEquals(BroadcastArguments.Chain.AND, parsed("hi --perm a --chain and").chain());
+    }
+
+    @Test
+    void chainValueIsCaseInsensitive() {
+        assertEquals(BroadcastArguments.Chain.OR, parsed("hi --perm a --chain OR").chain());
+    }
+
+    @Test
+    void unknownChainValueIsRejectedNamingTheValue() {
+        BroadcastArguments.Result result = BroadcastArguments.parse("hi --chain sideways");
+        BroadcastArguments.Result.UnknownChainValue unknown = assertInstanceOf(
+                BroadcastArguments.Result.UnknownChainValue.class, result);
+        assertEquals("sideways", unknown.value());
+    }
+
+    @Test
+    void chainAsFinalTokenIsMissingValue() {
+        BroadcastArguments.Result result = BroadcastArguments.parse("hi --chain");
+        assertEquals("--chain",
+                assertInstanceOf(BroadcastArguments.Result.FlagMissingValue.class, result).flag());
+    }
+
+    @Test
+    void persistentFlagIsParsed() {
+        assertTrue(parsed("hi --persistent").persistent());
+    }
+
+    @Test
+    void persistentDefaultsToFalse() {
+        assertFalse(parsed("hi").persistent());
+    }
+
+    @Test
+    void offlineWithoutPersistentIsRejected() {
+        assertInstanceOf(BroadcastArguments.Result.OfflineRequiresPersistent.class,
+                BroadcastArguments.parse("hi --offline --perm a"));
+    }
+
+    @Test
+    void offlineWithoutPermissionIsRejected() {
+        assertInstanceOf(BroadcastArguments.Result.OfflineRequiresPermission.class,
+                BroadcastArguments.parse("hi --offline --persistent"));
+    }
+
+    @Test
+    void offlineWithPersistentAndPermissionIsAccepted() {
+        BroadcastArguments arguments = parsed("hi --offline --persistent --perm a");
+        assertTrue(arguments.offline());
+        assertTrue(arguments.persistent());
+        assertEquals(List.of("a"), arguments.permissions());
+    }
+
+    @Test
+    void limitIsParsed() {
+        assertEquals(50, parsed("hi --limit 50").limit());
+    }
+
+    @Test
+    void absentLimitIsNullMeaningUnlimited() {
+        assertNull(parsed("hi").limit());
+    }
+
+    @Test
+    void zeroLimitIsRejectedRatherThanMeaningUnlimited() {
+        BroadcastArguments.Result result = BroadcastArguments.parse("hi --limit 0");
+        assertEquals("0",
+                assertInstanceOf(BroadcastArguments.Result.InvalidLimitValue.class, result).value());
+    }
+
+    @Test
+    void negativeLimitIsRejected() {
+        assertInstanceOf(BroadcastArguments.Result.InvalidLimitValue.class,
+                BroadcastArguments.parse("hi --limit -1"));
+    }
+
+    @Test
+    void nonIntegerLimitIsRejectedNamingTheValue() {
+        BroadcastArguments.Result result = BroadcastArguments.parse("hi --limit lots");
+        assertEquals("lots",
+                assertInstanceOf(BroadcastArguments.Result.InvalidLimitValue.class, result).value());
+    }
+
+    @Test
+    void limitAsFinalTokenIsMissingValue() {
+        assertEquals("--limit", assertInstanceOf(
+                BroadcastArguments.Result.FlagMissingValue.class,
+                BroadcastArguments.parse("hi --limit")).flag());
+    }
+
+    @Test
+    void newFlagsCombineInAnyOrder() {
+        BroadcastArguments arguments =
+                parsed("hi --limit 5 --bypass --perm a --chain and --persistent --offline");
+        assertEquals("hi", arguments.content());
+        assertEquals(BroadcastArguments.Chain.AND, arguments.chain());
+        assertEquals(5, arguments.limit());
+        assertTrue(arguments.bypass());
+        assertTrue(arguments.persistent());
+        assertTrue(arguments.offline());
+    }
+
+    @Test
+    void repeatedLimitTakesTheLastOccurrence() {
+        assertEquals(9, parsed("hi --limit 3 --limit 9").limit());
+    }
+
+    @Test
+    void contentEndsAtTheFirstNewFlagToken() {
+        assertEquals("hi", parsed("hi --persistent").content());
+    }
+
+    @Test
+    void aBareNewFlagTokenCannotAppearInContent() {
+        assertInvalid("--offline");
     }
 }
