@@ -155,8 +155,9 @@ public final class BroadcastCommand {
             recipients = audience.resolve(arguments.permissions(), arguments.chain());
         } catch (RuntimeException e) {
             // A partial audience is worse than a failed command here: the recipients it would miss are
-            // not present to notice they were missed.
-            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_PARSE_FAILED,
+            // not present to notice they were missed. Its own key, not parse-failed — that one blames
+            // the sender's MiniMessage, and a permission backend being down is the server's problem.
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_LOOKUP_FAILED,
                     MessageContainer.value("error", String.valueOf(e.getMessage()))));
             return;
         }

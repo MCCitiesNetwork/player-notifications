@@ -61,6 +61,7 @@ public final class MessageKeys {
     public static final String BROADCAST_OFFLINE_REQUIRES_PERSISTENT = "broadcast.offline-requires-persistent";
     public static final String BROADCAST_OFFLINE_REQUIRES_PERMISSION = "broadcast.offline-requires-permission";
     public static final String BROADCAST_OFFLINE_UNAVAILABLE = "broadcast.offline-unavailable";
+    public static final String BROADCAST_LOOKUP_FAILED = "broadcast.lookup-failed";
     public static final String BROADCAST_STORED_ONE = "broadcast.stored-one";
     public static final String BROADCAST_STORED_MANY = "broadcast.stored-many";
     public static final String BROADCAST_BYPASSED = "broadcast.bypassed";

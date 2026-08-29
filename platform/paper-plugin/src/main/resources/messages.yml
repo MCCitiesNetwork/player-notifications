@@ -101,6 +101,9 @@ broadcast:
   offline-requires-persistent: '<prefix> <white>--offline</white> <red>requires</red> <white>--persistent</white><gray>, since an offline player cannot be reached by a message that is never stored.</gray>'
   offline-requires-permission: '<prefix> <white>--offline</white> <red>requires at least one</red> <white>--perm</white><gray>, so the audience is named deliberately.</gray>'
   offline-unavailable: '<prefix> <red>Offline broadcasts are not available on this server.</red><gray> They need a supported permission plugin.</gray>'
+  # <error> — why the permission backend could not be queried. Deliberately NOT parse-failed: that key
+  # blames the sender's MiniMessage, and this failure is the server's.
+  lookup-failed: '<prefix> <red>Could not work out who to send to:</red> <gray><error></gray><gray> Nothing was sent.</gray>'
   # <stored> recipients the notification was stored for, <pushed> of them reached right now.
   stored-one: '<prefix> <green>Broadcast stored for</green> <white><stored></white> <green>player,</green> <white><pushed></white> <green>reached now.</green>'
   stored-many: '<prefix> <green>Broadcast stored for</green> <white><stored></white> <green>players,</green> <white><pushed></white> <green>reached now.</green>'
