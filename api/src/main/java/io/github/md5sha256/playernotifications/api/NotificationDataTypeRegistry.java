@@ -43,6 +43,22 @@ public class NotificationDataTypeRegistry {
         this.renderers.put(payloadClass, renderer);
     }
 
+    /**
+     * Removes <b>only</b> the {@code dataType} → payload class mapping, leaving that class's
+     * processor, serializer and renderer registered.
+     *
+     * <p>The counterpart to {@link #unregisterPayloadMapping(String)}, which cascades. Cascading is
+     * wrong wherever <em>several</em> data types share one payload class — the host's
+     * operator-declared types do, because renderers are keyed by class and there can be no class per
+     * key in a file read at runtime. Tearing the shared renderer down to remove one key would break
+     * every other key mapped to it.
+     *
+     * <p>A {@code dataType} with no mapping is a no-op.
+     */
+    public void unmapDataType(@NotNull String dataType) {
+        this.payloadMapping.remove(dataType);
+    }
+
     public void unregisterPayloadMapping(@NotNull String dataType) {
         Class<?> payloadClass = this.payloadMapping.remove(dataType);
         if (payloadClass != null) {
