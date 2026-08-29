@@ -33,35 +33,47 @@ public final class BroadcastRecipients {
     }
 
     /**
-     * Selects the UUIDs of every candidate matching {@code permissions} under OR semantics: an empty
-     * {@code permissions} list matches every candidate (no {@code --perm} flag means "everyone"),
-     * otherwise a candidate matches when {@link Candidate#hasPermission()} accepts at least one listed
-     * permission. Iteration order is preserved and each candidate contributes at most one UUID to the
-     * result, even if it would match more than one listed permission.
+     * Equivalent to {@link #select(Collection, List, BroadcastArguments.Chain)} with
+     * {@link BroadcastArguments.Chain#OR} — the behaviour before {@code --chain} existed, kept so that
+     * callers and tests written against the original signature stand unchanged.
+     */
+    @NotNull
+    public static List<UUID> select(@NotNull Collection<Candidate> candidates,
+                                    @NotNull List<String> permissions) {
+        return select(candidates, permissions, BroadcastArguments.Chain.OR);
+    }
+
+    /**
+     * Selects the UUIDs of every candidate matching {@code permissions} under {@code chain}: an empty
+     * {@code permissions} list matches every candidate under either chain (no {@code --perm} flag means
+     * "everyone"), otherwise {@link BroadcastArguments.Chain#OR} matches a candidate whose
+     * {@link Candidate#hasPermission()} accepts at least one listed permission and
+     * {@link BroadcastArguments.Chain#AND} one that accepts every listed permission. Iteration order is
+     * preserved and each candidate contributes at most one UUID to the result.
      *
      * @return an unmodifiable list of matching UUIDs
      */
     @NotNull
     public static List<UUID> select(@NotNull Collection<Candidate> candidates,
-                                    @NotNull List<String> permissions) {
+                                    @NotNull List<String> permissions,
+                                    @NotNull BroadcastArguments.Chain chain) {
         List<UUID> result = new ArrayList<>(candidates.size());
         for (Candidate candidate : candidates) {
-            if (matches(candidate, permissions)) {
+            if (matches(candidate, permissions, chain)) {
                 result.add(candidate.uuid());
             }
         }
         return Collections.unmodifiableList(result);
     }
 
-    private static boolean matches(@NotNull Candidate candidate, @NotNull List<String> permissions) {
+    private static boolean matches(@NotNull Candidate candidate, @NotNull List<String> permissions,
+                                   @NotNull BroadcastArguments.Chain chain) {
         if (permissions.isEmpty()) {
             return true;
         }
-        for (String permission : permissions) {
-            if (candidate.hasPermission().test(permission)) {
-                return true;
-            }
-        }
-        return false;
+        return switch (chain) {
+            case OR -> permissions.stream().anyMatch(candidate.hasPermission());
+            case AND -> permissions.stream().allMatch(candidate.hasPermission());
+        };
     }
 }
