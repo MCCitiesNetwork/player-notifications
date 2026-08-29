@@ -79,14 +79,14 @@ public final class JoinDeliveryListener implements Listener {
 
     @EventHandler
     public void onJoin(@NotNull PlayerJoinEvent event) {
+        if (!this.enabled) {
+            return;
+        }
         Player player = event.getPlayer();
         // Outside the deliver-on-join gate on purpose: a player who turned push off still needs to be
         // told something arrived, and the inbox is where they read it.
         this.plugin.getServer().getScheduler().runTaskAsynchronously(
                 this.plugin, () -> announceUnread(player));
-        if (!this.enabled) {
-            return;
-        }
         // Async: the mappers and preference lookups do blocking JDBC, and DiscordDmSink refuses to run
         // on the main thread outright.
         Runnable task = () -> {
