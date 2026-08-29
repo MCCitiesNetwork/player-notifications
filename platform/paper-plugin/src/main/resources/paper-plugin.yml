@@ -24,6 +24,14 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    # For /broadcast --offline: LuckPermsPermissionLookup names net.luckperms types and is the only
+    # way to answer a permission check for a player who is not online. Same isolation shape as the two
+    # above, and the same caveat — an *unloaded* LuckPerms jar left in plugins/ can poison class
+    # loading here, so remove the jar rather than leaving it disabled.
+    LuckPerms:
+      load: BEFORE
+      required: false
+      join-classpath: true
 
 permissions:
   playernotifications.command.preferences:

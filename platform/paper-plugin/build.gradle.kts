@@ -33,6 +33,9 @@ dependencies {
     api(projects.core)
     api("com.minecraftcitiesnetwork:plugin-infrastructure:1.0.0-SNAPSHOT")
     compileOnlyApi("io.papermc.paper:paper-api:26.1.2.+")
+    // Optional at runtime: only LuckPermsPermissionLookup names these types, reached through
+    // LuckPermsBinding's guard, so a server without LuckPerms simply has no offline broadcasts.
+    compileOnly("net.luckperms:api:5.4")
     testRuntimeOnly("io.papermc.paper:paper-api:26.1.2.+")
 }
 

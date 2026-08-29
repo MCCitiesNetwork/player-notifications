@@ -8,6 +8,7 @@ import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastArguments;
 import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastAudience;
 import io.github.md5sha256.playernotifications.paper.broadcast.Broadcaster;
+import io.github.md5sha256.playernotifications.paper.broadcast.PersistentBroadcaster;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
@@ -16,26 +17,29 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.UUID;
 
 /**
- * {@code /broadcast <content> --perm [perm] … [--bypass]}: parses and validates on the command thread,
- * then fans the message out asynchronously through {@link Broadcaster}. Any {@link CommandSender} may
- * use it, console included — unlike {@code /notifications}/{@code /mail}, it acts on the server's
- * online players, not on the sender's own inbox.
+ * {@code /broadcast <content> [--perm <node>]… [--chain and|or] [--persistent] [--offline]
+ * [--limit <n>] [--bypass]}: parses and validates on the command thread, then resolves and fans out
+ * asynchronously. Any {@link CommandSender} may use it, console included — unlike
+ * {@code /notifications}/{@code /mail}, it acts on other players, not on the sender's own inbox.
  *
- * <p><b>The audience is resolved on the command thread, not inside the async task.</b> Bukkit permission
- * state belongs to the main thread — {@link BroadcastAudience#resolve} (in practice
- * {@code OnlineBroadcastAudience}, which calls {@code Player#hasPermission}) must run there, and only the
- * resulting {@code List<UUID>} crosses into the async task. This is the same rule
- * {@code MailCommand.send} follows for its {@code TagResolver}: build anything Bukkit-permission-shaped
- * up front, hand the async task plain data.
+ * <p><b>Resolution now happens inside the async task, not on the command thread.</b> That inverts the
+ * original rule, because {@code OfflineBroadcastAudience} blocks on a permission backend and must not
+ * run on the main thread. {@code OnlineBroadcastAudience} still needs the main thread for
+ * {@code Player#hasPermission} and marshals back onto it internally, so each audience owns its own
+ * threading requirement and this class has one code path rather than a branch.
  *
- * <p><b>The fan-out itself runs asynchronously</b> because {@link Broadcaster#broadcast} does blocking
- * JDBC (reading preferences and the mute flag) and can deliver through {@code DiscordDmSink}, which
- * refuses to run on the main thread outright.
+ * <p>The fan-out runs asynchronously for the reason it always did: it does blocking JDBC and can reach
+ * {@code DiscordDmSink}, which refuses the main thread outright.
+ *
+ * <p><b>The async order is fixed:</b> resolve, then the {@code --limit} check, then the empty-audience
+ * check, then the fan-out — so a refused command is indistinguishable from one never run, apart from
+ * the queries it took to count. See {@link #send}.
  */
 public final class BroadcastCommand {
 
@@ -51,17 +55,23 @@ public final class BroadcastCommand {
     public static LiteralCommandNode<CommandSourceStack> create(@NotNull MessageContainer messages,
                                                                   @NotNull Plugin plugin,
                                                                   @NotNull Broadcaster broadcaster,
-                                                                  @NotNull BroadcastAudience audience) {
+                                                                  @NotNull PersistentBroadcaster persistentBroadcaster,
+                                                                  @NotNull BroadcastAudience onlineAudience,
+                                                                  @Nullable BroadcastAudience offlineAudience) {
         return Commands.literal("broadcast")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .then(Commands.argument(CONTENT_ARGUMENT, StringArgumentType.greedyString())
-                        .executes(context -> run(messages, context, plugin, broadcaster, audience)))
+                        .executes(context -> run(messages, context, plugin, broadcaster,
+                                persistentBroadcaster, onlineAudience, offlineAudience)))
                 .build();
     }
 
     private static int run(@NotNull MessageContainer messages,
                             @NotNull CommandContext<CommandSourceStack> context, @NotNull Plugin plugin,
-                            @NotNull Broadcaster broadcaster, @NotNull BroadcastAudience audience) {
+                            @NotNull Broadcaster broadcaster,
+                            @NotNull PersistentBroadcaster persistentBroadcaster,
+                            @NotNull BroadcastAudience onlineAudience,
+                            @Nullable BroadcastAudience offlineAudience) {
         CommandSender sender = context.getSource().getSender();
         String raw = StringArgumentType.getString(context, CONTENT_ARGUMENT);
 
@@ -117,22 +127,76 @@ public final class BroadcastCommand {
             return 0;
         }
 
-        List<UUID> recipients = audience.resolve(arguments.permissions());
-        if (recipients.isEmpty()) {
-            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NO_AUDIENCE));
+        if (arguments.offline() && offlineAudience == null) {
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_OFFLINE_UNAVAILABLE));
             return 0;
         }
+        BroadcastAudience audience = arguments.offline() ? offlineAudience : onlineAudience;
 
-        boolean bypass = arguments.bypass();
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            int attempted = broadcaster.broadcast(content, recipients, bypass);
-            if (attempted == 0) {
-                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NOTHING_ENABLED));
-            } else {
-                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_SENT,
-                        MessageContainer.value("count", String.valueOf(attempted))));
-            }
-        });
+        // Everything from here blocks: resolve queries a permission backend (or marshals to the main
+        // thread), and the fan-out does JDBC and can reach DiscordDmSink, which refuses the main thread.
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin,
+                () -> send(messages, sender, arguments, content, audience, broadcaster,
+                        persistentBroadcaster));
         return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * The async half. Order is fixed and matters: resolve, then the {@code --limit} check, then the
+     * empty-audience check, then the fan-out — so a refused command is indistinguishable from one never
+     * run, apart from the queries it took to count.
+     */
+    private static void send(@NotNull MessageContainer messages, @NotNull CommandSender sender,
+                             @NotNull BroadcastArguments arguments, @NotNull Component content,
+                             @NotNull BroadcastAudience audience, @NotNull Broadcaster broadcaster,
+                             @NotNull PersistentBroadcaster persistentBroadcaster) {
+        List<UUID> recipients;
+        try {
+            recipients = audience.resolve(arguments.permissions(), arguments.chain());
+        } catch (RuntimeException e) {
+            // A partial audience is worse than a failed command here: the recipients it would miss are
+            // not present to notice they were missed.
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_PARSE_FAILED,
+                    MessageContainer.value("error", String.valueOf(e.getMessage()))));
+            return;
+        }
+
+        Integer limit = arguments.limit();
+        if (limit != null && recipients.size() > limit) {
+            // Naming the real count is what makes this a confirmation rather than a wall — the operator
+            // types that number back as --limit to send anyway.
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_LIMIT_EXCEEDED,
+                    MessageContainer.value("count", String.valueOf(recipients.size())),
+                    MessageContainer.value("limit", String.valueOf(limit))));
+            return;
+        }
+
+        if (recipients.isEmpty()) {
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NO_AUDIENCE));
+            return;
+        }
+
+        if (arguments.persistent()) {
+            PersistentBroadcaster.Result result = persistentBroadcaster.broadcast(content,
+                    arguments.content(), recipients, arguments.bypass());
+            sender.sendMessage(messages.messageFor(
+                    result.stored() == 1 ? MessageKeys.BROADCAST_STORED_ONE
+                            : MessageKeys.BROADCAST_STORED_MANY,
+                    MessageContainer.value("stored", String.valueOf(result.stored())),
+                    MessageContainer.value("pushed", String.valueOf(result.pushed()))));
+            if (result.bypassed() > 0) {
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_BYPASSED,
+                        MessageContainer.value("count", String.valueOf(result.bypassed()))));
+            }
+            return;
+        }
+
+        int attempted = broadcaster.broadcast(content, recipients, arguments.bypass());
+        if (attempted == 0) {
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NOTHING_ENABLED));
+        } else {
+            sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_SENT,
+                    MessageContainer.value("count", String.valueOf(attempted))));
+        }
     }
 }

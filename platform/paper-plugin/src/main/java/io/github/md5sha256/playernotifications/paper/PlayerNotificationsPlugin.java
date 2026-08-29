@@ -11,7 +11,12 @@ import io.github.md5sha256.playernotifications.api.processor.NotificationDisposi
 import io.github.md5sha256.playernotifications.api.render.sink.ChatSink;
 import io.github.md5sha256.playernotifications.api.render.sink.DialogSink;
 import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastPayload;
+import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastAudience;
+import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastRenderer;
 import io.github.md5sha256.playernotifications.paper.broadcast.Broadcaster;
+import io.github.md5sha256.playernotifications.paper.broadcast.LuckPermsBinding;
+import io.github.md5sha256.playernotifications.paper.broadcast.OfflineBroadcastAudience;
+import io.github.md5sha256.playernotifications.paper.broadcast.PersistentBroadcaster;
 import io.github.md5sha256.playernotifications.paper.broadcast.OnlineBroadcastAudience;
 import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
 import io.github.md5sha256.playernotifications.paper.command.BroadcastCommand;
@@ -281,12 +286,13 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.notificationService.dataTypeRegistry().registerProcessor(MailPayload.class,
                 (payload, target) -> NotificationDisposition.RETAIN);
 
-        // A mapping-only registration: no serializer, no renderer, no processor, because a broadcast is
-        // never enqueued, never serialized and never rendered - see Broadcaster's javadoc. This is what
-        // makes "broadcast" enumerate in dataTypeRegistry().dataTypes(), which is what the preference
-        // dialogs walk, so a player can silence it like any other type.
-        this.notificationService.dataTypeRegistry().registerPayloadMapping(
-                Broadcaster.BROADCAST_DATA_TYPE, BroadcastPayload.class);
+        // A full renderable registration since --persistent: mapping, JSON serializer and renderer, so
+        // a stored broadcast round-trips and reads properly in the inbox. Deliberately NO processor —
+        // an explicit processor wins dispatch and would bypass preferences and sinks entirely, which is
+        // right for mail and wrong here. The mapping alone is also what makes "broadcast" enumerate in
+        // dataTypeRegistry().dataTypes(), which the preference dialogs walk, so a player can silence it.
+        this.notificationService.registerJsonRenderable(Broadcaster.BROADCAST_DATA_TYPE,
+                BroadcastPayload.class, new BroadcastRenderer(this.messages));
 
         this.inboxPageSize = pluginSettings.inboxPageSize();
         registerCommands(pluginSettings.inboxPageSize());
@@ -410,7 +416,19 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 new AccountLinkDispatcher(this.messages, this.accountLinkRegistry, getLogger());
         Executor asyncExecutor = runnable -> getServer().getScheduler().runTaskAsynchronously(this, runnable);
         Broadcaster broadcaster = new Broadcaster(this.messages, this.sinkRegistry, this.preferences, getLogger());
-        OnlineBroadcastAudience broadcastAudience = new OnlineBroadcastAudience(getServer());
+        OnlineBroadcastAudience broadcastAudience = new OnlineBroadcastAudience(this);
+        // A supplier for the same reason TestNotificationSender takes one: reload() replaces
+        // notificationDelivery with a new object, and the push must reach the current one.
+        PersistentBroadcaster persistentBroadcaster = new PersistentBroadcaster(
+                this.notificationService,
+                uuid -> getServer().getPlayer(uuid) != null,
+                uuid -> this.notificationDelivery.deliver(uuid),
+                broadcaster, getLogger());
+        // Absent when LuckPerms is not installed: --offline then explains its own unavailability rather
+        // than the node disappearing, the same shape as /notifications link on a server with no module.
+        BroadcastAudience offlineBroadcastAudience = LuckPermsBinding.tryCreate(this)
+                .map(lookup -> (BroadcastAudience) new OfflineBroadcastAudience(getServer(), lookup))
+                .orElse(null);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(
                     NotificationsCommand.create(this.messages, this.preferenceDialogRouter, this.inboxRouter,
@@ -424,7 +442,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                     MailCommand.DESCRIPTION
             );
             event.registrar().register(
-                    BroadcastCommand.create(this.messages, this, broadcaster, broadcastAudience),
+                    BroadcastCommand.create(this.messages, this, broadcaster, persistentBroadcaster,
+                            broadcastAudience, offlineBroadcastAudience),
                     BroadcastCommand.DESCRIPTION
             );
         });
