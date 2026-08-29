@@ -227,6 +227,41 @@ Two properties worth stating because they are load-bearing:
   the *writes and the delivery*, not the queries. That is the right trade — the queries are a handful, and
   the rows are what cannot be undone.
 
+### Rejected: a fallback for servers without LuckPerms
+
+**`--offline` requires LuckPerms, with no degraded mode.** A server without it gets
+`broadcast.offline-unavailable` and the rest of the command unchanged. That is a decision, not an
+omission — four alternatives were considered and none ships.
+
+- **Bukkit's own API.** There isn't one. `OfflinePlayer` has no `hasPermission`, and there is no
+  server-side record of an absent player's permissions to consult. This is the reason the whole
+  capability needs a third-party binding at all.
+- **Vault's `playerHas(world, OfflinePlayer, node)`.** Deprecated, and most backends answer it
+  dishonestly rather than failing — which is the worst possible property here, since a wrong answer
+  silently shrinks an audience nobody is present to notice was missed.
+- **Falling back to online-only.** Trivial to write, and rejected outright: `--offline` would then mean
+  something different depending on which plugins are installed, and the operator would have no way to
+  see it. A flag that silently narrows its own audience is worse than a flag that refuses.
+- **A snapshot table.** Config-declare the interesting nodes (`broadcast-tracked-permissions`),
+  evaluate them on join, store `(uuid, node, held, updatedAt)`, and answer `--offline` from one indexed
+  query. Genuinely workable and dependency-free, and it keeps immediate delivery — but it costs a
+  migration, a listener and a config key, works only for **pre-declared** nodes, and is stale for anyone
+  who has not logged in since a rank change. Not worth that surface area for a fallback.
+
+**The strongest alternative, recorded because it may be the better feature:** *defer the permission check
+to join time.* Rather than resolving an audience now, store the broadcast with its permission expression
+(`PendingBroadcast` plus a `PendingBroadcastSeen` ledger) and let the join hook match against
+`player.hasPermission` at the moment the player is online and Bukkit can answer authoritatively. That
+needs **no permission backend at all**, and is *more* correct than this design — it tests live
+permissions rather than what a backend believed at send time.
+
+It is not built here because it is a different feature, not a fallback: two new tables, a migration, and
+`--limit` loses its meaning (nothing is resolved up front, so there is no count to report). It also
+**gives up immediate delivery to absent players** — the LuckPerms path can resolve now and reach a linked
+player by Discord DM tonight, whereas the deferred model does not know they match until they log in. If
+`--offline` is ever revisited, that is where to start, and the choice between the two is really a choice
+about whether reaching an absent player *now* matters.
+
 ### Rejected: a last-seen window
 
 An earlier draft bounded the offline audience with `--since <days>` over `OfflinePlayer#getLastSeen()`,
@@ -506,9 +541,15 @@ No schema change, no migration and no config change: a persistent broadcast is a
   poison class loading exactly as described under "Discord adapter" in `CLAUDE.md`. The fix is the same —
   remove the jar rather than leave it unloaded — and the two code fixes rejected there are rejected here
   for the same reasons.
-- **Only LuckPerms.** A server on another permission plugin gets no `--offline`. Making `PermissionLookup`
-  a registry was considered and rejected as speculative: there is one implementation, and a second is a
-  registration-shaped change if it ever arrives.
+- **`--offline` requires LuckPerms, and there is deliberately no degraded mode.** A server on another
+  permission plugin — or none — gets `broadcast.offline-unavailable` and nothing else changes. The four
+  alternatives considered are recorded under "Rejected: a fallback for servers without LuckPerms",
+  including the one worth revisiting (deferring the permission check to join time). Making
+  `PermissionLookup` a registry was separately rejected as speculative: there is one implementation, and
+  a second is a registration-shaped change if it ever arrives.
+- **The binding resolves once, at enable.** Installing LuckPerms afterwards with a plugin manager leaves
+  `--offline` unavailable until a restart. Consistent with how every other capability here resolves, and
+  it fails loudly rather than silently — but it does not self-heal.
 - **The offline audience's *shape* is bounded only by the permission**, since `--since` was dropped. A
   node held by a large group addresses that whole group however long ago its members last played;
   `--limit` bounds how many that may be, but not who. Recency is discussed under "Rejected: a last-seen

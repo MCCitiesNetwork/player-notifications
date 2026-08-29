@@ -27,6 +27,30 @@ import java.util.UUID;
  *
  * <p><b>Implementations block.</b> Every one of them is a query against another plugin's storage, so
  * this is called only from an async task, never the main thread.
+ *
+ * <h2>There is deliberately no fallback implementation</h2>
+ *
+ * <p>{@code LuckPermsPermissionLookup} is the only one, and a server without LuckPerms simply cannot use
+ * {@code --offline}. Before adding a Bukkit-only implementation here, know that four alternatives were
+ * costed and rejected — the full write-up is in the design doc's "Rejected: a fallback for servers
+ * without LuckPerms":
+ *
+ * <ul>
+ *     <li>Bukkit has <b>no</b> offline permission API. {@code OfflinePlayer} has no
+ *     {@code hasPermission}, and nothing server-side records an absent player's permissions.</li>
+ *     <li>Vault's offline {@code playerHas} is deprecated and most backends answer it <em>dishonestly</em>
+ *     rather than failing — the worst property here, since a wrong answer silently shrinks an audience
+ *     nobody is present to notice was missed.</li>
+ *     <li>Quietly falling back to online-only makes {@code --offline} mean different things on different
+ *     servers, invisibly. A flag that narrows its own audience in silence is worse than one that refuses.</li>
+ *     <li>A config-declared snapshot table works, but costs a migration, a listener and a config key, and
+ *     answers only for pre-declared nodes.</li>
+ * </ul>
+ *
+ * <p>If this is revisited, the thing to build is probably not an implementation of this interface at all,
+ * but a <em>deferred</em> check: store the broadcast with its permission expression and match it against
+ * {@code player.hasPermission} on join, when Bukkit can answer authoritatively. That needs no permission
+ * backend and is more correct, at the cost of giving up immediate delivery to an absent player.
  */
 public interface PermissionLookup {
 

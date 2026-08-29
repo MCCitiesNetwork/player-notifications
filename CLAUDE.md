@@ -760,7 +760,21 @@ on nobody, so stage 2 would find no one — that case falls back to `getUniqueUs
   DiscordSRV and Essentials — so it is a **third source of the unloaded-dependency class-loading hazard**
   documented under "Discord adapter". Same fix: remove the jar rather than leave it unloaded.
 - **A lookup failure fails the whole command** rather than proceeding with a partial audience — the
-  recipients it would miss are not present to notice they were missed.
+  recipients it would miss are not present to notice they were missed. It has **its own message key**
+  (`broadcast.lookup-failed`), not `parse-failed`: that one blames the sender's MiniMessage, and a
+  permission backend being down is the server's problem, not something the sender can correct.
+- **`--offline` hard-requires LuckPerms and there is deliberately no degraded mode.** Without it the flag
+  replies `broadcast.offline-unavailable` and everything else works. Bukkit has no offline permission API
+  at all, Vault's offline `playerHas` is deprecated and answers dishonestly rather than failing, and a
+  silent fall back to online-only would make `--offline` mean different things on different servers with
+  no way for the operator to see it. A config-declared snapshot table was costed and judged too much
+  surface for a fallback. **The alternative worth revisiting is deferring the permission check to join
+  time** — a `PendingBroadcast` table matched against `player.hasPermission` when the player logs in,
+  which needs no permission backend and is *more* correct, at the cost of two tables, `--limit`'s
+  meaning, and the ability to reach an absent player *now* (a Discord DM tonight). All four are written up
+  in the spec's "Rejected: a fallback for servers without LuckPerms".
+- **The binding resolves once, at enable**, so installing LuckPerms later with a plugin manager leaves
+  `--offline` unavailable until a restart.
 - **Approximations, both inherent:** context-conditional nodes are answered in
   `QueryOptions.defaultContextualOptions()` (there is no per-player context for an absent player), and a
   player with no stored LuckPerms data is never matched except via the default-group fallback.
