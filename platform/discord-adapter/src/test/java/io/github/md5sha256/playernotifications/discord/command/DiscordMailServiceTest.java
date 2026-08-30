@@ -1,5 +1,6 @@
 package io.github.md5sha256.playernotifications.discord.command;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
@@ -8,7 +9,6 @@ import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
-import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailSender;
 import net.kyori.adventure.text.Component;

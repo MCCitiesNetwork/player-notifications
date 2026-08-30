@@ -1,8 +1,8 @@
 package io.github.md5sha256.playernotifications.discord.command;
 
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
-import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.buttons.Button;
