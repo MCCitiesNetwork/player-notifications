@@ -36,6 +36,7 @@ public final class MessageKeys {
 
     // mail
     public static final String MAIL_TITLE = "mail.title";
+    public static final String MAIL_ARRIVAL_NOTICE = "mail.arrival-notice";
     public static final String MAIL_PLAYERS_ONLY = "mail.players-only";
     public static final String MAIL_SENT = "mail.sent";
     public static final String MAIL_UNKNOWN_PLAYER = "mail.unknown-player";

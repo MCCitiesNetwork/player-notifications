@@ -161,7 +161,7 @@ public final class DiscordModule implements PluginModule<PlayerNotificationsPlug
 
         DiscordMailService mail = new DiscordMailService(
                 new MailSender(plugin.notificationService()),
-                new MailNotifier(plugin.sinkRegistry(), plugin.preferences(), logger),
+                new MailNotifier(plugin.sinkRegistry(), plugin.preferences(), plugin.messages(), logger),
                 DiscordModule::resolveRecipient,
                 playerId -> String.valueOf(Bukkit.getOfflinePlayer(playerId).getName()),
                 logger);

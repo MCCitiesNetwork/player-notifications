@@ -8,6 +8,7 @@ import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
 import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import com.minecraftcitiesnetwork.pluginInfrastructure.configurate.MessageContainer;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
 import io.github.md5sha256.playernotifications.paper.mail.MailSender;
 import net.kyori.adventure.text.Component;
@@ -69,7 +70,7 @@ class DiscordMailServiceTest {
 
         return new DiscordMailService(
                 new MailSender(this.service),
-                new MailNotifier(sinks, preferences, LOGGER),
+                new MailNotifier(sinks, preferences, new MessageContainer(), LOGGER),
                 Map.of("Steve", RECIPIENT)::get,
                 uuid -> "Alex",
                 LOGGER);

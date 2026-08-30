@@ -70,8 +70,9 @@ public final class DiscordMailService {
         }
 
         MailRecipients.Result.Ok ok = (MailRecipients.Result.Ok) resolved;
+        String senderName = this.senderNames.apply(sender);
         try {
-            this.sender.send(sender, this.senderNames.apply(sender), ok.recipient(), ok.message());
+            this.sender.send(sender, senderName, ok.recipient(), ok.message());
         } catch (RuntimeException exception) {
             this.logger.log(Level.WARNING, "Failed to send Discord-originated mail to " + recipientName,
                     exception);
@@ -80,7 +81,7 @@ public final class DiscordMailService {
 
         // Only after the mail is stored: announcing mail that was never enqueued would send the
         // recipient to an empty inbox.
-        this.notifier.notifyArrival(ok.recipient());
+        this.notifier.notifyArrival(ok.recipient(), senderName);
         return new SendResult.Ok(recipientName);
     }
 

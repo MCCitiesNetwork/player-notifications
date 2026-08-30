@@ -16,9 +16,11 @@ import java.util.Optional;
  * message can carry a button. The notice itself is medium-neutral and unchanged, and no other sink
  * learns anything from this.
  *
- * <p>The notice is recognised by <strong>identity</strong> against {@link MailNotifier#ARRIVAL_NOTICE}
- * rather than by its wording. Matching the text would mean rewording the notice silently dropped the
- * button, and would put one on any notification that happened to render the same way.
+ * <p>The notice is recognised through {@link MailNotifier#isArrivalNotice(RenderableNotification)},
+ * which is an <strong>identity</strong> check on the notice's body rather than a comparison of its
+ * wording. Matching the text would mean rewording the notice silently dropped the button, and would put
+ * one on any notification that happened to render the same way. The body carries the mark because the
+ * title names the sender and so differs from send to send.
  */
 public final class MailNoticeButton {
 
@@ -36,7 +38,7 @@ public final class MailNoticeButton {
      * an ordinary notification's DM has no first-mail for the button to open.
      */
     public static @NotNull Optional<ActionRow> forNotification(@NotNull RenderableNotification notification) {
-        if (notification != MailNotifier.ARRIVAL_NOTICE) {
+        if (!MailNotifier.isArrivalNotice(notification)) {
             return Optional.empty();
         }
         return Optional.of(ActionRow.of(Button.primary(

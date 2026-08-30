@@ -421,7 +421,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 new MailChatRow(this.messages, inboxRenderer::decodePayload, ZoneId.systemDefault(), Instant::now));
         getServer().getPluginManager().registerEvents(
                 new InboxQuitListener(List.of(this.inboxRouter, this.mailRouter)), this);
-        this.mailNotifier = new MailNotifier(this.sinkRegistry, this.preferences, getLogger());
+        this.mailNotifier = new MailNotifier(this.sinkRegistry, this.preferences, this.messages, getLogger());
         MailSender mailSender = new MailSender(this.notificationService);
         // A supplier, not the instance: reload() replaces notificationDelivery with a new object.
         TestNotificationSender testSender = new TestNotificationSender(
