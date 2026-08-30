@@ -5,6 +5,7 @@ import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -91,6 +92,31 @@ public final class PersistentBroadcaster {
     @NotNull
     public Result broadcast(@NotNull Component content, @NotNull String rawContent,
                             @NotNull Collection<UUID> recipients, boolean bypass) {
+        return storeAndPush(null, content, Broadcaster.BROADCAST_DATA_TYPE,
+                new BroadcastPayload(rawContent), recipients, bypass);
+    }
+
+    /**
+     * As {@link #broadcast(Component, String, Collection, boolean)}, for an operator-declared type
+     * sent with {@code /broadcast --type <key>}.
+     *
+     * <p>{@code dataType} decides both what the notification is stored as — so it renders through
+     * {@code CustomTypeRenderer} and reads under the declared title — and what preferences the push
+     * and the bypass step resolve against. {@code payload} is the record for that type; the two must
+     * agree, since the stored {@code notifPayloadType} is what picks the renderer back out on read.
+     *
+     * @param title the declared title, used only for the {@code bypass} fan-out
+     */
+    @NotNull
+    public Result broadcast(@NotNull Component title, @NotNull Component content,
+                            @NotNull String dataType, @NotNull Object payload,
+                            @NotNull Collection<UUID> recipients, boolean bypass) {
+        return storeAndPush(title, content, dataType, payload, recipients, bypass);
+    }
+
+    private Result storeAndPush(@Nullable Component title, @NotNull Component content,
+                                @NotNull String dataType, @NotNull Object payload,
+                                @NotNull Collection<UUID> recipients, boolean bypass) {
         List<UUID> targets = List.copyOf(recipients);
 
         // Step 1. Deliberately not caught: a push announcing a broadcast the inbox cannot show is
@@ -100,8 +126,8 @@ public final class PersistentBroadcaster {
                 Instant.now(),
                 null,
                 new NotificationTarget(targets),
-                Broadcaster.BROADCAST_DATA_TYPE,
-                new BroadcastPayload(rawContent),
+                dataType,
+                payload,
                 0), false);
 
         // Step 2. Every recipient, online or not - the sinks decide who they can actually reach.
@@ -123,9 +149,13 @@ public final class PersistentBroadcaster {
         // Step 3.
         int bypassed = 0;
         if (bypass) {
-            List<UUID> suppressed = this.broadcaster.suppressed(targets);
+            List<UUID> suppressed = this.broadcaster.suppressed(targets, dataType);
             if (!suppressed.isEmpty()) {
-                bypassed = this.broadcaster.broadcast(content, suppressed, true);
+                // A null title means an ordinary broadcast, whose title lives in messages.yml and is
+                // read per fan-out so /notifications reload takes effect.
+                bypassed = title == null
+                        ? this.broadcaster.broadcast(content, suppressed, true)
+                        : this.broadcaster.broadcast(title, content, dataType, suppressed, true);
             }
         }
 

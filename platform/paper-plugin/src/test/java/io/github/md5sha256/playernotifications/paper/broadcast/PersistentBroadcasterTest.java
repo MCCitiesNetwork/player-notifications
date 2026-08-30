@@ -324,4 +324,70 @@ class PersistentBroadcasterTest {
                         List.of(UUID.randomUUID()), false));
         assertTrue(pushed.isEmpty());
     }
+
+    // --- typed broadcasts: /broadcast --type <key> ---
+
+    @Test
+    void aTypedBroadcastIsStoredUnderTheDeclaredDataTypeAndPayload() {
+        RecordingService service = new RecordingService();
+        UUID alice = UUID.randomUUID();
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { },
+                broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationPayload payload =
+                new io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationPayload(
+                        "restart-warning", "<red>raw</red>");
+
+        PersistentBroadcaster.Result result = broadcaster.broadcast(Component.text("Server Restart"),
+                Component.text("rendered"), "restart-warning", payload, List.of(alice), false);
+
+        assertEquals(1, result.stored());
+        TypedNotification<?> notification = service.enqueued.get(0);
+        assertEquals("restart-warning", notification.notifPayloadType());
+        assertEquals(payload, notification.notifPayload());
+        assertEquals(List.of(alice), notification.notifTarget().playerUUIDs());
+    }
+
+    @Test
+    void aTypedBypassAsksWhoWasSuppressedForThatType() {
+        RecordingService service = new RecordingService();
+        UUID silenced = UUID.randomUUID();
+        RecordingChatSink sink = new RecordingChatSink();
+        // Reachable for ordinary broadcasts, silenced for restart-warning: only a data-type-aware
+        // suppressed() names them, and only then does --bypass reach them.
+        Broadcaster broadcaster = broadcasterForDataType(Broadcaster.BROADCAST_DATA_TYPE, sink);
+        PersistentBroadcaster persistent =
+                new PersistentBroadcaster(service, uuid -> { }, broadcaster, LOGGER);
+
+        PersistentBroadcaster.Result result = persistent.broadcast(Component.text("Server Restart"),
+                Component.text("rendered"), "restart-warning",
+                new io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationPayload(
+                        "restart-warning", "raw"),
+                List.of(silenced), true);
+
+        assertEquals(1, result.bypassed());
+        assertEquals(List.of(silenced), sink.delivered);
+    }
+
+    /** Media declared for exactly one data type; every other type resolves to nothing. */
+    private static Broadcaster broadcasterForDataType(String dataType, RecordingChatSink sink) {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        sinks.registerSink(sink);
+        NotificationPreferences preferences = new NotificationPreferences() {
+            @Override
+            public @NotNull Set<String> preferredMedia(@NotNull UUID player) {
+                return Set.of();
+            }
+
+            @Override
+            public @NotNull Set<String> preferredMedia(@NotNull UUID player, @NotNull String type) {
+                return dataType.equals(type) ? Set.of(Broadcaster.FALLBACK_MEDIUM) : Set.of();
+            }
+
+            @Override
+            public boolean isMuted(@NotNull UUID player) {
+                return false;
+            }
+        };
+        return new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
+    }
 }
