@@ -237,6 +237,13 @@ audience-neutral:
 The questions a later design has to answer — recorded so nobody has to rediscover them, **not**
 answered now:
 
+> **Correction, 2026-08-29.** The claim below that `ChatSink` reports `DELIVERED` for an offline
+> player is **false**, and was false when this document was written: `ChatSink` looks the `Player` up
+> and returns `UNREACHABLE` when it is null. It appears to date from a version that sent to an
+> Adventure `Audience`. Left in place as the record of what was believed at the time — but it caused a
+> real bug in the persistent-broadcast work, so do not build on it. See
+> `2026-08-29-persistent-offline-broadcast-design.md`.
+
 - **How permissions are checked for an offline player.** Bukkit cannot; a permission plugin's own API
   (LuckPerms and friends) can, at the cost of a hard dependency this plugin does not currently have.
   That is the decision that gates the whole feature.

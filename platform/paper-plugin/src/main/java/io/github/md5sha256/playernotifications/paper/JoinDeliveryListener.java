@@ -79,20 +79,22 @@ public final class JoinDeliveryListener implements Listener {
 
     @EventHandler
     public void onJoin(@NotNull PlayerJoinEvent event) {
+        if (!this.enabled) {
+            return;
+        }
         Player player = event.getPlayer();
         // Outside the deliver-on-join gate on purpose: a player who turned push off still needs to be
         // told something arrived, and the inbox is where they read it.
         this.plugin.getServer().getScheduler().runTaskAsynchronously(
                 this.plugin, () -> announceUnread(player));
-        if (!this.enabled) {
-            return;
-        }
         // Async: the mappers and preference lookups do blocking JDBC, and DiscordDmSink refuses to run
         // on the main thread outright.
         Runnable task = () -> {
             // The player may have left during the delay. Delivering anyway would mark the notification
-            // seen for nothing: ChatSink reports DELIVERED against an offline Audience, and the
-            // MARK_SEEN-wins fan-out would then hide it from their unread list.
+            // Skipped for a player who left during the delay: not for correctness — ChatSink returns
+            // UNREACHABLE for an absent player, so nothing would be wrongly marked seen — but because
+            // the delivery pass is a database round trip plus sink calls that nobody is there to read.
+            // Their notifications stay unread and are delivered on their next join.
             if (player.isOnline()) {
                 deliver(player.getUniqueId());
             }

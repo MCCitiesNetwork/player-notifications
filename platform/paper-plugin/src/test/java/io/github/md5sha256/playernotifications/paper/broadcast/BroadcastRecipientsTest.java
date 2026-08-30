@@ -66,4 +66,56 @@ class BroadcastRecipientsTest {
 
         assertTrue(result.isEmpty());
     }
+
+    // --- Task 2: --chain and ---
+
+    private static BroadcastRecipients.Candidate holding(java.util.UUID uuid, String... nodes) {
+        java.util.Set<String> held = java.util.Set.of(nodes);
+        return new BroadcastRecipients.Candidate(uuid, held::contains);
+    }
+
+    @Test
+    void andRequiresEveryListedPermission() {
+        List<BroadcastRecipients.Candidate> candidates = List.of(
+                holding(ALICE, "a", "b"),
+                holding(BOB, "a"),
+                holding(CAROL, "b"));
+
+        List<UUID> result = BroadcastRecipients.select(candidates, List.of("a", "b"),
+                BroadcastArguments.Chain.AND);
+
+        assertEquals(List.of(ALICE), result);
+    }
+
+    @Test
+    void andWithAnEmptyPermissionListMatchesEveryCandidate() {
+        List<BroadcastRecipients.Candidate> candidates = List.of(holding(ALICE), holding(BOB));
+
+        List<UUID> result = BroadcastRecipients.select(candidates, List.of(),
+                BroadcastArguments.Chain.AND);
+
+        assertEquals(List.of(ALICE, BOB), result);
+    }
+
+    @Test
+    void orMatchesACandidateHoldingEitherPermission() {
+        List<BroadcastRecipients.Candidate> candidates = List.of(
+                holding(ALICE, "a"),
+                holding(BOB, "b"),
+                holding(CAROL, "c"));
+
+        List<UUID> result = BroadcastRecipients.select(candidates, List.of("a", "b"),
+                BroadcastArguments.Chain.OR);
+
+        assertEquals(List.of(ALICE, BOB), result);
+    }
+
+    @Test
+    void twoArgumentFormStillMeansOr() {
+        List<BroadcastRecipients.Candidate> candidates = List.of(holding(ALICE, "a"), holding(BOB, "b"));
+
+        assertEquals(BroadcastRecipients.select(candidates, List.of("a", "b"),
+                        BroadcastArguments.Chain.OR),
+                BroadcastRecipients.select(candidates, List.of("a", "b")));
+    }
 }

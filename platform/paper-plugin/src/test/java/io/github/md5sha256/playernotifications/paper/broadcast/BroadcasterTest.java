@@ -248,4 +248,79 @@ class BroadcasterTest {
         assertEquals(1, chat.received.size());
         assertEquals(1, discord.received.size());
     }
+
+    // --- Task 3: suppressed() ---
+
+    /** Per-player media and mute, so one call can mix suppressed and deliverable recipients. */
+    private static NotificationPreferences perPlayer(java.util.Map<UUID, Set<String>> media,
+                                                     Set<UUID> muted) {
+        return new NotificationPreferences() {
+            @Override
+            public @NotNull Set<String> preferredMedia(@NotNull UUID player) {
+                return media.getOrDefault(player, Set.of());
+            }
+
+            @Override
+            public @NotNull Set<String> preferredMedia(@NotNull UUID player, @NotNull String dataType) {
+                return media.getOrDefault(player, Set.of());
+            }
+
+            @Override
+            public boolean isMuted(@NotNull UUID player) {
+                return muted.contains(player);
+            }
+        };
+    }
+
+    private static Broadcaster broadcasterWith(NotificationPreferences preferences) {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        sinks.registerSink(new RecordingSink("chat", DeliveryResult.DELIVERED));
+        return new Broadcaster(TestMessages.shipped(), sinks, preferences, LOGGER);
+    }
+
+    @Test
+    void suppressedReturnsAMutedRecipient() {
+        UUID muted = UUID.randomUUID();
+        Broadcaster broadcaster = broadcasterWith(
+                perPlayer(java.util.Map.of(muted, Set.of("chat")), Set.of(muted)));
+
+        assertEquals(List.of(muted), broadcaster.suppressed(List.of(muted)));
+    }
+
+    @Test
+    void suppressedReturnsARecipientSilencedToNone() {
+        UUID silenced = UUID.randomUUID();
+        Broadcaster broadcaster = broadcasterWith(perPlayer(
+                java.util.Map.of(silenced, Set.of(NotificationPreferences.SILENCED_MEDIUM)), Set.of()));
+
+        assertEquals(List.of(silenced), broadcaster.suppressed(List.of(silenced)));
+    }
+
+    @Test
+    void suppressedReturnsARecipientWithNoPreferredMediaAtAll() {
+        UUID empty = UUID.randomUUID();
+        Broadcaster broadcaster = broadcasterWith(perPlayer(java.util.Map.of(), Set.of()));
+
+        assertEquals(List.of(empty), broadcaster.suppressed(List.of(empty)));
+    }
+
+    @Test
+    void suppressedExcludesARecipientWithUsableMedia() {
+        UUID reachable = UUID.randomUUID();
+        Broadcaster broadcaster = broadcasterWith(
+                perPlayer(java.util.Map.of(reachable, Set.of("chat")), Set.of()));
+
+        assertTrue(broadcaster.suppressed(List.of(reachable)).isEmpty());
+    }
+
+    @Test
+    void suppressedPreservesInputOrderAndKeepsOnlyTheSuppressed() {
+        UUID first = UUID.randomUUID();
+        UUID reachable = UUID.randomUUID();
+        UUID last = UUID.randomUUID();
+        Broadcaster broadcaster = broadcasterWith(perPlayer(
+                java.util.Map.of(reachable, Set.of("chat")), Set.of(first, last)));
+
+        assertEquals(List.of(first, last), broadcaster.suppressed(List.of(first, reachable, last)));
+    }
 }

@@ -10,8 +10,11 @@ import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -100,9 +103,7 @@ public final class Broadcaster {
                 this.logger.fine(() -> "Recipient " + recipient + " is muted; skipping the broadcast");
                 continue;
             }
-            Set<String> media = new LinkedHashSet<>(
-                    this.preferences.preferredMedia(recipient, BROADCAST_DATA_TYPE));
-            media.remove(NotificationPreferences.SILENCED_MEDIUM);
+            Set<String> media = usableMedia(recipient);
             if (media.isEmpty()) {
                 if (!bypass) {
                     this.logger.fine(() -> "Recipient " + recipient
@@ -126,6 +127,40 @@ public final class Broadcaster {
             attempted++;
         }
         return attempted;
+    }
+
+    /**
+     * The recipients {@link #broadcast} would deliver nothing to without {@code bypass} — muted, or
+     * silenced down to no usable medium. Input order is preserved.
+     *
+     * <p>This exists for {@code PersistentBroadcaster}'s bypass step, which needs to know *which*
+     * recipients the ordinary push path skipped so it can reach exactly those and no others. It shares
+     * {@link #usableMedia} with {@link #broadcast} rather than restating the rule, so the two cannot
+     * drift into disagreeing about who counts as suppressed.
+     *
+     * @return an unmodifiable list of the suppressed recipients, in the order given
+     */
+    @NotNull
+    public List<UUID> suppressed(@NotNull Collection<UUID> recipients) {
+        List<UUID> result = new ArrayList<>();
+        for (UUID recipient : recipients) {
+            if (this.preferences.isMuted(recipient) || usableMedia(recipient).isEmpty()) {
+                result.add(recipient);
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    /**
+     * The recipient's preferred media for a broadcast, minus the silence marker. Empty means "nothing
+     * deliverable" — either an explicit silence or no preference resolving to anything.
+     */
+    @NotNull
+    private Set<String> usableMedia(@NotNull UUID recipient) {
+        Set<String> media = new LinkedHashSet<>(
+                this.preferences.preferredMedia(recipient, BROADCAST_DATA_TYPE));
+        media.remove(NotificationPreferences.SILENCED_MEDIUM);
+        return media;
     }
 
     private void deliverSafely(@NotNull NotificationSink sink, @NotNull RenderableNotification notification,
