@@ -9,6 +9,9 @@ import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastArgument
 import io.github.md5sha256.playernotifications.paper.broadcast.BroadcastAudience;
 import io.github.md5sha256.playernotifications.paper.broadcast.Broadcaster;
 import io.github.md5sha256.playernotifications.paper.broadcast.PersistentBroadcaster;
+import io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationPayload;
+import io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationTypes;
+import io.github.md5sha256.playernotifications.paper.customtype.DeclaredNotificationType;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
@@ -24,7 +27,7 @@ import java.util.UUID;
 
 /**
  * {@code /broadcast <content> [--perm <node>]… [--chain and|or] [--persistent] [--offline]
- * [--limit <n>] [--bypass]}: parses and validates on the command thread, then resolves and fans out
+ * [--limit <n>] [--type <key>] [--bypass]}: parses and validates on the command thread, then resolves and fans out
  * asynchronously. Any {@link CommandSender} may use it, console included — unlike
  * {@code /notifications}/{@code /mail}, it acts on other players, not on the sender's own inbox.
  *
@@ -57,12 +60,14 @@ public final class BroadcastCommand {
                                                                   @NotNull Broadcaster broadcaster,
                                                                   @NotNull PersistentBroadcaster persistentBroadcaster,
                                                                   @NotNull BroadcastAudience onlineAudience,
-                                                                  @Nullable BroadcastAudience offlineAudience) {
+                                                                  @Nullable BroadcastAudience offlineAudience,
+                                                                  @NotNull CustomNotificationTypes customTypes) {
         return Commands.literal("broadcast")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .then(Commands.argument(CONTENT_ARGUMENT, StringArgumentType.greedyString())
                         .executes(context -> run(messages, context, plugin, broadcaster,
-                                persistentBroadcaster, onlineAudience, offlineAudience)))
+                                persistentBroadcaster, onlineAudience, offlineAudience,
+                                customTypes)))
                 .build();
     }
 
@@ -71,7 +76,8 @@ public final class BroadcastCommand {
                             @NotNull Broadcaster broadcaster,
                             @NotNull PersistentBroadcaster persistentBroadcaster,
                             @NotNull BroadcastAudience onlineAudience,
-                            @Nullable BroadcastAudience offlineAudience) {
+                            @Nullable BroadcastAudience offlineAudience,
+                            @NotNull CustomNotificationTypes customTypes) {
         CommandSender sender = context.getSource().getSender();
         String raw = StringArgumentType.getString(context, CONTENT_ARGUMENT);
 
@@ -118,6 +124,19 @@ public final class BroadcastCommand {
         }
         BroadcastArguments arguments = ((BroadcastArguments.Result.Parsed) parsed).arguments();
 
+        // Resolved on the command thread, before anything is queried: an unknown type costs the
+        // sender a reply and the server nothing.
+        DeclaredNotificationType declaredType = null;
+        if (arguments.type() != null) {
+            declaredType = customTypes.get(arguments.type()).orElse(null);
+            if (declaredType == null) {
+                // value(): the key is whatever the sender typed, so it must stay literal.
+                sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_UNKNOWN_TYPE,
+                        MessageContainer.value("type", arguments.type())));
+                return 0;
+            }
+        }
+
         Component content;
         try {
             content = MiniMessage.miniMessage().deserialize(arguments.content());
@@ -135,9 +154,10 @@ public final class BroadcastCommand {
 
         // Everything from here blocks: resolve queries a permission backend (or marshals to the main
         // thread), and the fan-out does JDBC and can reach DiscordDmSink, which refuses the main thread.
+        DeclaredNotificationType type = declaredType;
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin,
                 () -> send(messages, sender, arguments, content, audience, broadcaster,
-                        persistentBroadcaster));
+                        persistentBroadcaster, type));
         return Command.SINGLE_SUCCESS;
     }
 
@@ -149,7 +169,8 @@ public final class BroadcastCommand {
     private static void send(@NotNull MessageContainer messages, @NotNull CommandSender sender,
                              @NotNull BroadcastArguments arguments, @NotNull Component content,
                              @NotNull BroadcastAudience audience, @NotNull Broadcaster broadcaster,
-                             @NotNull PersistentBroadcaster persistentBroadcaster) {
+                             @NotNull PersistentBroadcaster persistentBroadcaster,
+                             @Nullable DeclaredNotificationType declaredType) {
         List<UUID> recipients;
         try {
             recipients = audience.resolve(arguments.permissions(), arguments.chain());
@@ -178,8 +199,13 @@ public final class BroadcastCommand {
         }
 
         if (arguments.persistent()) {
-            PersistentBroadcaster.Result result = persistentBroadcaster.broadcast(content,
-                    arguments.content(), recipients, arguments.bypass());
+            PersistentBroadcaster.Result result = declaredType == null
+                    ? persistentBroadcaster.broadcast(content, arguments.content(), recipients,
+                            arguments.bypass())
+                    : persistentBroadcaster.broadcast(title(declaredType), content,
+                            declaredType.key(),
+                            new CustomNotificationPayload(declaredType.key(), arguments.content()),
+                            recipients, arguments.bypass());
             sender.sendMessage(messages.messageFor(
                     result.stored() == 1 ? MessageKeys.BROADCAST_STORED_ONE
                             : MessageKeys.BROADCAST_STORED_MANY,
@@ -198,12 +224,24 @@ public final class BroadcastCommand {
             return;
         }
 
-        int attempted = broadcaster.broadcast(content, recipients, arguments.bypass());
+        int attempted = declaredType == null
+                ? broadcaster.broadcast(content, recipients, arguments.bypass())
+                : broadcaster.broadcast(title(declaredType), content, declaredType.key(), recipients,
+                        arguments.bypass());
         if (attempted == 0) {
             sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_NOTHING_ENABLED));
         } else {
             sender.sendMessage(messages.messageFor(MessageKeys.BROADCAST_SENT,
                     MessageContainer.value("count", String.valueOf(attempted))));
         }
+    }
+
+    /**
+     * The declared title, parsed fresh per send so a reloaded {@code notification-types.yml} takes
+     * effect. {@code CustomNotificationTypes.load} already proved it parses.
+     */
+    @NotNull
+    private static Component title(@NotNull DeclaredNotificationType declaredType) {
+        return MiniMessage.miniMessage().deserialize(declaredType.title());
     }
 }
