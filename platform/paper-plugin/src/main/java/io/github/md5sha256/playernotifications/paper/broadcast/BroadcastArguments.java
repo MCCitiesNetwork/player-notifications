@@ -10,12 +10,13 @@ import java.util.Set;
 
 /**
  * Parses {@code /broadcast <content> --perm [perm] … [--chain and|or] [--persistent] [--offline]
- * [--limit <n>] [--bypass]} out of one greedy string. Brigadier cannot express repeated flags, so the
+ * [--limit <n>] [--type <key>] [--bypass]} out of one greedy string. Brigadier cannot express repeated flags, so the
  * flags are pulled out of the raw argument here rather than in the command tree, and that split is what
  * makes the parsing rules unit-testable without a live server.
  *
  * <p>Everything before the first flag token is the content; from that token on, the remainder must be a
- * sequence of value-taking flags ({@code --perm}, {@code --chain}, {@code --limit}) and bare flags
+ * sequence of value-taking flags ({@code --perm}, {@code --chain}, {@code --limit},
+ * {@code --type}) and bare flags
  * ({@code --bypass}, {@code --persistent}, {@code --offline}), in any order. Anything else is rejected,
  * naming the offending token — a first-occurrence rule was chosen over scanning from the end because it
  * produces a comprehensible error for a malformed flag, whereas an end-scan would silently absorb a
@@ -33,10 +34,14 @@ import java.util.Set;
  * @param persistent  whether to store the broadcast as a real notification
  * @param offline     whether to widen the audience beyond currently-online players
  * @param limit       the maximum audience size, or {@code null} for unlimited
+ * @param type        the operator-declared notification type to send this under, or {@code null} for
+ *                    an ordinary broadcast. Its <em>validity</em> is not checked here: this class
+ *                    holds no registry, so {@code BroadcastCommand} resolves it against the live
+ *                    declarations in {@code notification-types.yml}.
  */
 public record BroadcastArguments(@NotNull String content, @NotNull List<String> permissions,
                                  boolean bypass, @NotNull Chain chain, boolean persistent,
-                                 boolean offline, @Nullable Integer limit) {
+                                 boolean offline, @Nullable Integer limit, @Nullable String type) {
 
     private static final String PERM_FLAG = "--perm";
     private static final String BYPASS_FLAG = "--bypass";
@@ -44,9 +49,11 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
     private static final String PERSISTENT_FLAG = "--persistent";
     private static final String OFFLINE_FLAG = "--offline";
     private static final String LIMIT_FLAG = "--limit";
+    private static final String TYPE_FLAG = "--type";
 
     private static final Set<String> FLAG_TOKENS = Set.of(
-            PERM_FLAG, BYPASS_FLAG, CHAIN_FLAG, PERSISTENT_FLAG, OFFLINE_FLAG, LIMIT_FLAG);
+            PERM_FLAG, BYPASS_FLAG, CHAIN_FLAG, PERSISTENT_FLAG, OFFLINE_FLAG, LIMIT_FLAG,
+            TYPE_FLAG);
 
     /** How multiple {@code --perm} nodes combine when selecting recipients. */
     public enum Chain {
@@ -90,6 +97,7 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
         boolean offline = false;
         Chain chain = Chain.OR;
         Integer limit = null;
+        String type = null;
 
         for (int i = consumedTokenIndex; i < tokens.length; i++) {
             String token = tokens[i];
@@ -97,13 +105,16 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
                 case BYPASS_FLAG -> bypass = true;
                 case PERSISTENT_FLAG -> persistent = true;
                 case OFFLINE_FLAG -> offline = true;
-                case PERM_FLAG, CHAIN_FLAG, LIMIT_FLAG -> {
+                case PERM_FLAG, CHAIN_FLAG, LIMIT_FLAG, TYPE_FLAG -> {
                     if (!hasValueAt(tokens, i + 1)) {
                         return new Result.FlagMissingValue(token);
                     }
                     String value = tokens[++i];
                     switch (token) {
                         case PERM_FLAG -> permissions.add(value);
+                        case TYPE_FLAG ->
+                                // Last occurrence wins, consistent with --chain and --limit.
+                                type = value;
                         case CHAIN_FLAG -> {
                             Chain parsedChain = parseChain(value);
                             if (parsedChain == null) {
@@ -137,7 +148,7 @@ public record BroadcastArguments(@NotNull String content, @NotNull List<String> 
         }
 
         return new Result.Parsed(new BroadcastArguments(content, List.copyOf(permissions), bypass,
-                chain, persistent, offline, limit));
+                chain, persistent, offline, limit, type));
     }
 
     private static boolean hasValueAt(@NotNull String[] tokens, int index) {
