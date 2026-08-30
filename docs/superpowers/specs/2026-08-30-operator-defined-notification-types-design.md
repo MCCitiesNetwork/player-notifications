@@ -1,7 +1,7 @@
 # Operator-defined notification types
 
 **Date:** 2026-08-30
-**Status:** approved, not yet implemented
+**Status:** implemented; the manual checklist in the plan has not been run
 **Plan:** `docs/superpowers/plans/2026-08-30-operator-defined-notification-types.md`
 
 ## Goal
@@ -73,14 +73,14 @@ set it registered last time:
 
 - new keys: `service.registerJsonRenderable(key, CustomNotificationPayload.class, renderer)` plus
   `registerDisplayName` when one is declared;
-- removed keys: `registry.unregisterPayloadMapping(key)` and `unregisterDisplayName(key)`.
+- removed keys: `registry.unmapDataType(key)` and `unregisterDisplayName(key)`.
 
-**Removal cannot go through `unregisterDataType`**, which also unregisters the payload class's
-processor, serializer and renderer — and that class is shared, so removing one declared type would
+**Removal cannot go through the existing `unregisterPayloadMapping`**, which cascades to the payload
+class's processor, serializer and renderer — and that class is shared, so removing one declared type would
 break every other one. This needs one additive method on `NotificationDataTypeRegistry`:
 
 ```java
-public void unregisterPayloadMapping(@NotNull String dataType)
+public void unmapDataType(@NotNull String dataType)
 ```
 
 Additive and on a concrete class with no implementors, so no feature module compiled against the old
@@ -133,8 +133,8 @@ The flag then swaps two things through the whole pipeline:
 - the **title** the notification renders with.
 
 `Broadcaster.broadcast`, `Broadcaster.suppressed` and `PersistentBroadcaster.broadcast` currently
-hardcode `Broadcaster.BROADCAST_DATA_TYPE` and `MessageKeys.BROADCAST_TITLE`. Each gains those as
-parameters. `suppressed` must take the `dataType` too, or `--bypass` on a typed broadcast would ask
+hardcode `Broadcaster.BROADCAST_DATA_TYPE` and `MessageKeys.BROADCAST_TITLE`. Each gains those as an **overload**, so an untyped broadcast's call sites and stored shape are
+unchanged. `suppressed` must take the `dataType` too, or `--bypass` on a typed broadcast would ask
 who was suppressed for the wrong type.
 
 `PersistentBroadcaster` stores `new CustomNotificationPayload(key, rawContent)` under the declared
@@ -154,7 +154,7 @@ not — so nothing about an untyped broadcast changes on disk or in behaviour.
 - Tests: `CustomNotificationTypesTest`, `CustomTypeRendererTest`, `CustomTypeRegistrarTest`.
 
 **Modify**
-- `api/…/NotificationDataTypeRegistry.java` — `unregisterPayloadMapping(String)`.
+- `api/…/NotificationDataTypeRegistry.java` — `unmapDataType(String)`.
 - `paper/broadcast/BroadcastArguments.java` — the `--type` flag and the `type` component.
 - `paper/broadcast/Broadcaster.java` — `dataType` and title parameters on `broadcast` and `suppressed`.
 - `paper/broadcast/PersistentBroadcaster.java` — `dataType` and payload parameters.

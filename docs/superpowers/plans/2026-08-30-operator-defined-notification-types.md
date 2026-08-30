@@ -8,18 +8,18 @@ is the only one that changes observable behaviour on a server.
 
 ---
 
-## Task 1: `unregisterPayloadMapping` on the registry
+## Task 1: `unmapDataType` on the registry
 
 **Files:** modify `api/src/main/java/io/github/md5sha256/playernotifications/api/NotificationDataTypeRegistry.java`; test `api/src/test/java/io/github/md5sha256/playernotifications/api/NotificationDataTypeRegistryTest.java` (extend the existing class if present, else create).
 
 **Interfaces:**
 ```java
-public void unregisterPayloadMapping(@NotNull String dataType)
+public void unmapDataType(@NotNull String dataType)
 ```
 
-- [ ] Write the failing test: register two data types (`"a"`, `"b"`) mapping to the **same** payload class plus a renderer for that class; call `unregisterPayloadMapping("a")`; assert `dataTypes()` no longer contains `"a"`, still contains `"b"`, and `getRenderer(SharedPayload.class)` is still present.
+- [ ] Write the failing test: register two data types (`"a"`, `"b"`) mapping to the **same** payload class plus a renderer for that class; call `unmapDataType("a")`; assert `dataTypes()` no longer contains `"a"`, still contains `"b"`, and `getRenderer(SharedPayload.class)` is still present.
 - [ ] Run `./gradlew :api:test --tests "*NotificationDataTypeRegistryTest*"` — expect FAIL: the method does not exist (compile error).
-- [ ] Implement: `this.payloadMapping.remove(dataType);` — javadoc'd as the mapping-only counterpart of `unregisterDataType`, naming the shared-payload-class case as the reason it exists.
+- [ ] Implement: `this.payloadMapping.remove(dataType);` — javadoc'd as the mapping-only counterpart of `unregisterPayloadMapping`, which cascades, naming the shared-payload-class case as the reason it exists.
 - [ ] Run the same command — expect PASS.
 - [ ] Run `./gradlew build`.
 - [ ] Commit.
@@ -110,7 +110,7 @@ public final class CustomTypeRegistrar {
   - reloading the types without `a` and calling `sync()` removes `a`, keeps `b`, and **keeps** the renderer for the shared payload class;
   - a key already mapped to another class before the first `sync()` (`registerPayloadMapping("mail", MailPayload.class)`) is skipped, its mapping unchanged, and a later `sync()` that no longer declares it does **not** unregister it.
 - [ ] Run `./gradlew :platform:paper-plugin:test --tests "*CustomTypeRegistrarTest*"` — expect FAIL.
-- [ ] Implement: a `Set<String> registered` field holding only keys this class actually registered; `sync()` computes `desired = types.keys()`, skips a desired key whose `dataTypes()` mapping exists and is not ours (one `WARNING` naming the key), registers the rest with `registerJsonRenderable` + `registerDisplayName`, and for each key in `registered - desired` calls `unregisterPayloadMapping` and `unregisterDisplayName`.
+- [ ] Implement: a `Set<String> registered` field holding only keys this class actually registered; `sync()` computes `desired = types.keys()`, skips a desired key whose `dataTypes()` mapping exists and is not ours (one `WARNING` naming the key), registers the rest with `registerJsonRenderable` + `registerDisplayName`, and for each key in `registered - desired` calls `unmapDataType` and `unregisterDisplayName`.
 - [ ] Run the same command — expect PASS.
 - [ ] Run `./gradlew build`.
 - [ ] Commit.
@@ -201,7 +201,7 @@ public @NotNull CustomNotificationTypes customTypes()
 
 **Files:** modify `CLAUDE.md`.
 
-- [ ] Add an "Operator-defined notification types" section after "Broadcast": the file and its two keys, the shared-payload-class constraint and why the payload carries its own key, why removal uses `unregisterPayloadMapping` rather than `unregisterDataType`, the collision skip, the `--type` flag, and the deleted-type placeholder behaviour.
+- [ ] Add an "Operator-defined notification types" section after "Broadcast": the file and its two keys, the shared-payload-class constraint and why the payload carries its own key, why removal uses `unmapDataType` rather than the cascading `unregisterPayloadMapping`, the collision skip, the `--type` flag, and the deleted-type placeholder behaviour.
 - [ ] Update the "Broadcast" section's flag syntax line and its `Broadcaster`/`PersistentBroadcaster` table rows to name the new parameters.
 - [ ] Update "Configuration" with `notification-types.yml` and its exclusion from `warnAboutMissingConfigKeys`.
 - [ ] Update "Current state" — the manual checklist above, run or not; and strike the note that the module-supplied type-name layer has no in-tree consumer, which this feature now provides.
