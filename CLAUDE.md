@@ -515,18 +515,26 @@ bypasses preferences, so a `mail` row cannot affect the mail itself. `categories
 category all the same, and its checkboxes answer a real, different question: "where do I want to be told
 that mail arrived". Silencing `mail` means "don't tell me when mail arrives"; the mail still lands unread.
 
-**The arrival notice** is exactly one line, verbatim, never templated with a sender, count or preview:
+**The arrival notice** is exactly one line, naming the sender and nothing else — no count, and
+**never a preview of the message**, which would put private correspondence onto whichever medium the
+player picked for notices and into console logs:
 
-> **You have new mail!**
+> **You were sent mail from Andrew**
+> Use /mail to read it.
 
-It is **not** a notification — never enqueued, never stored (that would put a second row in the inbox
-announcing the first) — but it *is* routed through the ordinary sink machinery. `paper.mail.MailNotifier`
-is the whole of this, and the single instance it delivers is published as `MailNotifier.ARRIVAL_NOTICE` so
-a sink can recognise it and add an affordance — the Discord adapter's "Read mail" button. Recognition is
-an **identity** check, not a wording comparison: matching text would mean rewording silently dropped the
-decoration and would decorate any notification rendering the same way. It returns immediately when the
-recipient is **muted**, and otherwise resolves `preferredMedia(recipient, mail)`, drops `SILENCED_MEDIUM`,
-and delivers a fixed `RenderableNotification` to each sink, catching a throwing sink. It deliberately does
+The title comes from `mail.arrival-notice`; the body does **not**, and that asymmetry is load-bearing
+(see "Deliberately still hardcoded"). It is **not** a notification — never enqueued, never stored (that
+would put a second row in the inbox announcing the first) — but it *is* routed through the ordinary sink
+machinery. `paper.mail.MailNotifier` is the whole of this. `notifyArrival(recipient, senderName)` builds
+one notice per call through the public `arrivalNotice(senderName)`, so a sink recognises it through
+`MailNotifier.isArrivalNotice` and can add an affordance — the Discord adapter's "Read mail" button.
+Recognition is an **identity** check on the notice's *body*, not a wording comparison: matching text would
+mean rewording silently dropped the decoration and would decorate any notification rendering the same way,
+and the title now differs from send to send. The sender name is substituted with `value()`, never
+`markup()`; a console send arrives as `MailSender.SERVER_NAME`, so the notice reads "from Server" and
+matches the "Mail from Server" title `/mail` then shows. It returns immediately when the recipient is
+**muted**, and otherwise resolves `preferredMedia(recipient, mail)`, drops `SILENCED_MEDIUM`, and delivers
+the notice to each sink, catching a throwing sink. It deliberately does
 **not** reuse `RenderingProcessor` — that renders a *stored* notification's payload and reports a
 disposition, and the notice has neither; sharing it would mean inventing a fake notification. It fires
 from two places: `MailCommand` after a successful `send` (unconditionally, not gated on the recipient
@@ -944,7 +952,7 @@ reading `<red>` or `<click:run_command:...>` would become live formatting the mo
 there is no permission decision to model. Legacy `§` codes are stripped one step earlier for the same
 reason — and note `MailRenderer` *throws* on a `§`, so leaving them in would force the fallback path.
 
-**No arrival notice ever fires.** "You have new mail!" for a five-year-old message would be false, and once
+**No arrival notice ever fires.** "You were sent mail from …" for a five-year-old message would be false, and once
 per imported mail it would flood every Discord DM on the server.
 
 **The one host change** is `MailSender.send(…, Instant sentAt)`, the four-argument form delegating with
@@ -1545,9 +1553,13 @@ operator will look.
 
 **Deliberately still hardcoded:**
 
-- **`MailNotifier.ARRIVAL_NOTICE`** — the Discord adapter recognises it by **reference identity**
-  (`MailNoticeButton.java:39`). A configurable notice is rebuilt on reload, changing its identity and
-  dropping the button *silently*. Configuring it needs a marker a reload cannot invalidate.
+- **The arrival notice's *body*** ("Use /mail to read it.") — its title is configurable
+  (`mail.arrival-notice`), but the body is the **marker** `MailNotifier.isArrivalNotice` matches by
+  reference identity, which is how the Discord adapter attaches its "Read mail" button
+  (`MailNoticeButton.java:39`). `MessageContainer` reloads in place, so a configurable body would be
+  re-rendered into a fresh instance and every button attached after a reload would vanish *silently*.
+  Configuring it needs a marker a reload cannot invalidate — a field on `RenderableNotification`, which
+  is an `api` record consumed by separately compiled modules and so a breaking change of its own.
 - **The dialogs** — the six preference screens, the three inbox screens, and `ui/PagedDialogs`. Their
   *chat replies* now come from the container; their on-screen text does not. Additive when wanted, but
   `paper.ui` must import nothing from this plugin, so its strings have to arrive as `Component`
@@ -1615,10 +1627,10 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 - `--tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing.** Check the result count, not
   the exit status.
 
-Current baseline: **41 in `:api:test`, 291 in `:platform:paper-plugin:test`**, measured after
-operator-defined notification types landed. The three figures that follow are from the previous run and
-were **not** re-measured, because Docker was unavailable: **136 in `:core:test`, 214 in `:platform:discord-adapter:test`, 21 in
-`:platform:essentials-mail-converter:test`** — all passing, after persistent/offline broadcasts landed.
+Current baseline, every figure measured in one `./gradlew build` after the mail arrival notice began
+naming its sender: **41 in `:api:test`, 294 in `:platform:paper-plugin:test`, 136 in `:core:test`,
+214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
+passing, with Docker running.
 
 Two of these correct long-stale entries rather than growing: `:core:test` was recorded as 126 and was
 actually **131** before this change (136 after the five new `PersistentBroadcastTest` cases), and
