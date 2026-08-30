@@ -323,4 +323,71 @@ class BroadcasterTest {
 
         assertEquals(List.of(first, last), broadcaster.suppressed(List.of(first, reachable, last)));
     }
+
+    // --- typed broadcasts: /broadcast --type <key> ---
+
+    /** Media declared per data type, so one fake can distinguish a typed broadcast from a plain one. */
+    private static NotificationPreferences perDataType(java.util.Map<String, Set<String>> media) {
+        return new NotificationPreferences() {
+            @Override
+            public @NotNull Set<String> preferredMedia(@NotNull UUID player) {
+                return Set.of();
+            }
+
+            @Override
+            public @NotNull Set<String> preferredMedia(@NotNull UUID player, @NotNull String dataType) {
+                return media.getOrDefault(dataType, Set.of());
+            }
+
+            @Override
+            public boolean isMuted(@NotNull UUID player) {
+                return false;
+            }
+        };
+    }
+
+    @Test
+    void aTypedBroadcastResolvesPreferencesAgainstThatDataType() {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
+        sinks.registerSink(chat);
+        // Silenced for restart-warning, still on for ordinary broadcasts.
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks,
+                perDataType(java.util.Map.of(Broadcaster.BROADCAST_DATA_TYPE, Set.of("chat"))), LOGGER);
+
+        int typed = broadcaster.broadcast(Component.text("Restart"), Component.text("in 5m"),
+                "restart-warning", List.of(UUID.randomUUID()), false);
+        int plain = broadcaster.broadcast(Component.text("hi"), List.of(UUID.randomUUID()), false);
+
+        assertEquals(0, typed, "the recipient has silenced restart-warning");
+        assertEquals(1, plain, "and has not silenced broadcast");
+        assertEquals(1, chat.received.size());
+    }
+
+    @Test
+    void aTypedBroadcastCarriesTheDeclaredTitle() {
+        NotificationSinkRegistry sinks = new NotificationSinkRegistry();
+        RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
+        sinks.registerSink(chat);
+        Broadcaster broadcaster = new Broadcaster(TestMessages.shipped(), sinks,
+                fixedMedia(Set.of("chat")), LOGGER);
+
+        broadcaster.broadcast(Component.text("Server Restart"), Component.text("in 5m"),
+                "restart-warning", List.of(UUID.randomUUID()), false);
+
+        assertEquals("Server Restart",
+                PlainTextComponentSerializer.plainText().serialize(chat.received.get(0).title()));
+        assertEquals("in 5m",
+                PlainTextComponentSerializer.plainText().serialize(chat.received.get(0).body()));
+    }
+
+    @Test
+    void suppressedResolvesAgainstTheGivenDataType() {
+        UUID recipient = UUID.randomUUID();
+        Broadcaster broadcaster = broadcasterWith(
+                perDataType(java.util.Map.of(Broadcaster.BROADCAST_DATA_TYPE, Set.of("chat"))));
+
+        assertEquals(List.of(recipient), broadcaster.suppressed(List.of(recipient), "restart-warning"));
+        assertTrue(broadcaster.suppressed(List.of(recipient)).isEmpty());
+    }
 }

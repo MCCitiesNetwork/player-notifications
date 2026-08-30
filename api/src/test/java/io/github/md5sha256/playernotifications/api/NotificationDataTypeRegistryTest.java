@@ -68,4 +68,36 @@ class NotificationDataTypeRegistryTest {
             assertTrue(registry.dataTypes().isEmpty());
         }
     }
+
+    @Nested
+    class UnmapDataType {
+
+        /**
+         * Two data types sharing one payload class is the shape operator-defined types take: the
+         * renderer map is class-keyed, so removing one key must not tear the shared renderer down.
+         */
+        @Test
+        void removesOnlyThatMappingAndLeavesTheSharedRendererRegistered() {
+            NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
+            registry.registerPayloadMapping("a", String.class);
+            registry.registerPayloadMapping("b", String.class);
+            registry.registerRenderer(String.class,
+                    (payload, target) -> { throw new UnsupportedOperationException(); });
+
+            registry.unmapDataType("a");
+
+            assertEquals(Set.of("b"), registry.dataTypes());
+            assertTrue(registry.getRenderer(String.class).isPresent());
+        }
+
+        @Test
+        void isANoOpForAnUnmappedType() {
+            NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
+            registry.registerPayloadMapping("a", String.class);
+
+            registry.unmapDataType("nonesuch");
+
+            assertEquals(Set.of("a"), registry.dataTypes());
+        }
+    }
 }

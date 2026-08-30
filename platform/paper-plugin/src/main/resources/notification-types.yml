@@ -1,0 +1,46 @@
+# PlayerNotifications operator-defined notification types
+#
+# Declares your own notification types, without writing a plugin. A type declared here is a real
+# notification type: it appears in /notifications preferences so players can choose where it reaches
+# them (or silence it), it can be grouped in categories.yml, and one sent with --persistent lands in
+# the inbox and is pushed on the recipient's next join.
+#
+# Send one with:
+#
+#   /broadcast <message> --type <key>
+#
+# ...alongside the usual flags (--perm, --chain, --limit, --persistent, --offline, --bypass). The
+# message is whatever you type; this file supplies the title it is announced under.
+#
+# One block per type. The key on the left is the registry key -- lower-case letters, digits, '.', '-'
+# and '_' only, at most 64 characters. It is also what shows in the inbox if you later delete the
+# type, so pick something readable.
+#
+#   title         Required. The title every notification of this type renders with, on every medium.
+#   display-name  Optional. The type's name in the preference screens. Leave it out and the name
+#                 falls back to type-names.yml, then to a title-cased version of the key
+#                 ("restart-warning" reads as "Restart Warning").
+#
+# Both values are MiniMessage, so they may carry colour and formatting. A block with no title, or
+# whose title is not valid MiniMessage, is ignored with a warning in the console naming the key -- a
+# typo costs you that one type, not the file. A bad display-name costs only the name.
+#
+# Categories live in categories.yml, as they do for any notification type. A type you do not claim
+# there shows up under "Uncategorized", which is a real, selectable category.
+#
+# Editing a title changes how notifications of that type already sitting in players' inboxes read.
+# Deleting a type withdraws it: it leaves the preference screens, and anything stored under it shows
+# a placeholder naming the key until you add it back or players delete it.
+#
+# This file is yours: the plugin only ever creates it, never rewrites it. Run /notifications reload
+# after editing.
+#
+# Examples -- uncomment and change to taste:
+#
+# restart-warning:
+#   title: "<red><bold>Server Restart</bold></red>"
+#   display-name: "<red>Restart Warnings</red>"
+#
+# event:
+#   title: "<gold><bold>Event</bold></gold>"
+#   display-name: "<gold>Events</gold>"

@@ -273,4 +273,50 @@ class BroadcastArgumentsTest {
     void aBareNewFlagTokenCannotAppearInContent() {
         assertInvalid("--offline");
     }
+
+    // --- --type <key>: operator-defined notification types ---
+
+    @Test
+    void typeIsParsedOutOfTheContent() {
+        BroadcastArguments arguments = parsed("Restarting in 5m --type restart-warning");
+
+        assertEquals("Restarting in 5m", arguments.content());
+        assertEquals("restart-warning", arguments.type());
+    }
+
+    @Test
+    void typeIsNullWhenTheFlagIsAbsent() {
+        assertNull(parsed("Restarting in 5m").type());
+    }
+
+    @Test
+    void typeWithNoValueIsRejectedNamingTheFlag() {
+        BroadcastArguments.Result result = BroadcastArguments.parse("Restarting --type");
+
+        assertEquals("--type",
+                assertInstanceOf(BroadcastArguments.Result.FlagMissingValue.class, result).flag());
+    }
+
+    @Test
+    void theLastTypeWins() {
+        assertEquals("b", parsed("hi --type a --type b").type());
+    }
+
+    @Test
+    void typeCombinesWithTheOtherFlags() {
+        BroadcastArguments arguments =
+                parsed("hi --type restart-warning --persistent --limit 3 --perm group.staff");
+
+        assertEquals("hi", arguments.content());
+        assertEquals("restart-warning", arguments.type());
+        assertTrue(arguments.persistent());
+        assertEquals(3, arguments.limit());
+        assertEquals(java.util.List.of("group.staff"), arguments.permissions());
+    }
+
+    @Test
+    void aBareTypeFlagLeavesNoContent() {
+        assertInstanceOf(BroadcastArguments.Result.BlankContent.class,
+                BroadcastArguments.parse("--type restart-warning"));
+    }
 }

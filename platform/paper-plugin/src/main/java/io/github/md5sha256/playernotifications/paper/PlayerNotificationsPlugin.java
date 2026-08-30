@@ -33,6 +33,8 @@ import io.github.md5sha256.playernotifications.paper.inbox.InboxFilters;
 import io.github.md5sha256.playernotifications.paper.inbox.InboxRouter;
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import io.github.md5sha256.playernotifications.paper.localisation.TypeNameDefaultsWriter;
+import io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationTypes;
+import io.github.md5sha256.playernotifications.paper.customtype.CustomTypeRegistrar;
 import io.github.md5sha256.playernotifications.paper.localisation.TypeNames;
 import io.github.md5sha256.playernotifications.paper.mail.MailChatRow;
 import io.github.md5sha256.playernotifications.paper.mail.MailNotifier;
@@ -100,6 +102,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * a valid reference across {@code /notifications reload}.
      */
     private TypeNames typeNames;
+    private CustomNotificationTypes customTypes;
+    private CustomTypeRegistrar customTypeRegistrar;
     private TypeNameDefaultsWriter typeNameDefaultsWriter;
     /** Guards {@link #scheduleCategoryRebuild()} so a burst of late claims causes one rebuild, not one each. */
     private final AtomicBoolean categoryRebuildPending = new AtomicBoolean();
@@ -192,6 +196,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         return this.typeNames;
     }
 
+    /** The notification types the operator declared in {@code notification-types.yml}. */
+    @NotNull
+    public CustomNotificationTypes customTypes() {
+        return this.customTypes;
+    }
+
     @Override
     public void onEnable() {
         DatabaseSettings databaseSettings;
@@ -233,6 +243,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.categoryDefaultsWriter = new CategoryDefaultsWriter(
                 defaultsDir.resolve(CategoryDefaultsWriter.FILE_NAME), getLogger());
         this.typeNames = new TypeNames(this.notificationService.dataTypeRegistry(), getLogger());
+        this.customTypes = new CustomNotificationTypes(getLogger());
         this.typeNameDefaultsWriter = new TypeNameDefaultsWriter(
                 defaultsDir.resolve(TypeNameDefaultsWriter.FILE_NAME),
                 this.notificationService.dataTypeRegistry(), this.typeNames, getLogger());
@@ -250,6 +261,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         try {
             reloadMessages();
             this.typeNames.load(copyDefaultsYaml("type-names"));
+            this.customTypes.load(copyDefaultsYaml("notification-types"));
         } catch (IOException ex) {
             getLogger().log(Level.SEVERE, "Failed to load messages.yml; disabling plugin.", ex);
             getServer().getPluginManager().disablePlugin(this);
@@ -311,6 +323,12 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         // Start modules last so they can look up the registered NotificationService and register their
         // own category claims against it.
         startModules();
+
+        // After startModules(), so a module's claim on a key is already visible and an operator who
+        // declared a colliding type is warned rather than silently replacing the module's mapping.
+        this.customTypeRegistrar =
+                new CustomTypeRegistrar(this.notificationService, this.customTypes, getLogger());
+        this.customTypeRegistrar.sync();
 
         // Rebuild the merged categories now that modules have had a chance to register, and swap the
         // rebuilt view into the dialog router — the same mechanism /notifications reload uses.
@@ -442,7 +460,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             );
             event.registrar().register(
                     BroadcastCommand.create(this.messages, this, broadcaster, persistentBroadcaster,
-                            broadcastAudience, offlineBroadcastAudience),
+                            broadcastAudience, offlineBroadcastAudience, this.customTypes),
                     BroadcastCommand.DESCRIPTION
             );
         });
@@ -467,6 +485,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             // In place, so every command and listener holding the container sees the new wording.
             reloadMessages();
             this.typeNames.load(copyDefaultsYaml("type-names"));
+            this.customTypes.load(copyDefaultsYaml("notification-types"));
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to reload configuration.", ex);
             // Safe to read from the container: a failure here means load() was never reached, so
@@ -475,6 +494,10 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                     MessageContainer.value("error", String.valueOf(ex.getMessage()))));
             return;
         }
+
+        // Before the category rebuild below: a newly declared type must already be mapped when the
+        // merged categories are rebuilt, or it would show as uncategorized until the next reload.
+        this.customTypeRegistrar.sync();
 
         this.categories = newCategories;
         this.preferenceDialogRouter.reloadCategories(newCategories);
@@ -578,6 +601,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.categories = null;
         this.categoryDefaultsWriter = null;
         this.typeNames = null;
+        this.customTypes = null;
+        this.customTypeRegistrar = null;
         this.typeNameDefaultsWriter = null;
         this.preferenceDialogRouter = null;
         this.inboxRouter = null;

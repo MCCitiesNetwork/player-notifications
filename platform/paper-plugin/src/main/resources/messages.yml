@@ -100,6 +100,9 @@ broadcast:
   limit-exceeded: '<prefix> <red>Would reach</red> <white><count></white> <red>players, above the limit of</red> <white><limit></white><gray>. Re-run with </gray><white>--limit <count></white><gray> to send anyway.</gray>'
   offline-requires-persistent: '<prefix> <white>--offline</white> <red>requires</red> <white>--persistent</white><gray>, since an offline player cannot be reached by a message that is never stored.</gray>'
   offline-requires-permission: '<prefix> <white>--offline</white> <red>requires at least one</red> <white>--perm</white><gray>, so the audience is named deliberately.</gray>'
+  # <type> — what the sender typed after --type. Operator-declared types live in
+  # notification-types.yml; an unknown one is refused before any recipient is resolved.
+  unknown-type: '<prefix> <red>There is no notification type named</red> <white><type></white><gray>. Declared types live in notification-types.yml.</gray>'
   offline-unavailable: '<prefix> <red>Offline broadcasts are not available on this server.</red><gray> They need a supported permission plugin.</gray>'
   # <error> — why the permission backend could not be queried. Deliberately NOT parse-failed: that key
   # blames the sender's MiniMessage, and this failure is the server's.

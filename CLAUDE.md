@@ -618,7 +618,7 @@ Design docs: `…/specs/2026-08-21-broadcast-command-design.md` (the transient o
 `--limit`). Plans alongside both.
 
 ```
-/broadcast <content> [--perm <node>]… [--chain and|or] [--persistent] [--offline] [--limit <n>] [--bypass]
+/broadcast <content> [--perm <node>]… [--chain and|or] [--persistent] [--offline] [--limit <n>] [--type <key>] [--bypass]
 ```
 
 An announcement to matching players through each one's preferred media. Op-only
@@ -790,12 +790,86 @@ on nobody, so stage 2 would find no one — that case falls back to `getUniqueUs
   `QueryOptions.defaultContextualOptions()` (there is no per-player context for an absent player), and a
   player with no stored LuckPerms data is never matched except via the default-group fallback.
 
-**Tested:** `BroadcastArgumentsTest` (38), `BroadcastRecipientsTest` (9), `BroadcasterTest` (15),
-`PersistentBroadcasterTest` (7), `BroadcastRendererTest` (4). **Not covered, needing a live server and a
+**`--type <key>` sends under an operator-declared type** — see "Operator-defined notification types".
+It swaps both the `dataType` preferences resolve against and the title, through `Broadcaster.broadcast`,
+`Broadcaster.suppressed` and `PersistentBroadcaster.broadcast`, each of which gained an **overload**
+rather than a changed signature, so an untyped broadcast's call sites and stored shape are untouched.
+`suppressed` takes the `dataType` too, or `--bypass` on a typed broadcast would ask who was suppressed for
+the wrong type. The key's *validity* is not checked in `BroadcastArguments` (it holds no registry);
+`BroadcastCommand` resolves it on the command thread, before anything is queried, and replies
+`broadcast.unknown-type`.
+
+**Tested:** `BroadcastArgumentsTest` (44), `BroadcastRecipientsTest` (9), `BroadcasterTest` (18),
+`PersistentBroadcasterTest` (9), `BroadcastRendererTest` (4). **Not covered, needing a live server and a
 real LuckPerms install:** `BroadcastCommand`, both audiences, `LuckPermsPermissionLookup` and
 `LuckPermsBinding`. The three-stage lookup is the one piece with real logic that cannot be unit tested —
 the price of it being a query against someone else's storage. **The 13-item manual checklist in
 `…/plans/2026-08-29-persistent-offline-broadcast.md` has not been run.**
+
+## Operator-defined notification types
+
+Design doc: `…/specs/2026-08-30-operator-defined-notification-types-design.md`. Plan alongside it.
+
+`notification-types.yml` lets an operator bring a `dataType` into existence without writing a feature
+module — a flat map at the root, read with `childrenMap()` like `type-names.yml` because the keys are the
+operator's own and unknown at compile time:
+
+```yaml
+restart-warning:
+  title: "<red><bold>Server Restart</bold></red>"
+  display-name: "<red>Restart Warnings</red>"
+```
+
+A declared type is a **real registered type**: it enumerates in `dataTypes()`, so it appears in the
+preference dialogs and can be silenced or routed to Discord independently; it renders in the inbox; and a
+`--persistent` one is pushed on the recipient's next join. It is sent with `/broadcast <content> --type
+<key>`, and nothing else in-tree sends one.
+
+- **One payload class for every declared type**, `customtype.CustomNotificationPayload(typeKey, message)`.
+  Forced, not chosen: `NotificationDataTypeRegistry` keys renderers and serializers by **payload class**
+  and mappings by `dataType`, and a file read at runtime cannot supply a class per key. **The payload
+  carries its own key** because that is the only thing the single shared `CustomTypeRenderer` has to tell
+  N types apart with.
+- **The title is resolved from the declaration on every render**, not captured at enqueue. That is what
+  makes editing a title and reloading change how notifications *already in inboxes* read. A payload whose
+  type is no longer declared still renders, titled with the title-cased key — the body is the part the
+  player needs, and a missing mapping already produces the inbox placeholder.
+- **No processor is registered**, deliberately: an explicit processor wins dispatch and would bypass
+  preferences and sinks. Right for `mail`, wrong here, since choosing where a type reaches you is the
+  entire feature.
+- **`display-name` registers through `NotificationDataTypeRegistry#registerDisplayName`** — layer 2 of
+  `TypeNames`, so `type-names.yml` still overrides it. This is the **first in-tree consumer** of that
+  layer, which until now only unit tests exercised.
+- **Category membership stays `categories.yml`'s alone.** A declared type nothing claims resolves to
+  `UNCATEGORIZED`, which is already selectable; a second source of claims would need a merge rule and a
+  collision rule for no new capability. Defining a type that groups nicely is therefore a two-file edit.
+- **Rejections are decided at load, warned naming the key, and dropped** — the `TypeNames` operator-layer
+  rule, so the console line appears when the edit is read rather than on every screen open. A missing,
+  blank or unparseable `title` drops the whole declaration (there is no layer to fall through to); an
+  unparseable `display-name` drops **only the name**. A key must match `[a-z0-9._-]+` and be at most **64
+  characters**, because `PlayerNotificationPreference.dataType` is `VARCHAR(64)` — a longer key would
+  declare a type whose preference row cannot exist, so a player could receive it and never silence it.
+- **`customtype.CustomTypeRegistrar.sync()`** is the only thing that registers or withdraws one. It runs
+  after `startModules()` at enable and again from `/notifications reload` (before the category rebuild, or
+  a newly declared type would show as uncategorized until the next one), and diffs the declared keys
+  against what it registered last time — so it touches nothing else.
+- **Withdrawal uses `NotificationDataTypeRegistry#unmapDataType`, never `unregisterPayloadMapping`.** The
+  latter cascades to the payload class's processor, serializer and renderer, and every declared type
+  shares one class — withdrawing one type that way would break all the others. `unmapDataType` is the
+  additive, mapping-only counterpart added for this, on a concrete class with no implementors, so no
+  separately compiled feature module breaks.
+- **A key already mapped by the host or a module is warned about and skipped**, and never recorded as
+  ours, so a later sync cannot withdraw someone else's mapping. Re-registering `mail` against the shared
+  payload would break `/mail` silently.
+- **A deleted type leaves its stored rows.** With the mapping gone, `InboxEntryRenderer`'s existing
+  "unrenderable payload" placeholder names the data type; re-adding the key restores them. Nothing prunes
+  them, matching the stale `essentials-mail` preference rows.
+
+**Tested:** `CustomNotificationTypesTest` (11), `CustomTypeRendererTest` (6), `CustomTypeRegistrarTest`
+(5), plus two `NotificationDataTypeRegistryTest` cases for `unmapDataType`. **Not covered, needing a live
+server:** the file being copied on first enable, the preference dialogs, and reload behaviour end to end —
+**the 13-item manual checklist in `…/plans/2026-08-30-operator-defined-notification-types.md` has not been
+run.**
 
 ## EssentialsX mail converter
 
@@ -1370,6 +1444,10 @@ The files:
   first write creates it). Each file shares the **basename of the live file it mirrors** rather than a
   `-defaults` suffix, so comparison is a plain `diff defaults/categories.yml categories.yml` and the data
   folder's top level stays files the operator owns.
+- `notification-types.yml` → `paper.customtype.CustomNotificationTypes` — a flat `dataType` →
+  `{title, display-name}` map, read with `childrenMap()` for the reason `type-names.yml` is. Like it,
+  **excluded from `warnAboutMissingConfigKeys`**: a partial declaration map has no missing keys. Ships
+  with every example commented out.
 - `type-names.yml` → `paper.localisation.TypeNames` — a flat `dataType` → MiniMessage name map. Not a
   `@ConfigSerializable` record: the keys are unknown at compile time, so it is read with `childrenMap()`
   like `MessageContainer`. Ships with every example commented out.
@@ -1537,8 +1615,9 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 - `--tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing.** Check the result count, not
   the exit status.
 
-Current baseline, **every module run fresh with Docker available**: **39 in `:api:test`, 136 in
-`:core:test`, 258 in `:platform:paper-plugin:test`, 214 in `:platform:discord-adapter:test`, 21 in
+Current baseline: **41 in `:api:test`, 291 in `:platform:paper-plugin:test`**, measured after
+operator-defined notification types landed. The three figures that follow are from the previous run and
+were **not** re-measured, because Docker was unavailable: **136 in `:core:test`, 214 in `:platform:discord-adapter:test`, 21 in
 `:platform:essentials-mail-converter:test`** — all passing, after persistent/offline broadcasts landed.
 
 Two of these correct long-stale entries rather than growing: `:core:test` was recorded as 126 and was
@@ -1563,9 +1642,10 @@ Known gaps / notes:
   same applies to `defaults/categories.yml`**: a stock install writes an empty `categories` node forever.
   Moving the host categories out of `categories.yml` into the code registry was considered and rejected —
   it would change what a stock install's dialogs are built from.
-- **The module-supplied type-name layer has no in-tree consumer.** Nothing calls `registerDisplayName`, so
-  every entry in `defaults/type-names.yml` is a title-cased fallback and that branch of `TypeNames` runs
-  only in unit tests. Naming the host's own three types was left out deliberately.
+- **The module-supplied type-name layer now has one in-tree consumer**: an operator-declared type's
+  `display-name` registers through `registerDisplayName`. Nothing *else* calls it, so on a server that
+  declares no types every entry in `defaults/type-names.yml` is still a title-cased fallback. Naming the
+  host's own three types was left out deliberately.
 - **Configurable type names are unverified on a live server.** Task 7's checklist in
   `…/plans/2026-08-23-configurable-type-names.md` **has not been run**. Underneath: `TypeNamesTest` (13),
   `TypeNameDefaultsWriterTest` (9), five api registry cases, and one `PreferenceDialogsTest` case pinning

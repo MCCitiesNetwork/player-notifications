@@ -97,13 +97,30 @@ public final class Broadcaster {
      * @return the number of recipients the broadcast was actually attempted for
      */
     public int broadcast(@NotNull Component content, @NotNull Collection<UUID> recipients, boolean bypass) {
+        // Read per broadcast rather than held in a field, so /notifications reload takes effect.
+        return broadcast(this.messages.messageFor(MessageKeys.BROADCAST_TITLE), content,
+                BROADCAST_DATA_TYPE, recipients, bypass);
+    }
+
+    /**
+     * As {@link #broadcast(Component, Collection, boolean)}, for an operator-declared type sent with
+     * {@code /broadcast --type <key>}.
+     *
+     * <p>{@code dataType} is what preferences are resolved against, which is the whole point of the
+     * flag: silencing "restart warnings" must not silence ordinary broadcasts, and vice versa. The
+     * title comes from the declaration in {@code notification-types.yml} rather than
+     * {@code messages.yml}.
+     */
+    public int broadcast(@NotNull Component title, @NotNull Component content,
+                         @NotNull String dataType, @NotNull Collection<UUID> recipients,
+                         boolean bypass) {
         int attempted = 0;
         for (UUID recipient : recipients) {
             if (this.preferences.isMuted(recipient) && !bypass) {
                 this.logger.fine(() -> "Recipient " + recipient + " is muted; skipping the broadcast");
                 continue;
             }
-            Set<String> media = usableMedia(recipient);
+            Set<String> media = usableMedia(recipient, dataType);
             if (media.isEmpty()) {
                 if (!bypass) {
                     this.logger.fine(() -> "Recipient " + recipient
@@ -112,9 +129,7 @@ public final class Broadcaster {
                 }
                 media = Set.of(FALLBACK_MEDIUM);
             }
-            // Read per broadcast rather than held in a field, so /notifications reload takes effect.
-            RenderableNotification notification = new RenderableNotification(
-                    this.messages.messageFor(MessageKeys.BROADCAST_TITLE), content);
+            RenderableNotification notification = new RenderableNotification(title, content);
             for (String medium : media) {
                 Optional<NotificationSink> sink = this.sinks.getSink(medium);
                 if (sink.isEmpty()) {
@@ -142,9 +157,19 @@ public final class Broadcaster {
      */
     @NotNull
     public List<UUID> suppressed(@NotNull Collection<UUID> recipients) {
+        return suppressed(recipients, BROADCAST_DATA_TYPE);
+    }
+
+    /**
+     * As {@link #suppressed(Collection)}, for an operator-declared type. The {@code dataType} must be
+     * the one the push ran under, or {@code --bypass} would ask who was suppressed for the wrong type
+     * and reach the wrong people.
+     */
+    @NotNull
+    public List<UUID> suppressed(@NotNull Collection<UUID> recipients, @NotNull String dataType) {
         List<UUID> result = new ArrayList<>();
         for (UUID recipient : recipients) {
-            if (this.preferences.isMuted(recipient) || usableMedia(recipient).isEmpty()) {
+            if (this.preferences.isMuted(recipient) || usableMedia(recipient, dataType).isEmpty()) {
                 result.add(recipient);
             }
         }
@@ -156,9 +181,9 @@ public final class Broadcaster {
      * deliverable" — either an explicit silence or no preference resolving to anything.
      */
     @NotNull
-    private Set<String> usableMedia(@NotNull UUID recipient) {
+    private Set<String> usableMedia(@NotNull UUID recipient, @NotNull String dataType) {
         Set<String> media = new LinkedHashSet<>(
-                this.preferences.preferredMedia(recipient, BROADCAST_DATA_TYPE));
+                this.preferences.preferredMedia(recipient, dataType));
         media.remove(NotificationPreferences.SILENCED_MEDIUM);
         return media;
     }
