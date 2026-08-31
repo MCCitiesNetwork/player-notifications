@@ -236,6 +236,16 @@ class MailNotifierTest {
     }
 
     @Test
+    void theMarkerContributesNoVisibleCharacter() {
+        // A zero-width space here rendered as a missing-glyph box in Minecraft's font, right before
+        // the preview. The marker must serialise to nothing at all, on every medium.
+        MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
+                fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
+
+        assertEquals("hi", plain(notifier.arrivalNotice("Andrew", "hi").body()));
+    }
+
+    @Test
     void everyNoticeCarriesTheSameMarker() {
         // The Discord "Read mail" button recognises the notice by the identity of the marker leading
         // its body, so two notices differing in sender and message must still be recognised.

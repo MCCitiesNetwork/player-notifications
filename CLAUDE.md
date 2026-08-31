@@ -543,14 +543,15 @@ notification — never enqueued, never stored (that
 would put a second row in the inbox announcing the first) — but it *is* routed through the ordinary sink
 machinery. `paper.mail.MailNotifier` is the whole of this. `notifyArrival(recipient, senderName, message)`
 builds one notice per call through the public `arrivalNotice(senderName, message)`, so a sink recognises
-it through `MailNotifier.isArrivalNotice` and can add an affordance — the Discord adapter's "Read mail"
-button. Recognition is an **identity** check on a zero-width `NOTICE_MARKER` component leading the
+it through `MailNotifier.isArrivalNotice` and can add an affordance — the Discord adapter's
+*Open message* / *Mark as read* buttons. Recognition is an **identity** check on a text-free `NOTICE_MARKER` component leading the
 notice's *body*, not a wording comparison: matching text would
 mean rewording silently dropped the decoration and would decorate any notification rendering the same way,
 and both title and body now differ from send to send. A marker child rather than the body itself because
-the body now carries the preview; a zero-width space rather than an empty component because
-`Component.text("")` collapses onto the shared `Component.empty()` singleton, which anything could match
-by accident. The sender name is substituted with `value()`, never
+the body now carries the preview; **empty content plus a colour**, because `Component.text("")` with an
+empty style collapses onto the shared `Component.empty()` singleton, which anything could match by
+accident. **The marker must render as nothing at all** — a zero-width space was tried first and showed
+as a missing-glyph box in Minecraft's font, right before the preview. The sender name is substituted with `value()`, never
 `markup()`; a console send arrives as `MailSender.SERVER_NAME`, so the notice reads "from Server" and
 matches the "Mail from Server" title `/mail` then shows. It returns immediately when the recipient is
 **muted**, and otherwise resolves `preferredMedia(recipient, mail)`, drops `SILENCED_MEDIUM`, and delivers
@@ -1641,7 +1642,7 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
   the exit status.
 
 Current baseline, every figure measured in one `./gradlew build` after the mail arrival notice began
-naming its sender: **41 in `:api:test`, 298 in `:platform:paper-plugin:test`, 136 in `:core:test`,
+naming its sender: **41 in `:api:test`, 299 in `:platform:paper-plugin:test`, 136 in `:core:test`,
 217 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
 passing, with Docker running.
 

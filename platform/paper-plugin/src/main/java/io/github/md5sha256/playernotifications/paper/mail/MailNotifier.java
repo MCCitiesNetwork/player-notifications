@@ -9,6 +9,7 @@ import io.github.md5sha256.playernotifications.api.render.NotificationSink;
 import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
 import io.github.md5sha256.playernotifications.paper.localisation.MessageKeys;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.jetbrains.annotations.NotNull;
@@ -48,14 +49,17 @@ public final class MailNotifier {
     private static final String ELLIPSIS = "...";
 
     /**
-     * The first child of every notice body this class builds: a zero-width component contributing no
-     * visible text of its own, and the <strong>marker</strong> {@link #isArrivalNotice} matches on.
-     * Neither the body nor the title can be the marker any more — both vary from send to send now that
-     * one previews the message and the other names the sender. It is a zero-width space rather than an
-     * empty component because {@link Component#text(String)} collapses {@code ""} onto the shared
-     * {@link Component#empty()} singleton, which any component could match by accident.
+     * The first child of every notice body this class builds, and the <strong>marker</strong>
+     * {@link #isArrivalNotice} matches on. Neither the body nor the title can be the marker any more —
+     * both vary from send to send now that one previews the message and the other names the sender.
+     *
+     * <p>It carries <strong>no text</strong>: an earlier zero-width space rendered as a missing-glyph
+     * box in Minecraft's font, immediately before the preview. Empty content <em>plus a colour</em>,
+     * because {@link Component#text(String)} collapses {@code ""} with an empty style onto the shared
+     * {@link Component#empty()} singleton, which anything could match by accident. The colour styles
+     * nothing, the component having neither content nor children of its own.
      */
-    private static final Component NOTICE_MARKER = Component.text("\u200B");
+    private static final Component NOTICE_MARKER = Component.text("", NamedTextColor.WHITE);
 
     /** Runs of whitespace, including any newline the message's own markup introduces. */
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
