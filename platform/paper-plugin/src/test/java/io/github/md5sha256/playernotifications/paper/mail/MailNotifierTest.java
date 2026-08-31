@@ -18,7 +18,6 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -105,7 +104,7 @@ class MailNotifierTest {
         NotificationPreferences preferences = fixedMedia(Set.of("chat", "discord-dm"));
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, TestMessages.shipped(), LOGGER);
-        notifier.notifyArrival(UUID.randomUUID(), "Andrew");
+        notifier.notifyArrival(UUID.randomUUID(), "Andrew", "Meet me at spawn");
 
         assertEquals(1, chat.received.size());
         assertEquals(1, discord.received.size());
@@ -120,7 +119,7 @@ class MailNotifierTest {
                 fixedMedia(Set.of(NotificationPreferences.SILENCED_MEDIUM));
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, TestMessages.shipped(), LOGGER);
-        notifier.notifyArrival(UUID.randomUUID(), "Andrew");
+        notifier.notifyArrival(UUID.randomUUID(), "Andrew", "Meet me at spawn");
 
         assertTrue(chat.received.isEmpty());
     }
@@ -133,7 +132,7 @@ class MailNotifierTest {
         NotificationPreferences preferences = fixedMedia(Set.of("chat"), true);
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, TestMessages.shipped(), LOGGER);
-        notifier.notifyArrival(UUID.randomUUID(), "Andrew");
+        notifier.notifyArrival(UUID.randomUUID(), "Andrew", "Meet me at spawn");
 
         assertTrue(chat.received.isEmpty());
     }
@@ -144,7 +143,7 @@ class MailNotifierTest {
         NotificationPreferences preferences = fixedMedia(Set.of("carrier-pigeon"));
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, TestMessages.shipped(), LOGGER);
-        notifier.notifyArrival(UUID.randomUUID(), "Andrew");
+        notifier.notifyArrival(UUID.randomUUID(), "Andrew", "Meet me at spawn");
         // No exception is the assertion.
     }
 
@@ -157,33 +156,73 @@ class MailNotifierTest {
         NotificationPreferences preferences = fixedMedia(Set.of("chat", "throws"));
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, TestMessages.shipped(), LOGGER);
-        notifier.notifyArrival(UUID.randomUUID(), "Andrew");
+        notifier.notifyArrival(UUID.randomUUID(), "Andrew", "Meet me at spawn");
 
         assertEquals(1, chat.received.size());
     }
 
     @Test
-    void theNoticeNamesItsSenderAndNothingElseFromTheMail() {
+    void theNoticeNamesItsSenderAndPreviewsTheMail() {
         NotificationSinkRegistry sinks = new NotificationSinkRegistry();
         RecordingSink chat = new RecordingSink("chat", DeliveryResult.DELIVERED);
         sinks.registerSink(chat);
         NotificationPreferences preferences = fixedMedia(Set.of("chat"));
 
         MailNotifier notifier = new MailNotifier(sinks, preferences, TestMessages.shipped(), LOGGER);
-        notifier.notifyArrival(UUID.randomUUID(), "Andrew");
+        notifier.notifyArrival(UUID.randomUUID(), "Andrew", "Meet me at spawn");
 
         assertEquals(1, chat.received.size());
         RenderableNotification notification = chat.received.get(0);
-        String title = plain(notification.title());
-        String body = plain(notification.body());
-        assertTrue(title.contains("Andrew"));
-        assertEquals("Use /mail to read it.", body);
+        assertTrue(plain(notification.title()).contains("Andrew"));
+        assertTrue(plain(notification.body()).contains("Meet me at spawn"));
+    }
 
-        // The sender's name, never the message: a preview would put private correspondence on a
-        // medium the player chose for notices.
-        String all = title + " " + body;
-        assertFalse(all.toLowerCase().contains("steve"));
-        assertFalse(all.matches(".*\\d.*"));
+    @Test
+    void aLongMessageIsPreviewedAndTruncated() {
+        MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
+                fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
+
+        String message = "a".repeat(MailNotifier.PREVIEW_LENGTH + 50);
+        String body = plain(notifier.arrivalNotice("Andrew", message).body());
+
+        assertTrue(body.contains("a".repeat(MailNotifier.PREVIEW_LENGTH)), body);
+        assertFalse(body.contains("a".repeat(MailNotifier.PREVIEW_LENGTH + 1)), body);
+        assertTrue(body.endsWith("..."), "a truncated preview says so: " + body);
+    }
+
+    @Test
+    void thePreviewIsPlainTextSoItsFormattingCannotReachTheNotice() {
+        // The stored message is MiniMessage that passed the sender's permission gate, but the notice
+        // is a one-line preview: it shows what was written, not how it was styled.
+        MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
+                fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
+
+        String body = plain(notifier.arrivalNotice("Andrew", "<red>hello</red>").body());
+
+        assertTrue(body.contains("hello"), body);
+        assertFalse(body.contains("<red>"), body);
+    }
+
+    @Test
+    void aLegacySectionCodeFallsBackToLiteralText() {
+        // MiniMessage throws on a legacy section code, and mail stored before MailFormatting landed
+        // can contain one. MailRenderer takes the same fallback.
+        MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
+                fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
+
+        String body = plain(notifier.arrivalNotice("Andrew", "§chello").body());
+
+        assertTrue(body.contains("hello"), body);
+    }
+
+    @Test
+    void aNewlineInTheMessageIsFlattenedOntoOneLine() {
+        MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
+                fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
+
+        String body = plain(notifier.arrivalNotice("Andrew", "one<newline>two").body());
+
+        assertTrue(body.contains("one two"), body);
     }
 
     @Test
@@ -191,23 +230,25 @@ class MailNotifierTest {
         MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
                 fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
 
-        RenderableNotification notice = notifier.arrivalNotice("<red>Bob");
+        RenderableNotification notice = notifier.arrivalNotice("<red>Bob", "hello");
 
         assertTrue(plain(notice.title()).contains("<red>Bob"));
     }
 
     @Test
-    void everyNoticeSharesOneBodyInstance() {
-        // The Discord "Read mail" button recognises the notice by the identity of its body, so two
-        // notices differing in title must still carry the very same body component.
+    void everyNoticeCarriesTheSameMarker() {
+        // The Discord "Read mail" button recognises the notice by the identity of the marker leading
+        // its body, so two notices differing in sender and message must still be recognised.
         MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
                 fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
 
-        RenderableNotification first = notifier.arrivalNotice("Andrew");
-        RenderableNotification second = notifier.arrivalNotice("Bob");
+        RenderableNotification first = notifier.arrivalNotice("Andrew", "one");
+        RenderableNotification second = notifier.arrivalNotice("Bob", "two");
 
         assertNotEquals(first.title(), second.title());
-        assertSame(first.body(), second.body());
+        assertNotEquals(first.body(), second.body());
+        assertTrue(MailNotifier.isArrivalNotice(first));
+        assertTrue(MailNotifier.isArrivalNotice(second));
     }
 
     @Test
@@ -215,11 +256,11 @@ class MailNotifierTest {
         MailNotifier notifier = new MailNotifier(new NotificationSinkRegistry(),
                 fixedMedia(Set.of()), TestMessages.shipped(), LOGGER);
 
-        assertTrue(MailNotifier.isArrivalNotice(notifier.arrivalNotice("Andrew")));
+        assertTrue(MailNotifier.isArrivalNotice(notifier.arrivalNotice("Andrew", "hello")));
         // Equal-looking, but built elsewhere: not the notice.
         assertFalse(MailNotifier.isArrivalNotice(new RenderableNotification(
-                Component.text("You were sent mail from Andrew"),
-                Component.text("Use /mail to read it."))));
+                Component.text("Andrew has sent you mail!"),
+                Component.text("hello"))));
     }
 
     private static String plain(Component component) {

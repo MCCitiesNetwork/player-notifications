@@ -26,12 +26,12 @@ class MailNoticeButtonTest {
      * A real notice from a real notifier: the button's contract is with what {@code MailNotifier}
      * builds, not with a hand-assembled record. The container is empty rather than the host's shipped
      * {@code messages.yml} — that lives in the host's test source set, out of this module's reach, and
-     * nothing here asserts the notice's wording. Only its body, the marker, matters to the button.
+     * nothing here asserts the notice's wording. Only the marker leading its body matters to the button.
      */
     private static RenderableNotification arrivalNotice() {
         return new MailNotifier(new NotificationSinkRegistry(), player -> Set.of(),
                 new MessageContainer(),
-                Logger.getLogger(MailNoticeButtonTest.class.getName())).arrivalNotice("Andrew");
+                Logger.getLogger(MailNoticeButtonTest.class.getName())).arrivalNotice("Andrew", "hello");
     }
 
     private static Button button(ActionRow row) {

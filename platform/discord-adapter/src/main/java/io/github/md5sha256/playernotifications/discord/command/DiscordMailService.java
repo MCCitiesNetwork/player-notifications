@@ -81,7 +81,7 @@ public final class DiscordMailService {
 
         // Only after the mail is stored: announcing mail that was never enqueued would send the
         // recipient to an empty inbox.
-        this.notifier.notifyArrival(ok.recipient(), senderName);
+        this.notifier.notifyArrival(ok.recipient(), senderName, ok.message());
         return new SendResult.Ok(recipientName);
     }
 

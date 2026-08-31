@@ -58,10 +58,13 @@ mail:
   # The mail screen's name, the /mail counterpart of inbox.title. A name, so no prefix.
   title: 'Mail'
   # The mail arrival notice, delivered to whichever media the recipient prefers for mail. No prefix:
-  # this is also a dialog title and a Discord embed title, not only a chat line. Names the sender and
-  # nothing else — the message itself is read through /mail.
+  # this is also a dialog title and a Discord embed title, not only a chat line.
   # <sender>
-  arrival-notice: '<gold>You were sent mail from</gold> <white><sender></white>'
+  arrival-notice: '<gold><sender> has sent you mail!</gold>'
+  # The notice's second line: a plain-text preview of the message, cut to 100 characters with a
+  # trailing '...'. It reaches every medium the recipient chose, Discord DM included.
+  # <preview>
+  arrival-preview: '<gray><preview></gray>'
   players-only: '<prefix> <red>Only players can use mail.</red>'
   # <recipient>
   sent: '<prefix> <green>Mail sent to</green> <gold><recipient></gold><green>.</green>'

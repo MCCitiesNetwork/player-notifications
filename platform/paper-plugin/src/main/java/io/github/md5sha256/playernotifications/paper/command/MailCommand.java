@@ -134,7 +134,7 @@ public final class MailCommand {
                             MessageContainer.value("recipient", name)));
                     // Unconditional: Discord DM reaches the recipient whether or not they're online, and
                     // MailNotifier already resolves what can reach them.
-                    mailNotifier.notifyArrival(ok.recipient(), senderName);
+                    mailNotifier.notifyArrival(ok.recipient(), senderName, ok.message());
                 }
                 // value() throughout: a player name is arbitrary text, and a '<' in one must not
                 // open a tag in a message the recipient never consented to.
