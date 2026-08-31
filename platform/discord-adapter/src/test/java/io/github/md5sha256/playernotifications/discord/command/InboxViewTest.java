@@ -175,6 +175,33 @@ class InboxViewTest {
     }
 
     @Test
+    void markingAnEntrySeenStampsItWithoutReturningTheRow() {
+        // The arrival notice's "Mark as read" button: the player is dismissing the interruption, not
+        // asking to see the mail, so nothing is rendered back at them.
+        addNote("a", "first", true);
+        addNote("b", "second", true);
+
+        InboxView.ActionResult result = view(null, "Notifications", 10).markSeen(PLAYER, 1, 2);
+
+        Assertions.assertInstanceOf(InboxView.ActionResult.Ok.class, result);
+        Assertions.assertEquals(List.of(new FakeNotificationService.Call("markSeen", null, "b")),
+                this.service.calls());
+    }
+
+    @Test
+    void markingAnEntrySeenThatIsNotOnThePageChangesNothing() {
+        addNote("a", "first", true);
+
+        InboxView.ActionResult result = view(null, "Notifications", 10).markSeen(PLAYER, 1, 9);
+
+        InboxView.ActionResult.OutOfRange outOfRange =
+                Assertions.assertInstanceOf(InboxView.ActionResult.OutOfRange.class, result);
+        Assertions.assertEquals(9, outOfRange.entry());
+        Assertions.assertEquals(1, outOfRange.rowCount());
+        Assertions.assertEquals(List.of(), this.service.calls());
+    }
+
+    @Test
     void readingByKeyServesTheComponentPathWithoutAPageNumber() {
         addNote("a", "first", true);
 

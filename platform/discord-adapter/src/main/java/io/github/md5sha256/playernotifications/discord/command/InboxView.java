@@ -92,6 +92,25 @@ public final class InboxView {
     }
 
     /**
+     * Marks row {@code entry} of {@code page} seen without rendering it — the arrival notice's
+     * "Mark as read" button, for a player dismissing the interruption rather than asking to see the
+     * mail. The inverse of {@link #markUnreadByKey}, and the same stamp {@link #read} applies as a
+     * side effect of opening.
+     *
+     * <p>Out of range is rejected rather than clamped, as in {@link #read}: the page changed under
+     * the player, and stamping the wrong row is worse than asking them to look again.
+     */
+    public @NotNull ActionResult markSeen(@NotNull UUID player, int page, int entry) {
+        Page rendered = page(player, page);
+        Optional<Row> row = rowAt(rendered, entry);
+        if (row.isEmpty()) {
+            return new ActionResult.OutOfRange(entry, rendered.rows().size());
+        }
+        this.service.markSeen(row.get().notifKey(), player);
+        return new ActionResult.Ok("Marked as read.");
+    }
+
+    /**
      * Returns the notification with this key to the unread state — the button on an entry's detail,
      * for a player who opened something and wants it left waiting.
      *

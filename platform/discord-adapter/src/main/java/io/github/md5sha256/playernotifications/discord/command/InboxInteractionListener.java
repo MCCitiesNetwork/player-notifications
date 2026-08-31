@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.interactions.InteractionHook;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.logging.Logger;
@@ -19,6 +20,13 @@ import java.util.logging.Logger;
  * listing can never be served by the unfiltered view.
  */
 public final class InboxInteractionListener extends ListenerAdapter {
+
+    /**
+     * The actions posted by the mail arrival notice's buttons. They are answered with a fresh
+     * ephemeral reply rather than by editing, because the message carrying them is a DM the player
+     * may still want.
+     */
+    private static final Set<String> NOTICE_ACTIONS = Set.of("read", "seen");
 
     private final DiscordUserResolver users;
     private final InboxView notifications;
@@ -44,10 +52,10 @@ public final class InboxInteractionListener extends ListenerAdapter {
         if (parsed.isEmpty()) {
             return;
         }
-        // The "Read mail" button under a mail arrival notice sits on an ordinary DM rather than on a
-        // listing this module posted, so it answers with a new ephemeral reply: editing would consume
-        // the notice, and a player with several unread mails still wants it there.
-        Runnable defer = "read".equals(parsed.get().action())
+        // The arrival notice's buttons sit on an ordinary DM rather than on a listing this module
+        // posted, so they answer with a new ephemeral reply: editing would consume the notice, and a
+        // player with several unread mails still wants it there.
+        Runnable defer = NOTICE_ACTIONS.contains(parsed.get().action())
                 ? () -> event.deferReply(true).queue()
                 : () -> event.deferEdit().queue();
         handle(event.getHook(), parsed.get(), event.getUser().getIdLong(), null, defer);
@@ -123,6 +131,10 @@ public final class InboxInteractionListener extends ListenerAdapter {
                                 InboxReplies.outOfRange(range.entry(), range.rowCount()), this.logger);
                     }
                 }
+                case "seen" -> InteractionSupport.reply(hook,
+                        InboxReplies.of(view.markSeen(player.get(),
+                                parsed.intArg(0).orElse(1), parsed.intArg(1).orElse(1))),
+                        this.logger);
                 case "delete" -> {
                     parsed.arg(0).ifPresent(key -> view.dismissByKey(player.get(), key));
                     InteractionSupport.edit(hook,

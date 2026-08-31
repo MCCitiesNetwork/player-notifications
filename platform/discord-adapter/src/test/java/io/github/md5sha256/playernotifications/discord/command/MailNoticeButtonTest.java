@@ -34,27 +34,41 @@ class MailNoticeButtonTest {
                 Logger.getLogger(MailNoticeButtonTest.class.getName())).arrivalNotice("Andrew", "hello");
     }
 
-    private static Button button(ActionRow row) {
-        return (Button) row.getComponents().get(0);
+    private static Button button(ActionRow row, int index) {
+        return (Button) row.getComponents().get(index);
     }
 
     @Test
-    void theArrivalNoticeGetsAReadMailButton() {
+    void theArrivalNoticeGetsBothButtons() {
         Optional<ActionRow> row = MailNoticeButton.forNotification(arrivalNotice());
 
         Assertions.assertTrue(row.isPresent());
-        Assertions.assertEquals(1, row.get().getComponents().size(), "one button, not a row of them");
-        Assertions.assertEquals("Read mail", button(row.get()).getLabel());
+        Assertions.assertEquals(2, row.get().getComponents().size());
+        Assertions.assertEquals("Open message", button(row.get(), 0).getLabel());
+        Assertions.assertEquals("Mark as read", button(row.get(), 1).getLabel());
     }
 
     @Test
-    void theButtonOpensEntryOneOfTheFirstMailPage() {
+    void openMessageOpensEntryOneOfTheFirstMailPage() {
         // The same thing /mail read 1 does, which is what the button is a shortcut for.
         ActionRow row = MailNoticeButton.forNotification(arrivalNotice()).orElseThrow();
 
-        ComponentIds.Parsed id = ComponentIds.parse(button(row).getCustomId()).orElseThrow();
+        ComponentIds.Parsed id = ComponentIds.parse(button(row, 0).getCustomId()).orElseThrow();
         Assertions.assertEquals(ComponentIds.SURFACE_INBOX_MAIL, id.surface());
         Assertions.assertEquals("read", id.action());
+        Assertions.assertEquals(1, id.intArg(0).orElseThrow(), "page");
+        Assertions.assertEquals(1, id.intArg(1).orElseThrow(), "entry");
+    }
+
+    @Test
+    void markAsReadActsOnTheSameEntryWithoutOpeningIt() {
+        // The one control that changes state without showing the mail, so it carries its own action
+        // rather than reusing "read", which marks seen only as a side effect of opening.
+        ActionRow row = MailNoticeButton.forNotification(arrivalNotice()).orElseThrow();
+
+        ComponentIds.Parsed id = ComponentIds.parse(button(row, 1).getCustomId()).orElseThrow();
+        Assertions.assertEquals(ComponentIds.SURFACE_INBOX_MAIL, id.surface());
+        Assertions.assertEquals("seen", id.action());
         Assertions.assertEquals(1, id.intArg(0).orElseThrow(), "page");
         Assertions.assertEquals(1, id.intArg(1).orElseThrow(), "entry");
     }

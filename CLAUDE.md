@@ -434,11 +434,16 @@ message factories), with the JDA listeners logic-free.
   `CommandSender` to check them against. Recipient resolution matches `MailCommand`, `hasPlayedBefore()`
   included, and the arrival notice fires through `MailNotifier` unchanged — but only *after* the enqueue
   succeeds, since announcing mail that was never stored sends the recipient to an empty inbox.
-- **The mail arrival notice's DM carries a "Read mail" button**, a shortcut for `/mail read 1`.
+- **The mail arrival notice's DM carries two buttons**, *Open message* (`pn|inbox-mail|read|1|1`, the
+  shortcut for `/mail read 1`) and *Mark as read* (`pn|inbox-mail|seen|1|1`, which stamps the same entry
+  seen without rendering it — for the player clearing the interruption rather than reading the mail).
   `command.MailNoticeButton` builds the row and `DiscordDmSink` adds it; nothing else changes. Discord-only
-  by construction, so the notice stays medium-neutral and no other sink learns anything. Its id is
-  `pn|inbox-mail|read|1|1`, and **`read` is the one button action answered with a new ephemeral reply
-  rather than `deferEdit`** — it sits on an ordinary DM, so editing would consume the notice.
+  by construction, so the notice stays medium-neutral and no other sink learns anything. **`read` and
+  `seen` are the two button actions answered with a new ephemeral reply rather than `deferEdit`**
+  (`InboxInteractionListener.NOTICE_ACTIONS`) — they sit on an ordinary DM, so editing would consume the
+  notice. `seen` is backed by `InboxView#markSeen(player, page, entry)`, the inverse of
+  `markUnreadByKey` and the stamp `read` applies as a side effect; an out-of-range entry is rejected
+  naming the page's size, as everywhere else on this surface.
 - **Preferences are components, not a modal.** A modal opens only in response to an interaction and
   submits once, so it cannot re-render as a player toggles. `/notifications prefs` posts an ephemeral
   message with a data-type select, a media multi-select (min 0) and four buttons: Apply / Discard /
@@ -1637,12 +1642,15 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 
 Current baseline, every figure measured in one `./gradlew build` after the mail arrival notice began
 naming its sender: **41 in `:api:test`, 298 in `:platform:paper-plugin:test`, 136 in `:core:test`,
-214 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
+217 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
 passing, with Docker running.
 
-The paper-plugin figure is from a `:platform:paper-plugin:test` run after the arrival notice gained
-its preview (five new `MailNotifierTest` cases replacing one); the other four are from the previous
-`./gradlew build`, since Docker was down for that run and the two DB suites could not be re-measured.
+The paper-plugin and discord-adapter figures are from a `./gradlew build` after the arrival notice
+gained its preview and its second button. **Docker was down for that run**, so 23 of the
+discord-adapter total — every case in `DatabaseDiscordAccountLinkStoreTest`,
+`AbstractDiscordDatabaseTestSelfTest`, `DiscordAccountLinkMapperTest` and `DiscordSchemaMigratorTest` —
+failed on Testcontainers rather than on anything in the tree, and `:core:test` was up to date rather
+than re-run.
 
 Two of these correct long-stale entries rather than growing: `:core:test` was recorded as 126 and was
 actually **131** before this change (136 after the five new `PersistentBroadcastTest` cases), and

@@ -9,8 +9,10 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Optional;
 
 /**
- * The "Read mail" button the DM sink puts under the mail arrival notice — a shortcut for
- * {@code /mail read 1}, so a player told about mail in Discord can read it without typing a command.
+ * The two buttons the DM sink puts under the mail arrival notice: <em>Open message</em>, a shortcut
+ * for {@code /mail read 1}, and <em>Mark as read</em>, which stamps the same entry seen without showing
+ * it. Both exist so a player told about mail in Discord can deal with it without typing a command —
+ * one for the mail they want to read now, one for the interruption they want to clear.
  *
  * <p>Discord-only by construction: it is a JDA component, and the affordance exists because a Discord
  * message can carry a button. The notice itself is medium-neutral and unchanged, and no other sink
@@ -28,7 +30,8 @@ public final class MailNoticeButton {
     private static final String FIRST_PAGE = "1";
     private static final String FIRST_ENTRY = "1";
 
-    private static final String LABEL = "Read mail";
+    private static final String OPEN_LABEL = "Open message";
+    private static final String SEEN_LABEL = "Mark as read";
 
     private MailNoticeButton() {
     }
@@ -41,8 +44,14 @@ public final class MailNoticeButton {
         if (!MailNotifier.isArrivalNotice(notification)) {
             return Optional.empty();
         }
-        return Optional.of(ActionRow.of(Button.primary(
-                ComponentIds.encode(ComponentIds.SURFACE_INBOX_MAIL, "read", FIRST_PAGE, FIRST_ENTRY),
-                LABEL)));
+        return Optional.of(ActionRow.of(
+                Button.primary(
+                        ComponentIds.encode(ComponentIds.SURFACE_INBOX_MAIL, "read", FIRST_PAGE,
+                                FIRST_ENTRY),
+                        OPEN_LABEL),
+                Button.secondary(
+                        ComponentIds.encode(ComponentIds.SURFACE_INBOX_MAIL, "seen", FIRST_PAGE,
+                                FIRST_ENTRY),
+                        SEEN_LABEL)));
     }
 }
