@@ -126,6 +126,28 @@ broadcast:
   # never ambiguous between nobody being reachable and everything failing.
   push-failed: '<red>Delivery failed for</red> <white><count></white> <red>player(s)</red><gray> — see the console. They keep an unread inbox copy.</gray>'
 
+# /notifications send <player> <type> <content> [--transient] - one notification to one named player.
+send:
+  blank-content: '<prefix> <red>Notification content cannot be blank.</red>'
+  # <token> - what the sender typed, so it stays literal.
+  unrecognised-token: '<prefix> <red>Unrecognised token:</red> <white><token></white>'
+  # <type> - declared types live in notification-types.yml.
+  unknown-type: '<prefix> <red>There is no notification type named</red> <white><type></white><gray>. Declared types live in notification-types.yml.</gray>'
+  # <error> - why the content would not parse as MiniMessage, e.g. a legacy section-sign code.
+  parse-failed: '<prefix> <red>Could not parse the notification content:</red> <gray><error></gray>'
+  # <name> - what the sender typed.
+  unknown-player: '<prefix> <red>No player named</red> <white><name></white> <red>has played here.</red>'
+  # <player> - stored, not necessarily seen: NotificationDelivery.deliver returns void, so nothing here
+  # knows whether a sink got through. Same honesty as /broadcast and /notifications test.
+  stored: '<prefix> <green>Notification stored for</green> <gold><player></gold><gray>. It is in their inbox and will be pushed on their next join.</gray>'
+  # <player> - the push threw; the notification is stored and stays unread regardless.
+  push-failed: '<prefix> <red>Could not push it to</red> <gold><player></gold><gray> right now - see the console. It stays unread in their inbox.</gray>'
+  # <player>
+  sent: '<prefix> <green>Notification sent to</green> <gold><player></gold><green>.</green>'
+  # <player> - muted, or silenced down to no usable medium. Nothing was pushed; on the persistent path
+  # the notification is still stored, which is why that path never sends this key.
+  nothing-enabled: '<prefix> <yellow><player></yellow> <red>has this type silenced, or is muted, so nothing was sent.</red>'
+
 join:
   # Sent on join, outside the deliver-on-join setting: a player who turned push off still needs to
   # know something arrived. A muted player is sent none of these. Each is an unprompted line of its

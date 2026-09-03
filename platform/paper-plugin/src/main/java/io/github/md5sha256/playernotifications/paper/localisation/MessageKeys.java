@@ -70,6 +70,17 @@ public final class MessageKeys {
     public static final String BROADCAST_PUSH_FAILED = "broadcast.push-failed";
     public static final String BROADCAST_UNKNOWN_TYPE = "broadcast.unknown-type";
 
+    // send — /notifications send <player> <type> <content> [--transient]
+    public static final String SEND_BLANK_CONTENT = "send.blank-content";
+    public static final String SEND_UNRECOGNISED_TOKEN = "send.unrecognised-token";
+    public static final String SEND_UNKNOWN_TYPE = "send.unknown-type";
+    public static final String SEND_PARSE_FAILED = "send.parse-failed";
+    public static final String SEND_UNKNOWN_PLAYER = "send.unknown-player";
+    public static final String SEND_STORED = "send.stored";
+    public static final String SEND_PUSH_FAILED = "send.push-failed";
+    public static final String SEND_SENT = "send.sent";
+    public static final String SEND_NOTHING_ENABLED = "send.nothing-enabled";
+
     // join
     public static final String JOIN_UNREAD_ONE = "join.unread-one";
     public static final String JOIN_UNREAD_MANY = "join.unread-many";
