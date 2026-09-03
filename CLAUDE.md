@@ -851,8 +851,9 @@ restart-warning:
 
 A declared type is a **real registered type**: it enumerates in `dataTypes()`, so it appears in the
 preference dialogs and can be silenced or routed to Discord independently; it renders in the inbox; and a
-`--persistent` one is pushed on the recipient's next join. It is sent with `/broadcast <content> --type
-<key>`, and nothing else in-tree sends one.
+`--persistent` one is pushed on the recipient's next join. Two commands send one: `/broadcast <content>
+--type <key>` to a permission-selected audience, and `/notifications send <player> <type> <content>` to
+one named player.
 
 - **One payload class for every declared type**, `customtype.CustomNotificationPayload(typeKey, message)`.
   Forced, not chosen: `NotificationDataTypeRegistry` keys renderers and serializers by **payload class**
@@ -1272,6 +1273,20 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   the operations most often wanted in a hurry.
 - `/notifications link [provider] [status]` / `unlink [provider]` — account linking, gated by its own
   `playernotifications.command.link` (`default: true`).
+- `/notifications send <player> <type> <content> [--transient]` — sends one **operator-declared** type
+  (`notification-types.yml`) to one named player. **Persistent by default** — a real notification row,
+  readable in the inbox and pushed on their next join — with `--transient` for a fire-and-forget nudge.
+  That inverts `/broadcast`'s default deliberately: a broadcast's audience does not survive being
+  written down, a named player does. Its own `playernotifications.command.send` (`default: op`, since it
+  writes into someone else's inbox) *on top of* the root's node, and open to the console. It is a second
+  **client** onto what `/broadcast --type` already drives — `paper.command.SendCommand` resolves the type
+  on the command thread, then one async task resolves the recipient (`MailCommand`'s rule,
+  `hasPlayedBefore()` included) and calls `PersistentBroadcaster`/`Broadcaster`'s existing typed
+  overloads with a single-element recipient list. **No `--bypass`, `--limit` or `--offline`**: one
+  recipient makes the second meaningless, the third is a selection concern, and the first is deferred.
+  `paper.send.SendArguments` holds the flag parsing and is `BroadcastArguments`' rule with one flag, so
+  the literal token `--transient` cannot appear in the content. Design doc:
+  `…/specs/2026-09-03-notifications-send-command-design.md`.
 - `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
   immediately, off the main thread. Admin-only (`playernotifications.command.test`) and player-only. The
   **only** caller of `NotificationDelivery.deliver(UUID)` in the tree. Its reply names the media
@@ -1641,8 +1656,8 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 - `--tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing.** Check the result count, not
   the exit status.
 
-Current baseline, every figure measured in one `./gradlew build` after the mail arrival notice began
-naming its sender: **41 in `:api:test`, 299 in `:platform:paper-plugin:test`, 136 in `:core:test`,
+Current baseline, every figure measured in one `./gradlew build` after `/notifications send` landed:
+**41 in `:api:test`, 308 in `:platform:paper-plugin:test`, 136 in `:core:test`,
 217 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
 passing, with Docker running.
 
@@ -1735,6 +1750,10 @@ Known gaps / notes:
   `LuckPermsPermissionLookup`'s three-stage group resolution is the one piece of real logic in this
   feature with no automated coverage at all, and the two cases most worth checking by hand are a
   permission held only through a group (stage 1) and a server with no LuckPerms at all (the guard).
+- **`/notifications send` has never run on a live server.** `SendArgumentsTest` (9) covers the parsing;
+  everything else in `SendCommand` — Brigadier registration and its gate, tab completion,
+  `hasPlayedBefore()`, the scheduler — needs one. **Task 4's 14-item checklist in
+  `…/plans/2026-09-03-notifications-send-command.md` has not been run.**
 - **The global mute's player-facing surface is unverified.** **The 12-item checklist in
   `…/plans/2026-08-20-global-mute.md` has not been run.** Covered: `PlayerMuteTest` and `MutedDeliveryTest`
   (against real MariaDB, including a case proving a *bespoke processor* is gated too), plus
