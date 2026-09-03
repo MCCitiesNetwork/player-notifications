@@ -40,6 +40,10 @@ import java.util.function.Supplier;
  * — the same actions the nested forms invoke, not second implementations — because muting and unmuting
  * everything are the preference operations most often wanted in a hurry.
  *
+ * <p>{@code send} is built by the caller and attached here as a node, so this class does not learn the
+ * broadcast types it is wired to — see {@link SendCommand}. It carries its own op-only permission,
+ * because unlike everything else on this tree it acts on another player's inbox.
+ *
  * <p>{@code link}/{@code unlink} address account-link providers registered by feature modules.
  * {@code reload} is admin-only (a separate permission) and works from any sender, console included, since
  * it operates on plugin configuration rather than a specific player.
@@ -87,7 +91,8 @@ public final class NotificationsCommand {
                                                                 @NotNull Consumer<CommandSender> reloadAction,
                                                                 @NotNull TestNotificationSender testSender,
                                                                 @NotNull AccountLinkDispatcher linkDispatcher,
-                                                                @NotNull Executor asyncExecutor) {
+                                                                @NotNull Executor asyncExecutor,
+                                                                @NotNull LiteralCommandNode<CommandSourceStack> sendNode) {
         return Commands.literal("notifications")
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .executes(context -> run(messages, context, inboxRouter::openEntryScreen))
@@ -114,6 +119,7 @@ public final class NotificationsCommand {
                         .then(Commands.literal("unmute").executes(context -> run(messages, context, router::unmuteImmediately))))
                 .then(Commands.literal("mute").executes(context -> run(messages, context, router::muteImmediately)))
                 .then(Commands.literal("unmute").executes(context -> run(messages, context, router::unmuteImmediately)))
+                .then(sendNode)
                 .then(linkNode(messages, linkDispatcher, asyncExecutor))
                 .then(unlinkNode(messages, linkDispatcher, asyncExecutor))
                 .then(Commands.literal("test")

@@ -22,6 +22,7 @@ import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatch
 import io.github.md5sha256.playernotifications.paper.command.BroadcastCommand;
 import io.github.md5sha256.playernotifications.paper.command.MailCommand;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
+import io.github.md5sha256.playernotifications.paper.command.SendCommand;
 import io.github.md5sha256.playernotifications.paper.config.ConfigKeyGaps;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
@@ -450,7 +451,9 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             event.registrar().register(
                     NotificationsCommand.create(this.messages, this.preferenceDialogRouter, this.inboxRouter,
                             this::reload, testSender,
-                            linkDispatcher, asyncExecutor),
+                            linkDispatcher, asyncExecutor,
+                            SendCommand.create(this.messages, this, broadcaster, persistentBroadcaster,
+                                    this.customTypes)),
                     NotificationsCommand.DESCRIPTION,
                     List.of("notifs")
             );

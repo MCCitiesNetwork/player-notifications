@@ -54,6 +54,11 @@ permissions:
   playernotifications.command.broadcast:
     description: Broadcast a message to online players with /broadcast.
     default: op
+  # /notifications send writes into another player's inbox, so it sits with /broadcast rather than
+  # with the default: true player-facing subcommands.
+  playernotifications.command.send:
+    description: Send a notification to one player with /notifications send.
+    default: op
   playernotifications.command.mail:
     description: Read your mail with /mail.
     default: true
