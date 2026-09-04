@@ -257,6 +257,47 @@ NULL`, so a seen notification is never pushed again. Consequences:
 in-game-only affordances such as click events. Actions/buttons are intentionally **out of scope** (a
 dialog button and a Discord button share no execution model), so dialogs are read-and-dismiss.
 
+### Per-type delivery defaults
+
+Design doc: `…/specs/2026-09-04-per-type-delivery-defaults-design.md`. Plan alongside it.
+
+`delivery-defaults.yml` is a flat `dataType` → media-list map letting an operator route one type without
+touching what any player chose — "restart warnings go to Discord, everything else stays in chat". Read
+with `childrenMap()` like `type-names.yml`, for the same reason, and **excluded from
+`warnAboutMissingConfigKeys`** for the same reason too. `paper.config.DeliveryDefaults` holds every
+parsing rule and names no Bukkit type; `core` owns the live map, pushed in by
+`DatabaseNotificationPreferences#reloadTypeDefaults` (a volatile swap, the `reloadDefaultMedia` idiom) on
+enable and on `/notifications reload`.
+
+- **It is an override layer, not a replacement.** `settings.yml`'s `default-media` stays as the last
+  step. Removing it was considered and rejected: the `dataType` set is open-ended — the host ships three,
+  any module registers more, `notification-types.yml` declares more — so this file can never be complete,
+  and a type with no entry would resolve to **no media at all**: stored, unread, silent, with nothing in
+  the log. Installing a module would deliver nothing until someone edited a file.
+- **It sits below every player row**, including the `*` blanket rows, so "every player row beats every
+  operator setting" holds with no exception. In practice the position is unobservable — nothing writes a
+  `*` row — but the rule stays one sentence.
+- **The single-argument `preferredMedia(UUID)` never consults it.** It resolves under
+  `ALL_DATA_TYPES_KEY`, and honouring an entry keyed `*` would make that string a *third* distinct thing
+  here. `DeliveryDefaults` refuses the key at load **and** `typeDefault` guards it, so the refusal does
+  not have to be trusted.
+- **`effectiveMediaByDataType` walks the identical chain.** It is a separate code path and it is what the
+  preference dialogs display; if only `preferredMedia` had learned the step, every screen would show a
+  default that is not the one in force.
+- **`[none]` makes a type opt-in** — stored and readable in the inbox, never pushed until a player picks
+  media for it. It is just `SILENCED_MEDIUM`, so the delivery path needed no change. An **empty list** is
+  rejected instead of being read the same way: it is far more likely a half-finished edit, and `none`
+  already says it unambiguously. A non-list value and the key `*` are likewise rejected, each warned
+  naming the key at **load** — the `TypeNames` operator-layer rule.
+- **Nothing is validated against a registry**, since a module's sink or type may register later. A medium
+  with no sink is skipped at delivery with a `fine` log, exactly as a mistyped `default-media` entry is.
+- **There is no generated `defaults/delivery-defaults.yml`.** `defaults/type-names.yml` already lists
+  every registered `dataType`, which is the list needed to write this file.
+
+**Tested:** `DeliveryDefaultsTest` (11) and eight `PlayerNotificationPreferenceTest` cases against real
+MariaDB. **Unverified on a live server: the 13-item checklist in
+`…/plans/2026-09-04-per-type-delivery-defaults.md` has not been run.**
+
 ### Join delivery
 
 Design doc: `docs/superpowers/specs/2026-07-30-join-delivery-trigger-design.md`.
@@ -1245,8 +1286,10 @@ a real, selectable category — a new module's notifications are configurable im
 
 `DatabaseNotificationPreferences` stores `(playerUuid, dataType, medium)` and resolves
 `preferredMedia(player, dataType)` in this precedence: exact rows, else rows for the reserved
-`ALL_DATA_TYPES_KEY` (`"*"`, a blanket fallback nothing in the dialogs writes), else `default-media`. The
-single-argument form is the same lookup against `"*"`.
+`ALL_DATA_TYPES_KEY` (`"*"`, a blanket fallback nothing in the dialogs writes), else the operator's
+per-type default from `delivery-defaults.yml`, else `default-media`. The single-argument form is the same
+lookup against `"*"` — and deliberately never consults the per-type map (see "Per-type delivery
+defaults").
 
 ## Player commands
 
@@ -1393,7 +1436,7 @@ from unconfigured to an explicit row matching what was displayed.
 
 | State | Storage | `preferredMedia(player, dataType)` |
 |---|---|---|
-| Unconfigured | no exact rows | `*` rows, else `default-media` |
+| Unconfigured | no exact rows | `*` rows, else `delivery-defaults.yml`, else `default-media` |
 | Explicit selection | one row per medium | that set |
 | Explicit silence | a single `medium = 'none'` row | `{none}` |
 
@@ -1492,6 +1535,9 @@ The files:
   `{title, display-name}` map, read with `childrenMap()` for the reason `type-names.yml` is. Like it,
   **excluded from `warnAboutMissingConfigKeys`**: a partial declaration map has no missing keys. Ships
   with every example commented out.
+- `delivery-defaults.yml` → `paper.config.DeliveryDefaults` — a flat `dataType` → media-list map,
+  overriding `default-media` per type and read with `childrenMap()` for the reason `type-names.yml` is.
+  Like it, **excluded from `warnAboutMissingConfigKeys`**. Ships with every example commented out.
 - `type-names.yml` → `paper.localisation.TypeNames` — a flat `dataType` → MiniMessage name map. Not a
   `@ConfigSerializable` record: the keys are unknown at compile time, so it is read with `childrenMap()`
   like `MessageContainer`. Ships with every example commented out.
@@ -1656,8 +1702,8 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
 - `--tests "<pattern>"` can report **BUILD SUCCESSFUL while matching nothing.** Check the result count, not
   the exit status.
 
-Current baseline, every figure measured in one `./gradlew build` after `/notifications send` landed:
-**41 in `:api:test`, 308 in `:platform:paper-plugin:test`, 136 in `:core:test`,
+Current baseline, every figure measured in one `./gradlew build` after per-type delivery defaults
+landed, **with Docker running**: **41 in `:api:test`, 319 in `:platform:paper-plugin:test`, 144 in `:core:test`,
 217 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
 passing, with Docker running.
 
@@ -1750,6 +1796,11 @@ Known gaps / notes:
   `LuckPermsPermissionLookup`'s three-stage group resolution is the one piece of real logic in this
   feature with no automated coverage at all, and the two cases most worth checking by hand are a
   permission held only through a group (stage 1) and a server with no LuckPerms at all (the guard).
+- **Per-type delivery defaults have never run on a live server.** `DeliveryDefaultsTest` (11) covers the
+  parsing and eight `PlayerNotificationPreferenceTest` cases cover the resolution chain against real
+  MariaDB; the file being copied on first enable, the preference dialogs showing the overridden default,
+  and reload behaviour end to end all need one. **The 13-item checklist in
+  `…/plans/2026-09-04-per-type-delivery-defaults.md` has not been run.**
 - **`/notifications send` has never run on a live server.** `SendArgumentsTest` (9) covers the parsing;
   everything else in `SendCommand` — Brigadier registration and its gate, tab completion,
   `hasPlayedBefore()`, the scheduler — needs one. **Task 4's 14-item checklist in
