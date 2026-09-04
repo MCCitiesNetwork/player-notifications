@@ -187,4 +187,103 @@ class PlayerNotificationPreferenceTest extends AbstractDatabaseTest {
             Assertions.assertEquals(Set.of("chat"), preferences.preferredMedia(PLAYER_A, "economy"));
         }
     }
+
+    @Nested
+    @DisplayName("DatabaseNotificationPreferences per-type delivery defaults")
+    class TypeDefaults {
+
+        private DatabaseNotificationPreferences withOverride(String dataType, String... media) {
+            DatabaseNotificationPreferences preferences =
+                    new DatabaseNotificationPreferences(database, Set.of("chat"));
+            preferences.reloadTypeDefaults(Map.of(dataType, List.of(media)));
+            return preferences;
+        }
+
+        @Test
+        @DisplayName("an override applies to a player with no rows of their own")
+        void overrideAppliesToAnUnconfiguredPlayer() {
+            DatabaseNotificationPreferences preferences =
+                    withOverride("restart-warning", "discord-dm");
+
+            Assertions.assertEquals(Set.of("discord-dm"),
+                    preferences.preferredMedia(PLAYER_A, "restart-warning"));
+        }
+
+        @Test
+        @DisplayName("a data type the map does not name still falls back to the configured default")
+        void unnamedDataTypeFallsBackToTheGlobalDefault() {
+            DatabaseNotificationPreferences preferences =
+                    withOverride("restart-warning", "discord-dm");
+
+            Assertions.assertEquals(Set.of("chat"), preferences.preferredMedia(PLAYER_A, "economy"));
+        }
+
+        @Test
+        @DisplayName("an exact player row wins over the override")
+        void exactRowWinsOverTheOverride() {
+            DatabaseNotificationPreferences preferences =
+                    withOverride("restart-warning", "discord-dm");
+            preferences.applyChanges(PLAYER_A, Map.of("restart-warning", Set.of("chat")), Set.of());
+
+            Assertions.assertEquals(Set.of("chat"),
+                    preferences.preferredMedia(PLAYER_A, "restart-warning"));
+        }
+
+        @Test
+        @DisplayName("the player's '*' rows win over the override")
+        void blanketRowWinsOverTheOverride() {
+            DatabaseNotificationPreferences preferences =
+                    withOverride("restart-warning", "discord-dm");
+            preferences.applyChanges(PLAYER_A, Map.of(
+                    DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, Set.of("dialog")), Set.of());
+
+            Assertions.assertEquals(Set.of("dialog"),
+                    preferences.preferredMedia(PLAYER_A, "restart-warning"));
+        }
+
+        @Test
+        @DisplayName("an override of 'none' makes the type opt-in")
+        void noneMakesATypeOptIn() {
+            DatabaseNotificationPreferences preferences = withOverride("maintenance", "none");
+
+            Assertions.assertEquals(Set.of("none"),
+                    preferences.preferredMedia(PLAYER_A, "maintenance"));
+        }
+
+        @Test
+        @DisplayName("reloading an empty map withdraws every override")
+        void reloadingAnEmptyMapWithdrawsOverrides() {
+            DatabaseNotificationPreferences preferences =
+                    withOverride("restart-warning", "discord-dm");
+
+            preferences.reloadTypeDefaults(Map.of());
+
+            Assertions.assertEquals(Set.of("chat"),
+                    preferences.preferredMedia(PLAYER_A, "restart-warning"));
+        }
+
+        @Test
+        @DisplayName("the single-argument form never consults an override, even one keyed '*'")
+        void theBlanketFormIgnoresOverrides() {
+            DatabaseNotificationPreferences preferences = withOverride(
+                    DatabaseNotificationPreferences.ALL_DATA_TYPES_KEY, "discord-dm");
+
+            Assertions.assertEquals(Set.of("chat"), preferences.preferredMedia(PLAYER_A));
+        }
+
+        @Test
+        @DisplayName("effectiveMediaByDataType resolves overrides exactly as preferredMedia does")
+        void effectiveMediaAgreesWithPreferredMedia() {
+            DatabaseNotificationPreferences preferences =
+                    withOverride("restart-warning", "discord-dm");
+
+            Map<String, Set<String>> effective = preferences.effectiveMediaByDataType(
+                    PLAYER_A, Set.of("restart-warning", "economy"));
+
+            Assertions.assertEquals(Set.of("discord-dm"), effective.get("restart-warning"));
+            Assertions.assertEquals(Set.of("chat"), effective.get("economy"));
+            Assertions.assertEquals(preferences.preferredMedia(PLAYER_A, "restart-warning"),
+                    effective.get("restart-warning"));
+        }
+    }
 }
