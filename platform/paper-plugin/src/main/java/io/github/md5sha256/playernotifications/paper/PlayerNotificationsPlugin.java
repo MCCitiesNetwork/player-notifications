@@ -24,6 +24,7 @@ import io.github.md5sha256.playernotifications.paper.command.MailCommand;
 import io.github.md5sha256.playernotifications.paper.command.NotificationsCommand;
 import io.github.md5sha256.playernotifications.paper.command.SendCommand;
 import io.github.md5sha256.playernotifications.paper.config.ConfigKeyGaps;
+import io.github.md5sha256.playernotifications.paper.config.DeliveryDefaults;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationPayload;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationRenderer;
 import io.github.md5sha256.playernotifications.paper.diagnostic.TestNotificationSender;
@@ -275,6 +276,9 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         this.sinkRegistry.registerSink(new DialogSink(this));
         this.preferences =
                 new DatabaseNotificationPreferences(mariaDatabase, pluginSettings.defaultMedia());
+        // After the preferences object exists, not with the other config loads above: the map is
+        // owned by core and pushed in, so there is nowhere to put it before this line.
+        loadDeliveryDefaults();
         this.notificationDelivery = new NotificationDelivery(
                 mariaDatabase,
                 this.notificationService.dataTypeRegistry(),
@@ -489,6 +493,7 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
             reloadMessages();
             this.typeNames.load(copyDefaultsYaml("type-names"));
             this.customTypes.load(copyDefaultsYaml("notification-types"));
+            loadDeliveryDefaults();
         } catch (IOException ex) {
             getLogger().log(Level.WARNING, "Failed to reload configuration.", ex);
             // Safe to read from the container: a failure here means load() was never reached, so
@@ -795,9 +800,30 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
      * <p>{@code messages.yml} is excluded: it has no gaps by construction, since
      * {@link #reloadMessages()} resolves an absent key from the bundled defaults.
      *
+     * <p>{@code type-names.yml}, {@code notification-types.yml} and {@code delivery-defaults.yml} are
+     * excluded too: each is a partial override map keyed by the operator's own {@code dataType}s, so it
+     * has no missing keys to report and every bundled example ships commented out.
+     *
      * <p>Comparison only — neither file is modified, which is the entire point of the change this
      * belongs to.
      */
+    /**
+     * Reads {@code delivery-defaults.yml} into the preferences object, replacing whatever was there.
+     *
+     * <p>Never fatal: a file that cannot be read leaves the previous overrides in place and the plugin
+     * resolving through {@code settings.yml}'s {@code default-media}, which is what an absent file
+     * means anyway. Every per-entry rejection is warned about by {@link DeliveryDefaults#load} itself.
+     */
+    private void loadDeliveryDefaults() {
+        try {
+            this.preferences.reloadTypeDefaults(
+                    DeliveryDefaults.load(copyDefaultsYaml("delivery-defaults"), getLogger()));
+        } catch (IOException ex) {
+            getLogger().log(Level.WARNING, "Failed to load delivery-defaults.yml; per-type delivery "
+                    + "defaults are unchanged.", ex);
+        }
+    }
+
     private void warnAboutMissingConfigKeys() {
         for (String name : List.of("database", "settings", "categories")) {
             try {

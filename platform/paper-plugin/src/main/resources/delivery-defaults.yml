@@ -1,0 +1,25 @@
+# Where each notification type goes for a player who has not chosen for themselves.
+#
+# This file OVERRIDES settings.yml's default-media, per notification type. It never overrides a
+# player's own choice: a type they have configured in /notifications preferences keeps their setting,
+# and there is no way here to re-route a type for someone who has already picked.
+#
+# A type not named in this file falls back to settings.yml's default-media, so this file is always
+# optional and a stock install behaves exactly as it did without it.
+#
+# The key is a notification type (dataType) - the same keys defaults/type-names.yml lists, including
+# the ones feature modules register.
+# The value is a list of media: chat, dialog, discord-dm (with the Discord adapter installed), or the
+# single entry 'none' to make a type opt-in: stored and readable in /notifications, never pushed
+# until a player chooses media for it.
+#
+# Nothing here is checked against what is actually registered - a module's medium or type may not
+# exist yet when this file is read - so a typo is silently ineffective rather than an error.
+
+#restart-warning:
+#  - chat
+#  - discord-dm
+#mail:
+#  - discord-dm
+#maintenance:
+#  - none
