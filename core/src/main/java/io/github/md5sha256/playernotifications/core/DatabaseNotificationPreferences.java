@@ -21,9 +21,21 @@ import java.util.UUID;
 
 /**
  * {@link NotificationPreferences} backed by the {@code PlayerNotificationPreference} table, resolved
- * per {@code dataType}. A player with no rows for a {@code dataType} falls back to the {@link
- * #ALL_DATA_TYPES_KEY} rows (a blanket choice), then to a configurable default medium set, so a player
- * is never silently cut off from all notifications.
+ * per {@code dataType} through four steps, the first that answers winning:
+ *
+ * <ol>
+ *   <li>rows for this player and this exact {@code dataType} — what they chose;</li>
+ *   <li>rows for this player under {@link #ALL_DATA_TYPES_KEY} — a blanket choice;</li>
+ *   <li>the operator's per-type default for this {@code dataType}, set by
+ *       {@link #reloadTypeDefaults} from {@code delivery-defaults.yml};</li>
+ *   <li>the configured default medium set, so a player is never silently cut off from all
+ *       notifications.</li>
+ * </ol>
+ *
+ * <p>The operator's per-type default sits <b>below every player row</b> deliberately, so that "every
+ * player row beats every operator setting" holds with no exception. Step 4 stays regardless of step 3,
+ * because the set of {@code dataType}s is open-ended — any feature module can register one — so no
+ * per-type file can be complete, and an unnamed type must not resolve to nothing.
  */
 public class DatabaseNotificationPreferences implements NotificationPreferences {
 
@@ -35,6 +47,12 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
 
     private final Database database;
     private volatile Set<String> defaultMedia;
+
+    /**
+     * The operator's per-{@code dataType} overrides, empty until {@link #reloadTypeDefaults} is called —
+     * so a caller that never sets it resolves exactly as this class did before they existed.
+     */
+    private volatile Map<String, Set<String>> typeDefaults = Map.of();
 
     public DatabaseNotificationPreferences(@NotNull Database database, @NotNull Collection<String> defaultMedia) {
         this.database = database;
@@ -60,7 +78,8 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
             if (!fallback.isEmpty()) {
                 return Set.copyOf(fallback);
             }
-            return this.defaultMedia;
+            Set<String> typeDefault = typeDefault(dataType);
+            return typeDefault != null ? typeDefault : this.defaultMedia;
         }
     }
 
@@ -73,11 +92,23 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
                                                                        @NotNull Set<String> dataTypes) {
         try (SqlSessionWrapper wrapper = database.openSession()) {
             Map<String, Set<String>> byDataType = groupByDataType(wrapper, player);
-            Set<String> fallback = byDataType.getOrDefault(ALL_DATA_TYPES_KEY, this.defaultMedia);
+            Set<String> blanket = byDataType.get(ALL_DATA_TYPES_KEY);
             Map<String, Set<String>> result = new LinkedHashMap<>();
             for (String dataType : dataTypes) {
                 Set<String> exact = byDataType.get(dataType);
-                result.put(dataType, exact != null ? Set.copyOf(exact) : Set.copyOf(fallback));
+                if (exact != null) {
+                    result.put(dataType, Set.copyOf(exact));
+                    continue;
+                }
+                if (blanket != null) {
+                    result.put(dataType, Set.copyOf(blanket));
+                    continue;
+                }
+                // The same four-step chain preferredMedia walks: if only that method learned the
+                // per-type default, the preference dialogs would display a default that is not the one
+                // actually in force.
+                Set<String> typeDefault = typeDefault(dataType);
+                result.put(dataType, typeDefault != null ? typeDefault : this.defaultMedia);
             }
             return Map.copyOf(result);
         }
@@ -197,6 +228,40 @@ public class DatabaseNotificationPreferences implements NotificationPreferences 
             wrapper.playerMuteMapper().deleteByPlayer(player);
             wrapper.session().commit();
         }
+    }
+
+    /**
+     * The operator's default for {@code dataType}, or {@code null} when none is configured.
+     *
+     * <p>{@link #ALL_DATA_TYPES_KEY} never resolves to one. The single-argument
+     * {@link #preferredMedia(UUID)} asks under that key, and it means "this player's media, whatever the
+     * type" — a per-type override has nothing to say about it, and honouring a map entry spelled
+     * {@code *} would make that string a third distinct thing in this codebase. {@code DeliveryDefaults}
+     * refuses the key at load for the same reason; this guard is what makes that refusal unnecessary to
+     * trust.
+     */
+    @Nullable
+    private Set<String> typeDefault(@NotNull String dataType) {
+        if (ALL_DATA_TYPES_KEY.equals(dataType)) {
+            return null;
+        }
+        return this.typeDefaults.get(dataType);
+    }
+
+    /**
+     * Replaces the per-{@code dataType} operator defaults, e.g. after {@code delivery-defaults.yml} is
+     * reloaded. An empty map withdraws every override, returning each type to the configured default.
+     *
+     * <p>A volatile swap rather than a mutation, the idiom {@link #reloadDefaultMedia} uses: takes
+     * effect for any call made after this returns, and a resolution racing a reload sees the old map or
+     * the new one, never a half-built one.
+     */
+    public void reloadTypeDefaults(@NotNull Map<String, ? extends Collection<String>> typeDefaults) {
+        Map<String, Set<String>> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, ? extends Collection<String>> entry : typeDefaults.entrySet()) {
+            copy.put(entry.getKey(), Set.copyOf(entry.getValue()));
+        }
+        this.typeDefaults = Map.copyOf(copy);
     }
 
     /**
