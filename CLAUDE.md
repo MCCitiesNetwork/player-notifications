@@ -1316,7 +1316,7 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   the operations most often wanted in a hurry.
 - `/notifications link [provider] [status]` / `unlink [provider]` — account linking, gated by its own
   `playernotifications.command.link` (`default: true`).
-- `/notifications send <player> <type> <content> [--transient]` — sends one **operator-declared** type
+- `/notifications send <player> <type> <content> [--transient] [--bypass]` — sends one **operator-declared** type
   (`notification-types.yml`) to one named player. **Persistent by default** — a real notification row,
   readable in the inbox and pushed on their next join — with `--transient` for a fire-and-forget nudge.
   That inverts `/broadcast`'s default deliberately: a broadcast's audience does not survive being
@@ -1325,10 +1325,12 @@ Registered in `PlayerNotificationsPlugin.registerCommands()` through Paper's Bri
   **client** onto what `/broadcast --type` already drives — `paper.command.SendCommand` resolves the type
   on the command thread, then one async task resolves the recipient (`MailCommand`'s rule,
   `hasPlayedBefore()` included) and calls `PersistentBroadcaster`/`Broadcaster`'s existing typed
-  overloads with a single-element recipient list. **No `--bypass`, `--limit` or `--offline`**: one
-  recipient makes the second meaningless, the third is a selection concern, and the first is deferred.
-  `paper.send.SendArguments` holds the flag parsing and is `BroadcastArguments`' rule with one flag, so
-  the literal token `--transient` cannot appear in the content. Design doc:
+  overloads with a single-element recipient list. `--bypass` is `/broadcast`'s exactly — it overrides
+  the recipient's mute **and** silence together, and on the persistent path reaches them only if the
+  push was suppressed, leaving the stored copy unread. **No `--limit` or `--offline`**: one recipient
+  makes the first meaningless and the second is a selection concern.
+  `paper.send.SendArguments` holds the flag parsing and is `BroadcastArguments`' rule with two of its
+  flags, so neither literal flag token can appear in the content. Design doc:
   `…/specs/2026-09-03-notifications-send-command-design.md`.
 - `/notifications test [message]` — enqueues a `test` notification targeting the sender and delivers it
   immediately, off the main thread. Admin-only (`playernotifications.command.test`) and player-only. The
@@ -1703,7 +1705,7 @@ uses camelCase). It predates the `dataType` column (originally `category`) and h
   the exit status.
 
 Current baseline, every figure measured in one `./gradlew build` after per-type delivery defaults
-landed, **with Docker running**: **41 in `:api:test`, 319 in `:platform:paper-plugin:test`, 144 in `:core:test`,
+landed, **with Docker running**: **41 in `:api:test`, 325 in `:platform:paper-plugin:test`, 144 in `:core:test`,
 217 in `:platform:discord-adapter:test`, 21 in `:platform:essentials-mail-converter:test`** — all
 passing, with Docker running.
 
@@ -1801,7 +1803,7 @@ Known gaps / notes:
   MariaDB; the file being copied on first enable, the preference dialogs showing the overridden default,
   and reload behaviour end to end all need one. **The 13-item checklist in
   `…/plans/2026-09-04-per-type-delivery-defaults.md` has not been run.**
-- **`/notifications send` has never run on a live server.** `SendArgumentsTest` (9) covers the parsing;
+- **`/notifications send` has never run on a live server.** `SendArgumentsTest` (15) covers the parsing;
   everything else in `SendCommand` — Brigadier registration and its gate, tab completion,
   `hasPlayedBefore()`, the scheduler — needs one. **Task 4's 14-item checklist in
   `…/plans/2026-09-03-notifications-send-command.md` has not been run.**

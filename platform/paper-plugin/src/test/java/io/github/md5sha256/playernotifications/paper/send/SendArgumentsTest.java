@@ -34,6 +34,43 @@ class SendArgumentsTest {
     }
 
     @Test
+    void bypassFlagIsRecognised() {
+        SendArguments arguments = parsed("Server restarting --bypass");
+        assertEquals("Server restarting", arguments.content());
+        assertTrue(arguments.bypass());
+        assertFalse(arguments.transientSend());
+    }
+
+    @Test
+    void bypassDefaultsToFalse() {
+        assertFalse(parsed("Server restarting").bypass());
+    }
+
+    @Test
+    void bothFlagsCombineInEitherOrder() {
+        SendArguments arguments = parsed("Ping --bypass --transient");
+        assertEquals("Ping", arguments.content());
+        assertTrue(arguments.bypass());
+        assertTrue(arguments.transientSend());
+    }
+
+    @Test
+    void contentEndsAtWhicheverFlagComesFirst() {
+        assertEquals("Ping", parsed("Ping --bypass --transient").content());
+        assertEquals("Ping", parsed("Ping --transient --bypass").content());
+    }
+
+    @Test
+    void repeatedBypassIsIdempotent() {
+        assertTrue(parsed("Ping --bypass --bypass").bypass());
+    }
+
+    @Test
+    void bypassWithNoContentIsRejected() {
+        assertInstanceOf(SendArguments.Result.BlankContent.class, SendArguments.parse("--bypass"));
+    }
+
+    @Test
     void interiorSpacingSurvives() {
         assertEquals("Hello   there  now", parsed("Hello   there  now --transient").content());
     }

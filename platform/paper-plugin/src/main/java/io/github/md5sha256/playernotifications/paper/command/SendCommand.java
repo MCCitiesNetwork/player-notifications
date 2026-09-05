@@ -33,7 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * {@code /notifications send <player> <type> <content> [--transient]}: one operator-declared
+ * {@code /notifications send <player> <type> <content> [--transient] [--bypass]}: one operator-declared
  * notification to one named player.
  *
  * <p>It is a second <em>client</em> onto the machinery {@code /broadcast --type} already drives —
@@ -179,7 +179,7 @@ public final class SendCommand {
         try {
             if (arguments.transientSend()) {
                 int attempted = broadcaster.broadcast(title, content, declaredType.key(),
-                        List.of(recipient), false);
+                        List.of(recipient), arguments.bypass());
                 sender.sendMessage(messages.messageFor(
                         attempted == 0 ? MessageKeys.SEND_NOTHING_ENABLED : MessageKeys.SEND_SENT,
                         MessageContainer.value("player", name)));
@@ -188,7 +188,7 @@ public final class SendCommand {
             PersistentBroadcaster.Result result = persistentBroadcaster.broadcast(title, content,
                     declaredType.key(),
                     new CustomNotificationPayload(declaredType.key(), arguments.content()),
-                    List.of(recipient), false);
+                    List.of(recipient), arguments.bypass());
             sender.sendMessage(messages.messageFor(MessageKeys.SEND_STORED,
                     MessageContainer.value("player", name)));
             if (result.failed() > 0) {
