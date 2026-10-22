@@ -13,7 +13,7 @@ base {
 
 repositories {
     // plugin-infrastructure is published here (see its README). Use /releases for release versions.
-    maven("https://maven.democracycraft.net/snapshots")
+    maven("https://maven.minecraftcitiesnetwork.com/snapshots")
 }
 
 // Feature-module jars to install into the runServer data folder's modules/ directory. Not transitive:
