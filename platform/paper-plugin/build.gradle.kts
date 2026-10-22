@@ -13,6 +13,7 @@ base {
 
 repositories {
     // plugin-infrastructure is published here (see its README). Use /releases for release versions.
+    maven("https://maven.minecraftcitiesnetwork.com/snapshots")
     maven("https://maven.democracycraft.net/snapshots")
 }
 

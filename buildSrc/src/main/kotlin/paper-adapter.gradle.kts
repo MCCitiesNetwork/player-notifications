@@ -5,6 +5,7 @@ plugins {
 
 repositories {
     // Resolves plugin-infrastructure, pulled in transitively via the compileOnly host dependency below.
+    maven("https://maven.minecraftcitiesnetwork.com/snapshots")
     maven("https://maven.democracycraft.net/snapshots")
 }
 
