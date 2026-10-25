@@ -153,18 +153,24 @@ Dependency direction is **platform → core → api**; `api` depends on nothing 
 ### Build conventions
 
 `buildSrc/src/main/kotlin/` holds precompiled convention plugins, and `HostShading.kt` — the host's
-relocation prefix and package list, shared so the host's `shadowJar` and every shading adapter cannot
-drift apart (see "Discord adapter" for why an adapter relocates packages it does not bundle).
+relocation prefix and package list (plugin-infrastructure included). `buildSrc` puts Shadow 9.3.1 on
+every build script's classpath, so projects apply `id("com.gradleup.shadow")` **without a version**.
+
+- `player-notifications-shared-relocation` — applied by the host **and every feature module**; relocates
+  every `HostShading.PACKAGES` entry to `HostShading.BASE`. The host's `shadowJar` has no `relocate`
+  lines. A module rewrites its references to the host's names without bundling anything; a package the
+  module bundles under its own prefix instead goes in `sharedRelocation { bundledByModule.add(...) }`
+  (`discord-adapter` lists Jackson, which JDA needs its own copy of).
 
 - `player-notifications-conventions` — Java 25 toolchain, UTF-8, JUnit 5, Paper/mavenLocal/mavenCentral.
   Applied by every module.
 - `paper-adapter` — for feature modules. Base conventions plus `compileOnly(project(":platform:paper-plugin"))`
   (compile against the host, never bundle it) **and `testImplementation` on the same project**
   (`compileOnly` reaches neither `compileTestJava` nor the test runtime), plus the
-  `maven.democracycraft.net/snapshots` repo. It declares a consumable **`moduleJar`** configuration whose
-  artifact is `jar`, swapped to `shadowJar` lazily under `plugins.withId("com.gradleup.shadow")` — so a
-  shading adapter publishes its `-all` jar and the host's `installFeatureModules` never learns which
-  adapters shade. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this one dependency
+  `maven.democracycraft.net/snapshots` repo. It applies shadow and the shared relocation, and declares a consumable
+  **`moduleJar`** configuration whose artifact is always `shadowJar` — **every module ships its `-all`
+  jar, even one bundling nothing**, because its entry class implements plugin-infrastructure's
+  `PluginModule`, which exists at runtime only under the host's relocated name. Because `paper-plugin` exposes `api`/`compileOnlyApi` dependencies, this one dependency
   transitively gives adapters `api`, `core`, `plugin-infrastructure` and `paper-api`.
 
 Precompiled conventions apply siblings with `id("player-notifications-conventions")`, not the backtick
@@ -210,7 +216,7 @@ invisible except for a single-word key like `author`. `ModuleLoader.loadModulesF
 no second copy of the credentials. Three rules if you follow it: load scripts through **the module's own**
 class loader (core's cannot see inside a module jar); registering a mapper mutates the host's shared
 `Configuration`, the narrowest scope MyBatis offers; and **relocate MyBatis to the host's shaded prefix**
-in the module's `shadowJar` (`HostShading.ADAPTER_PACKAGES`), or every call and annotation names a class
+(the `player-notifications-shared-relocation` convention, which `paper-adapter` applies), or every call and annotation names a class
 that does not exist at runtime.
 
 ## Rendering & delivery media
@@ -382,8 +388,9 @@ preference row.
   to the *host's* prefix, because it compiles against the unrelocated coordinates but resolves them at
   runtime from the host jar, where only the relocated names exist; without that, startup dies on
   `NoSuchMethodError: SqlSessionWrapper.session()` and `@Select` is not the annotation MyBatis looks for.
-  The set is not duplicated across build scripts — `HostShading` owns it, the host applies `PACKAGES` and
-  an adapter `ADAPTER_PACKAGES` (the same list minus Jackson, which the module bundles).
+  The set is not duplicated across build scripts — `HostShading` owns it and
+  `player-notifications-shared-relocation` applies it to host and modules alike, minus Jackson here
+  (`bundledByModule`), which the module bundles under its own prefix.
 - **`paper-plugin.yml` carries a soft `dependencies: server: DiscordSRV` with `join-classpath: true`** —
   Paper plugins are classloader-isolated by default and the module's loader is parent-first onto the
   host's, so without it `DiscordSrvAccountProvider` silently reports itself unavailable.

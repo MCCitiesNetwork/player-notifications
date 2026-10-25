@@ -9,8 +9,9 @@
  * method (`NoSuchMethodError: SqlSessionWrapper.session()`), and a MyBatis `@Select` from the
  * unrelocated package is not the annotation the host's MyBatis looks for.
  *
- * Keep [PACKAGES] as the single source of truth: the host applies it, and every shading adapter
- * applies [ADAPTER_PACKAGES]. Adding a shaded library to the host means adding one entry here.
+ * Keep [PACKAGES] as the single source of truth: the `player-notifications-shared-relocation`
+ * convention applies it to the host and to every feature module. Adding a shaded library to the host
+ * means adding one entry here.
  */
 object HostShading {
 
@@ -19,6 +20,7 @@ object HostShading {
 
     /** Every package the host relocates. */
     val PACKAGES = listOf(
+        "com.minecraftcitiesnetwork.pluginInfrastructure",
         "org.mariadb",
         "org.mybatis",
         "org.apache.ibatis",
@@ -26,12 +28,4 @@ object HostShading {
         "io.leangen.geantyref",
         "com.fasterxml.jackson",
     )
-
-    /**
-     * The subset a feature module must rewrite to the host's names.
-     *
-     * Jackson is excluded deliberately: an adapter that bundles and relocates its *own* Jackson
-     * (as `discord-adapter` does, for JDA) must keep pointing at that copy, not the host's.
-     */
-    val ADAPTER_PACKAGES = PACKAGES - "com.fasterxml.jackson"
 }

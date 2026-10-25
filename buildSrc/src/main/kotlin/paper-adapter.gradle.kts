@@ -1,6 +1,8 @@
 plugins {
     `java-library`
     id("player-notifications-conventions")
+    id("com.gradleup.shadow")
+    id("player-notifications-shared-relocation")
 }
 
 repositories {
@@ -31,16 +33,13 @@ val moduleJar: Configuration by configurations.creating {
     isCanBeResolved = false
 }
 
+// Every module ships its shadow jar, even one that bundles nothing: its own classes extend
+// plugin-infrastructure's SimplePluginModule/PluginModule, which exist at runtime only under the host's
+// relocated names, so a plain jar names classes that do not exist.
 artifacts {
-    add(moduleJar.name, tasks.named<Jar>("jar"))
+    add(moduleJar.name, tasks.named<Jar>("shadowJar"))
 }
 
-// An adapter that shades (discord-adapter bundles its own relocated JDA) must ship the `-all` jar —
-// its plain jar contains no JDA at all. Applied lazily because the adapter's build script applies
-// shadow *after* this convention.
-plugins.withId("com.gradleup.shadow") {
-    moduleJar.outgoing.artifacts.clear()
-    artifacts {
-        add(moduleJar.name, tasks.named<Jar>("shadowJar"))
-    }
+tasks.named("build") {
+    dependsOn("shadowJar")
 }

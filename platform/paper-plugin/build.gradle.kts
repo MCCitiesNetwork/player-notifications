@@ -2,7 +2,8 @@ plugins {
     `java-library`
     `player-notifications-conventions`
     id("xyz.jpenilla.run-paper") version "3.0.2"
-    id("com.gradleup.shadow") version "9.3.1"
+    id("com.gradleup.shadow")
+    id("player-notifications-shared-relocation")
 }
 
 // The distributable is player-notifications-paper-<version>.jar, not paper-plugin-<version>-all.jar:
@@ -65,8 +66,8 @@ tasks {
 
     shadowJar {
         archiveClassifier = ""
-        // Defined in buildSrc because feature modules must relocate identically — see HostShading.
-        HostShading.PACKAGES.forEach { relocate(it, "${HostShading.BASE}.$it") }
+        // Relocations come from player-notifications-shared-relocation, which every feature module
+        // applies too — see HostShading.
         mergeServiceFiles()
     }
 

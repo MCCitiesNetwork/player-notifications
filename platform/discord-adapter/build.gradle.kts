@@ -1,6 +1,11 @@
 plugins {
     `paper-adapter`
-    id("com.gradleup.shadow") version "9.3.1"
+}
+
+// JDA needs its own Jackson, bundled and relocated under this module's prefix below, so the shared
+// convention must not rewrite Jackson references to the host's copy.
+sharedRelocation {
+    bundledByModule.add("com.fasterxml.jackson")
 }
 
 repositories {
@@ -38,10 +43,6 @@ dependencies {
 }
 
 tasks {
-    build {
-        dependsOn(shadowJar)
-    }
-
     shadowJar {
         // Everything bundled is relocated: the module class loader is parent-first onto the host,
         // and the host itself already shades Jackson. An unrelocated copy would collide.
@@ -66,12 +67,8 @@ tasks {
         relocate("javax.annotation", "${base}.javax.annotation")
         relocate("org.checkerframework", "${base}.org.checkerframework")
 
-        // Not bundled — rewritten. These libraries live in the host jar under its own relocation
-        // prefix, and the module resolves them parent-first from the host class loader, so this
-        // module's *references* to MyBatis (its mapper annotations, SqlSessionWrapper#session) and
-        // Configurate must name the host's relocated packages or they do not exist at runtime.
-        // See HostShading in buildSrc; this must stay in lockstep with the host's shadowJar.
-        HostShading.ADAPTER_PACKAGES.forEach { relocate(it, "${HostShading.BASE}.$it") }
+        // The host's libraries (MyBatis, Configurate, plugin-infrastructure, ...) are not bundled but
+        // rewritten to the host's prefix by player-notifications-shared-relocation.
 
         mergeServiceFiles()
     }
