@@ -26,6 +26,9 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * {@link PersistentBroadcaster}'s three steps: enqueue once, push the online recipients through the
@@ -41,6 +44,33 @@ class PersistentBroadcasterTest {
 
     /** Captures every enqueue call rather than persisting anything, as MailSenderTest does. */
     static class RecordingService implements NotificationService {
+
+        @Override
+        public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                                  boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      @NotNull NotificationAudience audience,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                                 @NotNull RenderableNotification notification,
+                                                                 @NotNull NotificationAudience audience) {
+            throw new UnsupportedOperationException();
+        }
+
 
         final List<TypedNotification<?>> enqueued = new ArrayList<>();
         final List<Boolean> overwriteFlags = new ArrayList<>();

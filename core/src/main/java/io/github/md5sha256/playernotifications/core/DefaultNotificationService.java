@@ -3,6 +3,7 @@ package io.github.md5sha256.playernotifications.core;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.md5sha256.playernotifications.api.InboxEntry;
 import io.github.md5sha256.playernotifications.api.InboxPage;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
 import io.github.md5sha256.playernotifications.api.NotificationDataTypeRegistry;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
@@ -12,6 +13,7 @@ import io.github.md5sha256.playernotifications.api.category.DefaultNotificationC
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializationException;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
@@ -29,9 +31,17 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Default {@link NotificationService} implementation backed by a MyBatis
@@ -43,6 +53,7 @@ public class DefaultNotificationService implements NotificationService {
     private final NotificationDataTypeRegistry dataTypeRegistry;
     private final NotificationCategoryRegistry categoryRegistry;
     private final ObjectMapper objectMapper;
+    private volatile @Nullable HostWiring host;
 
     public DefaultNotificationService(@NotNull Database database) {
         this(database, new NotificationDataTypeRegistry(), new DefaultNotificationCategoryRegistry());
@@ -337,5 +348,118 @@ public class DefaultNotificationService implements NotificationService {
     @Override
     public @NotNull NotificationCategoryRegistry categoryRegistry() {
         return this.categoryRegistry;
+    }
+
+    /**
+     * Supplies what the immediate-delivery methods need and this class cannot build itself: the delivery
+     * loop (constructed after this service, and replaced on reload — hence a supplier read per call), an
+     * executor to run off the caller's thread, and permission resolution, which needs the server. Until
+     * this is called those methods return failed futures.
+     */
+    public void attachHost(@NotNull Supplier<@Nullable NotificationDelivery> delivery, @NotNull Executor executor,
+                           @NotNull AudienceResolver resolver, @NotNull Logger logger) {
+        this.host = new HostWiring(delivery, executor, resolver, logger);
+    }
+
+    @Override
+    public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                              boolean overwriteAllowed) {
+        return submit(host -> {
+            enqueueNotification(notification, overwriteAllowed);
+            pushStored(host, notification.notifTarget().playerUUIDs());
+        });
+    }
+
+    @Override
+    public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                  boolean overwriteAllowed) {
+        return submit(host -> {
+            enqueueNotification(notification, overwriteAllowed);
+            pushStored(host, notification.notifTarget().playerUUIDs());
+        });
+    }
+
+    @Override
+    public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                  @NotNull NotificationAudience audience,
+                                                                  boolean overwriteAllowed) {
+        return submit(host -> {
+            Set<UUID> recipients = resolve(host, audience);
+            if (recipients.isEmpty()) {
+                // A target group with no members cannot exist: the trigger would delete the row.
+                return;
+            }
+            enqueueNotification(new TypedNotification<>(notification.notifKey(),
+                    notification.notifScheduledTime(), notification.notifExpiryTime(),
+                    new NotificationTarget(List.copyOf(recipients)), notification.notifPayloadType(),
+                    notification.notifPayload(), notification.notifPriority()), overwriteAllowed);
+            pushStored(host, recipients);
+        });
+    }
+
+    @Override
+    public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                             @NotNull RenderableNotification notification,
+                                                             @NotNull NotificationAudience audience) {
+        if (dataType.isBlank()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("dataType must not be blank"));
+        }
+        return submit(host -> {
+            NotificationDelivery delivery = currentDelivery(host);
+            forEachTarget(host, resolve(host, audience),
+                    target -> delivery.deliverTransient(notification, dataType, target));
+        });
+    }
+
+    private record HostWiring(@NotNull Supplier<@Nullable NotificationDelivery> delivery,
+                              @NotNull Executor executor,
+                              @NotNull AudienceResolver resolver,
+                              @NotNull Logger logger) {
+    }
+
+    /** Runs {@code task} on the host's executor; every failure, including scheduling, lands in the future. */
+    private @NotNull CompletableFuture<Void> submit(@NotNull Consumer<HostWiring> task) {
+        HostWiring wiring = this.host;
+        if (wiring == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Immediate delivery is not attached to a host"));
+        }
+        try {
+            return CompletableFuture.runAsync(() -> task.accept(wiring), wiring.executor());
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    private static @NotNull Set<UUID> resolve(@NotNull HostWiring host, @NotNull NotificationAudience audience) {
+        return switch (audience) {
+            case NotificationAudience.Players players -> players.players();
+            case NotificationAudience.WithPermissions permissions -> host.resolver().resolve(permissions);
+        };
+    }
+
+    private static void pushStored(@NotNull HostWiring host, @NotNull Collection<UUID> targets) {
+        NotificationDelivery delivery = currentDelivery(host);
+        forEachTarget(host, targets, delivery::deliver);
+    }
+
+    private static @NotNull NotificationDelivery currentDelivery(@NotNull HostWiring host) {
+        NotificationDelivery delivery = host.delivery().get();
+        if (delivery == null) {
+            throw new IllegalStateException("Notification delivery is not available");
+        }
+        return delivery;
+    }
+
+    /** One pass per distinct target; one target throwing is logged and does not stop the rest. */
+    private static void forEachTarget(@NotNull HostWiring host, @NotNull Collection<UUID> targets,
+                                      @NotNull Consumer<UUID> action) {
+        for (UUID target : new LinkedHashSet<>(targets)) {
+            try {
+                action.accept(target);
+            } catch (RuntimeException e) {
+                host.logger().log(Level.WARNING, "Immediate delivery to " + target + " failed", e);
+            }
+        }
     }
 }

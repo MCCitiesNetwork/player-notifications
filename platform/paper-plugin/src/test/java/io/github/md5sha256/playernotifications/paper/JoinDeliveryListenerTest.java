@@ -27,6 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Covers the gate and the reload swap. {@code PlayerJoinEvent} and the Bukkit scheduler need a live
@@ -172,6 +175,33 @@ class JoinDeliveryListenerTest {
 
     /** Answers {@link NotificationService#unreadCount(UUID, String)} from a fixed data-type -> count map. */
     private static final class FakeUnreadCountService implements NotificationService {
+
+        @Override
+        public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                                  boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      @NotNull NotificationAudience audience,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                                 @NotNull RenderableNotification notification,
+                                                                 @NotNull NotificationAudience audience) {
+            throw new UnsupportedOperationException();
+        }
+
 
         private final Map<String, Integer> countsByDataType;
 

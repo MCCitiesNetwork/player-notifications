@@ -5,7 +5,10 @@ import io.github.md5sha256.playernotifications.api.NotificationSinkRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationDisposition;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
+import io.github.md5sha256.playernotifications.api.render.DeliveryResult;
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
+import io.github.md5sha256.playernotifications.api.render.NotificationSink;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
 import io.github.md5sha256.playernotifications.api.render.RenderingProcessor;
 import io.github.md5sha256.playernotifications.api.serialize.PayloadSerializer;
 import io.github.md5sha256.playernotifications.core.database.Database;
@@ -17,9 +20,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -125,6 +131,43 @@ public class NotificationDelivery {
                 targetMapper.markSeen(notification.notifTargetId(), target, now);
             }
             wrapper.session().commit();
+        }
+    }
+
+    /**
+     * Pushes a notification that is never stored to one player, through the media they prefer for
+     * {@code dataType}. A muted player gets nothing, a silence is dropped, an unregistered medium is
+     * skipped, and a throwing sink is logged without stopping the others. Nothing is marked seen — there
+     * is no row to mark.
+     *
+     * @throws IllegalStateException if this loop was built without sinks and preferences
+     */
+    public void deliverTransient(@NotNull RenderableNotification notification, @NotNull String dataType,
+                                 @NotNull UUID target) {
+        if (this.sinkRegistry == null || this.preferences == null) {
+            throw new IllegalStateException("Transient delivery needs a sink registry and preferences");
+        }
+        if (this.preferences.isMuted(target)) {
+            this.logger.fine(() -> "Player " + target + " is muted; skipping transient delivery");
+            return;
+        }
+        Set<String> media = new LinkedHashSet<>(this.preferences.preferredMedia(target, dataType));
+        media.remove(NotificationPreferences.SILENCED_MEDIUM);
+        for (String medium : media) {
+            Optional<NotificationSink> sink = this.sinkRegistry.getSink(medium);
+            if (sink.isEmpty()) {
+                this.logger.fine(() -> "No sink registered for medium '" + medium + "'; skipping");
+                continue;
+            }
+            try {
+                DeliveryResult result = sink.get().deliver(notification, target);
+                if (result != DeliveryResult.DELIVERED) {
+                    this.logger.fine(() -> "Transient notification not delivered via '" + medium
+                            + "' for " + target + ": " + result);
+                }
+            } catch (RuntimeException e) {
+                this.logger.log(Level.WARNING, "Sink '" + medium + "' threw delivering to " + target, e);
+            }
         }
     }
 

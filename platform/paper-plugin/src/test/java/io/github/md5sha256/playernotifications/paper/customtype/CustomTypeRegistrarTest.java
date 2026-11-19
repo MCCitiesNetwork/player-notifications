@@ -30,6 +30,9 @@ import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Unit tests for {@link CustomTypeRegistrar}: what a reload adds, what it withdraws, and — the case
@@ -156,6 +159,33 @@ class CustomTypeRegistrarTest {
      * because the mapping and renderer bookkeeping is exactly what is under test.
      */
     private static final class FakeService implements NotificationService {
+
+        @Override
+        public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                                  boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      @NotNull NotificationAudience audience,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                                 @NotNull RenderableNotification notification,
+                                                                 @NotNull NotificationAudience audience) {
+            throw new UnsupportedOperationException();
+        }
+
 
         private final NotificationDataTypeRegistry registry = new NotificationDataTypeRegistry();
         private final List<String> registeredRenderables = new ArrayList<>();
