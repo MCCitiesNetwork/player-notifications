@@ -134,6 +134,12 @@ Design: `…/specs/2026-07-27-notification-renderers-design.md`.
   `DefaultNotificationService#attachHost` (not on the interface) supplies the delivery supplier,
   executor and `core.AudienceResolver`; the host calls it in `registerCommands`. Until then the methods
   return failed futures.
+- **Batched delivery:** `NotificationDelivery.deliver(Collection<UUID>)` → `BatchDeliveryReport(attempted,
+  failed)`; per chunk of `delivery-batch-size`, one `selectDueByPlayers` query and one seen-marking
+  commit, dispatch outside any session. The mute check and preference lookups stay per player. A failed
+  chunk reports all its players failed. Used by `enqueueAndDeliver` and `PersistentBroadcaster` (so
+  `/broadcast --persistent` and `/notifications send`); join delivery and `/notifications test` keep
+  the single-player `deliver(UUID)`.
 
 Preference resolution, `preferredMedia(player, dataType)`: exact rows → `*` rows →
 `delivery-defaults.yml` → `default-media`. The single-arg form never consults `delivery-defaults.yml`.
@@ -195,7 +201,8 @@ receiver); `settings.yml`, `categories.yml`, `database.yml` get `warnAboutMissin
 
 - `database.yml` — `url` (no `jdbc:`), `username`, `password`.
 - `settings.yml` — `prune-interval-seconds`, `default-media`, `deliver-on-join`,
-  `join-delivery-delay-seconds`, `inbox-page-size` (1..20).
+  `join-delivery-delay-seconds`, `inbox-page-size` (1..20), `delivery-batch-size` (default 200, 1..1000,
+  ≤0 → default; applied on reload because reload rebuilds `NotificationDelivery`).
 - `categories.yml`, `type-names.yml`, `notification-types.yml`, `delivery-defaults.yml` — the last three
   are flat maps read with `childrenMap()` and excluded from missing-key warnings.
 - `defaults/` — generated, never read.

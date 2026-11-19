@@ -8,6 +8,7 @@ import io.github.md5sha256.playernotifications.api.ResolvedNotification;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.render.NotificationPreferences;
+import io.github.md5sha256.playernotifications.core.BatchDeliveryReport;
 import io.github.md5sha256.playernotifications.paper.localisation.TestMessages;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +43,34 @@ import java.util.concurrent.CompletableFuture;
 class PersistentBroadcasterTest {
 
     private static final Logger LOGGER = Logger.getLogger(PersistentBroadcasterTest.class.getName());
+
+    /** A batch push that reaches nobody and fails for nobody. */
+    private static final Function<List<UUID>, BatchDeliveryReport> NO_PUSH =
+            targets -> new BatchDeliveryReport(targets.size(), Set.of());
+
+    /** A batch push recording every target it was handed, all attempted. */
+    private static Function<List<UUID>, BatchDeliveryReport> recordingPush(List<UUID> pushed) {
+        return targets -> {
+            pushed.addAll(targets);
+            return new BatchDeliveryReport(targets.size(), Set.of());
+        };
+    }
+
+    @Test
+    void everyRecipientIsPushedInOneBatch() {
+        RecordingService service = new RecordingService();
+        List<List<UUID>> batches = new ArrayList<>();
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, targets -> {
+            batches.add(List.copyOf(targets));
+            return new BatchDeliveryReport(targets.size(), Set.of());
+        }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+
+        broadcaster.broadcast(Component.text("hi"), "hi", List.of(a, b), false);
+
+        assertEquals(List.of(List.of(a, b)), batches);
+    }
 
     /** Captures every enqueue call rather than persisting anything, as MailSenderTest does. */
     static class RecordingService implements NotificationService {
@@ -235,7 +265,7 @@ class PersistentBroadcasterTest {
         RecordingService service = new RecordingService();
         UUID alice = UUID.randomUUID();
         UUID bob = UUID.randomUUID();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, NO_PUSH, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         broadcaster.broadcast(Component.text("rendered"), "<red>raw</red>", List.of(alice, bob), false);
 
@@ -250,7 +280,7 @@ class PersistentBroadcasterTest {
     @Test
     void storesTheRawMiniMessageRatherThanTheRenderedComponent() {
         RecordingService service = new RecordingService();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, NO_PUSH, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         broadcaster.broadcast(Component.text("rendered"), "<red>raw</red>",
                 List.of(UUID.randomUUID()), false);
@@ -269,7 +299,7 @@ class PersistentBroadcasterTest {
         UUID online = UUID.randomUUID();
         UUID offline = UUID.randomUUID();
         List<UUID> pushed = new ArrayList<>();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, pushed::add,
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, recordingPush(pushed),
                 broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         PersistentBroadcaster.Result result = broadcaster.broadcast(Component.text("hi"), "hi",
@@ -286,7 +316,7 @@ class PersistentBroadcasterTest {
         RecordingService service = new RecordingService();
         UUID muted = UUID.randomUUID();
         RecordingChatSink sink = new RecordingChatSink();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { }, broadcasterWith(Map.of(), Set.of(muted), sink), LOGGER);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, NO_PUSH, broadcasterWith(Map.of(), Set.of(muted), sink), LOGGER);
 
         PersistentBroadcaster.Result result =
                 broadcaster.broadcast(Component.text("hi"), "hi", List.of(muted), false);
@@ -301,7 +331,7 @@ class PersistentBroadcasterTest {
         UUID muted = UUID.randomUUID();
         UUID reachable = UUID.randomUUID();
         RecordingChatSink sink = new RecordingChatSink();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { },
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, NO_PUSH,
                 broadcasterWith(Map.of(reachable, Set.of("chat")), Set.of(muted), sink), LOGGER);
 
         PersistentBroadcaster.Result result = broadcaster.broadcast(Component.text("hi"), "hi",
@@ -318,11 +348,10 @@ class PersistentBroadcasterTest {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         List<UUID> pushed = new ArrayList<>();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> {
-            if (uuid.equals(first)) {
-                throw new RuntimeException("boom");
-            }
-            pushed.add(uuid);
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, targets -> {
+            // A batch whose pass threw for `first`: the delivery logs it and reports it failed.
+            targets.stream().filter(uuid -> !uuid.equals(first)).forEach(pushed::add);
+            return new BatchDeliveryReport(targets.size() - 1, Set.of(first));
         }, broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         PersistentBroadcaster.Result result =
@@ -346,7 +375,7 @@ class PersistentBroadcasterTest {
             }
         };
         List<UUID> pushed = new ArrayList<>();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(failing, pushed::add,
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(failing, recordingPush(pushed),
                 broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
 
         Assertions.assertThrows(IllegalStateException.class,
@@ -361,7 +390,7 @@ class PersistentBroadcasterTest {
     void aTypedBroadcastIsStoredUnderTheDeclaredDataTypeAndPayload() {
         RecordingService service = new RecordingService();
         UUID alice = UUID.randomUUID();
-        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, uuid -> { },
+        PersistentBroadcaster broadcaster = new PersistentBroadcaster(service, NO_PUSH,
                 broadcasterWith(Map.of(), Set.of(), new RecordingChatSink()), LOGGER);
         io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationPayload payload =
                 new io.github.md5sha256.playernotifications.paper.customtype.CustomNotificationPayload(
@@ -386,7 +415,7 @@ class PersistentBroadcasterTest {
         // suppressed() names them, and only then does --bypass reach them.
         Broadcaster broadcaster = broadcasterForDataType(Broadcaster.BROADCAST_DATA_TYPE, sink);
         PersistentBroadcaster persistent =
-                new PersistentBroadcaster(service, uuid -> { }, broadcaster, LOGGER);
+                new PersistentBroadcaster(service, NO_PUSH, broadcaster, LOGGER);
 
         PersistentBroadcaster.Result result = persistent.broadcast(Component.text("Server Restart"),
                 Component.text("rendered"), "restart-warning",
