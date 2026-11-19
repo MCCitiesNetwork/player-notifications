@@ -163,7 +163,7 @@ Preference resolution, `preferredMedia(player, dataType)`: exact rows → `*` ro
 | Inbox | Delivery marks seen; dismiss deletes target row. `null` filter = none, empty = match nothing. **A `multiAction` dialog with zero buttons fails to encode.** | `2026-08-07-notification-inbox-design.md` |
 | Inbox filtering | `/notifications` opens a category picker; commands are never filtered. | `2026-08-23-filtered-inbox-design.md` |
 | Global mute | `PlayerNotificationMute` table; never touches preference rows. | `2026-08-20-global-mute-design.md` |
-| Immediate delivery API | Other plugins push now, transiently, or to a permission audience. Offline audiences need LuckPerms (`OfflineLookupUnavailableException` otherwise). The audience overload replaces the notification's own target. Adding abstract methods broke external `NotificationService` implementors — accepted. `Broadcaster`/`PersistentBroadcaster` deliberately not migrated. | `2026-11-19-immediate-delivery-api-design.md` |
+| Immediate delivery API | Other plugins push now, transiently, or to a permission audience. Offline audiences need LuckPerms (`OfflineLookupUnavailableException` otherwise). The audience overload replaces the notification's own target. Adding abstract methods broke external `NotificationService` implementors — accepted. `PersistentBroadcaster` pushes through the batch; `Broadcaster` (transient, `--bypass`) keeps its own loop. | `2026-11-19-immediate-delivery-api-design.md` |
 | Type names | `type-names.yml` > module `registerDisplayName` > title-cased key. | `2026-08-23-configurable-type-names-design.md` |
 | Categories | Display/grouping only; dispatch never reads them. `defaults/categories.yml` is written, never read. | `2026-07-28-categorised-notification-preferences-design.md`, `2026-08-23-module-category-defaults-design.md` |
 | Messages | `messages.yml` via `MessageContainer`; see Messages below. | `2026-08-21-configurable-messages-design.md`, `2026-08-23-message-styling-design.md` |
@@ -241,7 +241,7 @@ receiver); `settings.yml`, `categories.yml`, `database.yml` get `warnAboutMissin
 
 ## Unverified on a live server
 
-None of these manual checklists has been run.
+None of these manual checklists has been run, except where the row says otherwise.
 
 | Feature | Plan (`…/plans/`) | Task |
 |---|---|---|
@@ -255,7 +255,7 @@ None of these manual checklists has been run.
 | Mail | `2026-08-10-first-party-mail.md` | 4 |
 | Console mail / MiniMessage | `2026-08-20-console-mail-and-minimessage.md` | 3 |
 | Global mute | `2026-08-20-global-mute.md` | — |
-| Immediate delivery API | `2026-11-19-immediate-delivery-api.md` | 3 |
+| Immediate delivery API | `2026-11-19-immediate-delivery-api.md` | 3 — **partly run 2026-11-19**: batched `/notifications send` and `/broadcast --persistent` (online, offline-unread, join push, mute, offline Discord DM) verified; the API methods called from another plugin, transient API sends and LuckPerms `--offline` not |
 | Broadcast | `2026-08-21-broadcast-command.md` | 4 |
 | Persistent/offline broadcast | `2026-08-29-persistent-offline-broadcast.md` | — |
 | Operator-defined types | `2026-08-30-operator-defined-notification-types.md` | — |
