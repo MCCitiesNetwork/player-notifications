@@ -58,7 +58,11 @@ ids, unprefixed project names) to `https://maven.minecraftcitiesnetwork.com/rele
 Dependency direction **platform → core → api**; `api` depends only on Paper. Type-safe project accessors on.
 
 - **`api`** — public API, `compileOnlyApi` on paper-api.
-  - `NotificationService` (enqueue, resolve, clear/delete, prune, registries, inbox read API).
+  - `NotificationService` (enqueue, resolve, clear/delete, prune, registries, inbox read API), plus
+    `enqueueAndDeliver` (store + push now; overloads for explicit target and `NotificationAudience`) and
+    `deliverTransient` (push, never store). All abstract — the six in-tree test fakes implement them.
+  - `NotificationAudience` (sealed: `Players`, `WithPermissions(perms, PermissionChain, includeOffline)`),
+    `PermissionChain`, `OfflineLookupUnavailableException`.
   - `NotificationDataTypeRegistry` — `dataType` ↔ payload class → processor/serializer/renderer/display
     name. `unmapDataType` removes a mapping only (never cascades).
   - `NotificationSinkRegistry` — keyed by **medium** (`chat`, `dialog`, `discord-dm`;
@@ -124,7 +128,12 @@ Design: `…/specs/2026-07-27-notification-renderers-design.md`.
   of `NotificationDelivery.deliver`.
 - Components are the lingua franca: no click-event-dependent bodies; no actions/buttons in notifications.
 - **`ChatSink` returns `UNREACHABLE` for an offline player.** (Docs once claimed otherwise; that caused a bug.)
-- Triggers: join (`JoinDeliveryListener`) and `/notifications test`. No push for already-online players.
+- Triggers: join (`JoinDeliveryListener`), `/notifications test`, and the API's `enqueueAndDeliver` /
+  `deliverTransient`. Those run on the host executor and report failures through the future;
+  completion means attempted, not delivered; mute and silence always apply (no API bypass).
+  `DefaultNotificationService#attachHost` (not on the interface) supplies the delivery supplier,
+  executor and `core.AudienceResolver`; the host calls it in `registerCommands`. Until then the methods
+  return failed futures.
 
 Preference resolution, `preferredMedia(player, dataType)`: exact rows → `*` rows →
 `delivery-defaults.yml` → `default-media`. The single-arg form never consults `delivery-defaults.yml`.
@@ -148,6 +157,7 @@ Preference resolution, `preferredMedia(player, dataType)`: exact rows → `*` ro
 | Inbox | Delivery marks seen; dismiss deletes target row. `null` filter = none, empty = match nothing. **A `multiAction` dialog with zero buttons fails to encode.** | `2026-08-07-notification-inbox-design.md` |
 | Inbox filtering | `/notifications` opens a category picker; commands are never filtered. | `2026-08-23-filtered-inbox-design.md` |
 | Global mute | `PlayerNotificationMute` table; never touches preference rows. | `2026-08-20-global-mute-design.md` |
+| Immediate delivery API | Other plugins push now, transiently, or to a permission audience. Offline audiences need LuckPerms (`OfflineLookupUnavailableException` otherwise). The audience overload replaces the notification's own target. Adding abstract methods broke external `NotificationService` implementors — accepted. `Broadcaster`/`PersistentBroadcaster` deliberately not migrated. | `2026-11-19-immediate-delivery-api-design.md` |
 | Type names | `type-names.yml` > module `registerDisplayName` > title-cased key. | `2026-08-23-configurable-type-names-design.md` |
 | Categories | Display/grouping only; dispatch never reads them. `defaults/categories.yml` is written, never read. | `2026-07-28-categorised-notification-preferences-design.md`, `2026-08-23-module-category-defaults-design.md` |
 | Messages | `messages.yml` via `MessageContainer`; see Messages below. | `2026-08-21-configurable-messages-design.md`, `2026-08-23-message-styling-design.md` |
@@ -238,6 +248,7 @@ None of these manual checklists has been run.
 | Mail | `2026-08-10-first-party-mail.md` | 4 |
 | Console mail / MiniMessage | `2026-08-20-console-mail-and-minimessage.md` | 3 |
 | Global mute | `2026-08-20-global-mute.md` | — |
+| Immediate delivery API | `2026-11-19-immediate-delivery-api.md` | 3 |
 | Broadcast | `2026-08-21-broadcast-command.md` | 4 |
 | Persistent/offline broadcast | `2026-08-29-persistent-offline-broadcast.md` | — |
 | Operator-defined types | `2026-08-30-operator-defined-notification-types.md` | — |
@@ -252,7 +263,7 @@ listeners, `LuckPermsPermissionLookup`.
 ## Known gaps
 
 - `NotificationCategoryRegistry` has no in-tree consumer.
-- No push to already-online players; no per-medium delivery tracking; partial delivery is silent.
+- No per-medium delivery tracking; partial delivery is silent. No push at a future-scheduled time.
 - `MAX(id)+1` target ids aren't concurrency-safe. Inbox size is unbounded.
 - Stale `essentials-mail` preference rows and rows for removed categories are kept.
 - No admin commands (stuck mute or link needs a manual `DELETE`); no link-attempt rate limiting.
