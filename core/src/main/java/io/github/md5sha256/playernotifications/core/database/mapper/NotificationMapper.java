@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.core.database.mapper;
 
 import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
+import io.github.md5sha256.playernotifications.core.database.entity.DueNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.UnreadDataTypeCountEntity;
 import org.jetbrains.annotations.NotNull;
@@ -33,6 +34,14 @@ public interface NotificationMapper {
      * by descending priority then ascending scheduled time.
      */
     @NotNull List<NotificationEntity> selectDueByPlayer(@NotNull UUID playerId, @NotNull Instant now);
+
+    /**
+     * {@link #selectDueByPlayer} for several players in one query: every due, unseen, unexpired row for
+     * any of {@code playerIds}, each tagged with the player it is due for. Ordered per player as the
+     * single-player form is. An empty collection must not be passed: it would render {@code IN ()}.
+     */
+    @NotNull List<DueNotificationEntity> selectDueByPlayers(@NotNull Collection<UUID> playerIds,
+                                                            @NotNull Instant now);
 
     /**
      * Reads one page of the given player's inbox: every notification targeting them that is scheduled

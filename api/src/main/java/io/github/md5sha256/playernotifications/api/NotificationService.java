@@ -3,6 +3,7 @@ package io.github.md5sha256.playernotifications.api;
 import io.github.md5sha256.playernotifications.api.category.NotificationCategoryRegistry;
 import io.github.md5sha256.playernotifications.api.processor.NotificationProcessor;
 import io.github.md5sha256.playernotifications.api.render.NotificationRenderer;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,6 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Public API entry point for sending notifications to players.
@@ -27,6 +29,60 @@ public interface NotificationService {
      *         if no serializer is registered for the data type, or serialization fails
      */
     <T> void enqueueNotification(@NotNull TypedNotification<T> notification, boolean overwriteAllowed);
+
+    /**
+     * Stores the notification, then immediately runs a delivery pass for each of its targets, rather
+     * than leaving it for the recipient's next join.
+     *
+     * <p>Safe to call from any thread: the store and the push both run off the caller's thread, and
+     * every failure — including the store failing — arrives through the returned future rather than as a
+     * throw from this call. The store comes first; if it fails, nothing is pushed.
+     *
+     * <p>Each target is treated as an ordinary delivery: a muted or silenced player is pushed nothing,
+     * any medium reporting delivered marks it seen, and a player nothing could reach (offline with only
+     * chat, say) keeps it unread and is pushed it on their next join. A Discord-linked player is reached
+     * whether or not they are online. There is no way to bypass a player's mute from this API.
+     *
+     * <p>The pass delivers everything due for each target, not only this notification. A notification
+     * scheduled in the future is not due, so it is skipped now and goes out on a join after its time.
+     *
+     * @return a future completing once every target has had a delivery attempt — attempted, not
+     *         necessarily delivered. One target's pass failing is logged and does not stop the others.
+     */
+    @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                       boolean overwriteAllowed);
+
+    /**
+     * The typed form of {@link #enqueueAndDeliver(ResolvedNotification, boolean)}, serializing the payload
+     * as {@link #enqueueNotification(TypedNotification, boolean)} does.
+     */
+    <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                           boolean overwriteAllowed);
+
+    /**
+     * As {@link #enqueueAndDeliver(TypedNotification, boolean)}, sent to {@code audience}, resolved at
+     * send time. <strong>The notification's own target is ignored</strong> and replaced by the resolved
+     * players; pass {@code new NotificationTarget(List.of())}. An audience resolving to nobody stores
+     * nothing and completes normally. A resolution failure — including
+     * {@link OfflineLookupUnavailableException} — fails the future and stores nothing.
+     */
+    <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                           @NotNull NotificationAudience audience,
+                                                           boolean overwriteAllowed);
+
+    /**
+     * Pushes {@code notification} to {@code audience} now and <strong>never stores it</strong>: it does
+     * not appear in the inbox and is not pushed on join, so a player nothing could reach misses it for
+     * good. For announcements true only at the moment they are sent.
+     *
+     * <p>{@code dataType} is what each player's preferences resolve against, so players can route or
+     * silence it like any other type; it need not be registered, but only a registered type appears in
+     * the preference screens. The mute and any silence apply. Threading and failure behave as in
+     * {@link #enqueueAndDeliver(ResolvedNotification, boolean)}.
+     */
+    @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                      @NotNull RenderableNotification notification,
+                                                      @NotNull NotificationAudience audience);
 
     /**
      * Registers a payload type served by the default JSON serializer: binds the data-type mapping, a

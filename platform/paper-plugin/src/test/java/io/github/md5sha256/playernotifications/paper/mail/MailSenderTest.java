@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Covers {@link MailSender}: exactly what {@code send} enqueues, since sending is otherwise
@@ -29,6 +32,33 @@ class MailSenderTest {
 
     /** Captures every enqueue call rather than persisting anything. */
     private static final class RecordingService implements NotificationService {
+
+        @Override
+        public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                                  boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      @NotNull NotificationAudience audience,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                                 @NotNull RenderableNotification notification,
+                                                                 @NotNull NotificationAudience audience) {
+            throw new UnsupportedOperationException();
+        }
+
 
         private final List<TypedNotification<?>> enqueued = new ArrayList<>();
         private final List<Boolean> overwriteFlags = new ArrayList<>();

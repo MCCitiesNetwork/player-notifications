@@ -16,6 +16,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import java.util.concurrent.CompletableFuture;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * An in-memory {@link NotificationService} that records the calls the Discord surface makes, including
@@ -23,6 +27,33 @@ import java.util.UUID;
  * {@code /mail} and {@code /notifications} views, so it has to be asserted rather than assumed.
  */
 final class FakeNotificationService implements NotificationService {
+
+    @Override
+    public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                              boolean overwriteAllowed) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                  boolean overwriteAllowed) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                  @NotNull NotificationAudience audience,
+                                                                  boolean overwriteAllowed) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                             @NotNull RenderableNotification notification,
+                                                             @NotNull NotificationAudience audience) {
+        throw new UnsupportedOperationException();
+    }
+
 
     /** One recorded mutation: the method name, and the data-type filter it was called with. */
     record Call(String method, String dataType, String notifKey) {

@@ -1,6 +1,7 @@
 package io.github.md5sha256.playernotifications.core.database.maria.mapper;
 
 import io.github.md5sha256.playernotifications.core.database.entity.InboxNotificationEntity;
+import io.github.md5sha256.playernotifications.core.database.entity.DueNotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.NotificationEntity;
 import io.github.md5sha256.playernotifications.core.database.entity.UnreadDataTypeCountEntity;
 import io.github.md5sha256.playernotifications.core.database.mapper.NotificationMapper;
@@ -86,6 +87,34 @@ public interface MariaNotificationMapper extends NotificationMapper {
     })
     @NotNull List<NotificationEntity> selectDueByPlayer(@Param("playerId") @NotNull UUID playerId,
                                                         @Param("now") @NotNull Instant now);
+
+    @Override
+    @Select("""
+            <script>
+            SELECT t.playerUuid, n.notifKey, n.notifScheduledTime, n.notifExpiryTime, n.notifTargetId,
+                   n.notifPayloadType, n.notifPayload, n.notifPriority
+            FROM Notification n
+            INNER JOIN NotificationTarget t ON t.notifTargetId = n.notifTargetId
+            WHERE t.playerUuid IN
+              <foreach item="p" collection="playerIds" open="(" separator="," close=")">#{p}</foreach>
+            AND t.seenTime IS NULL
+            AND n.notifScheduledTime &lt;= #{now}
+            AND (n.notifExpiryTime IS NULL OR n.notifExpiryTime &gt; #{now})
+            ORDER BY t.playerUuid, n.notifPriority DESC, n.notifScheduledTime ASC
+            </script>
+            """)
+    @ConstructorArgs({
+            @Arg(column = "playerUuid", javaType = UUID.class),
+            @Arg(column = "notifKey", javaType = String.class),
+            @Arg(column = "notifScheduledTime", javaType = Instant.class),
+            @Arg(column = "notifExpiryTime", javaType = Instant.class),
+            @Arg(column = "notifTargetId", javaType = int.class),
+            @Arg(column = "notifPayloadType", javaType = String.class),
+            @Arg(column = "notifPayload", javaType = String.class),
+            @Arg(column = "notifPriority", javaType = int.class)
+    })
+    @NotNull List<DueNotificationEntity> selectDueByPlayers(
+            @Param("playerIds") @NotNull Collection<UUID> playerIds, @Param("now") @NotNull Instant now);
 
     @Override
     @Select("""

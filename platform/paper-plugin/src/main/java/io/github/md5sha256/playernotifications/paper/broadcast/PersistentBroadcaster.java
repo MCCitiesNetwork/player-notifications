@@ -3,6 +3,7 @@ package io.github.md5sha256.playernotifications.paper.broadcast;
 import io.github.md5sha256.playernotifications.api.NotificationService;
 import io.github.md5sha256.playernotifications.api.NotificationTarget;
 import io.github.md5sha256.playernotifications.api.TypedNotification;
+import io.github.md5sha256.playernotifications.core.BatchDeliveryReport;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -11,7 +12,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 /**
@@ -30,7 +31,8 @@ import java.util.logging.Logger;
  *     component, so the stored form is the source text and {@link BroadcastRenderer} is the only thing
  *     deciding how it reads. A failure here propagates: pushing a broadcast that was never stored would
  *     announce something the inbox cannot show.</li>
- *     <li><b>Push every recipient</b> through {@code NotificationDelivery.deliver}. That path — rather
+ *     <li><b>Push every recipient</b> through {@code NotificationDelivery.deliver}, in one batched call
+ *     (chunked by {@code delivery-batch-size}). That path — rather
  *     than {@link Broadcaster} — because it stamps {@code seenTime}, so a recipient who read it live is
  *     not pushed it again on their next join. It also honours the mute gate and the
  *     per-{@code dataType} preferences, which is why a suppressed recipient receives nothing here.
@@ -55,9 +57,9 @@ import java.util.logging.Logger;
  * {@code RenderingProcessor}, so neither receives anything from it — and those are exactly the
  * recipients {@link Broadcaster#suppressed} returns for step 3.
  *
- * <p><b>The seam is narrow on purpose.</b> {@code push} is a {@link Consumer} rather than a
- * {@code NotificationDelivery}, which needs a live server to construct and contributes no decision this
- * class makes. Production wires it to read the delivery field at call time, since
+ * <p><b>The seam is narrow on purpose.</b> {@code push} is a function from recipients to a
+ * {@code BatchDeliveryReport} rather than a {@code NotificationDelivery}, which needs a database to
+ * construct and contributes no decision this class makes. Production wires it to read the delivery field at call time, since
  * {@code /notifications reload} replaces that object.
  */
 public final class PersistentBroadcaster {
@@ -66,12 +68,12 @@ public final class PersistentBroadcaster {
     private static final String KEY_PREFIX = "broadcast-";
 
     private final NotificationService service;
-    private final Consumer<UUID> push;
+    private final Function<List<UUID>, BatchDeliveryReport> push;
     private final Broadcaster broadcaster;
     private final Logger logger;
 
     public PersistentBroadcaster(@NotNull NotificationService service,
-                                 @NotNull Consumer<UUID> push,
+                                 @NotNull Function<List<UUID>, BatchDeliveryReport> push,
                                  @NotNull Broadcaster broadcaster,
                                  @NotNull Logger logger) {
         this.service = service;
@@ -131,20 +133,12 @@ public final class PersistentBroadcaster {
                 0), false);
 
         // Step 2. Every recipient, online or not - the sinks decide who they can actually reach.
-        int attempted = 0;
-        int failed = 0;
-        for (UUID target : targets) {
-            try {
-                this.push.accept(target);
-                attempted++;
-            } catch (RuntimeException e) {
-                // One recipient failing must not cost the rest theirs - and the broadcast is stored
-                // either way, so they will be pushed it on their next join.
-                failed++;
-                this.logger.warning("Could not push a persistent broadcast to " + target
-                        + "; it remains unread in their inbox: " + e.getMessage());
-            }
-        }
+        // One batched pass. A recipient whose pass throws (or whose chunk fails) is logged by the
+        // delivery and reported failed without costing the rest theirs; the broadcast is stored either
+        // way, so they are pushed it on their next join.
+        BatchDeliveryReport report = this.push.apply(targets);
+        int attempted = report.attempted();
+        int failed = report.failed().size();
 
         // Step 3.
         int bypassed = 0;

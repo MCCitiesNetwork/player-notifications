@@ -84,4 +84,43 @@ class PluginSettingsTest {
                 """);
         assertEquals(3600L, settings.pruneIntervalSeconds());
     }
+
+    @Test
+    void absentBatchSizeFallsBackToDefault() throws Exception {
+        PluginSettings settings = load("""
+                default-media:
+                  - chat
+                """);
+        assertEquals(200, settings.deliveryBatchSize());
+    }
+
+    @Test
+    void readsBatchSize() throws Exception {
+        PluginSettings settings = load("""
+                default-media:
+                  - chat
+                delivery-batch-size: 50
+                """);
+        assertEquals(50, settings.deliveryBatchSize());
+    }
+
+    @Test
+    void clampsOversizedBatchSize() throws Exception {
+        PluginSettings settings = load("""
+                default-media:
+                  - chat
+                delivery-batch-size: 5000
+                """);
+        assertEquals(1000, settings.deliveryBatchSize());
+    }
+
+    @Test
+    void negativeBatchSizeFallsBackToDefault() throws Exception {
+        PluginSettings settings = load("""
+                default-media:
+                  - chat
+                delivery-batch-size: -1
+                """);
+        assertEquals(200, settings.deliveryBatchSize());
+    }
 }

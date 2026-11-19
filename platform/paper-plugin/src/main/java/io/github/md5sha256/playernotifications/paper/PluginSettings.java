@@ -47,7 +47,10 @@ public record PluginSettings(
         long joinDeliveryDelaySeconds,
 
         @Setting("inbox-page-size")
-        int inboxPageSize
+        int inboxPageSize,
+
+        @Setting("delivery-batch-size")
+        int deliveryBatchSize
 ) {
 
     private static final long DEFAULT_PRUNE_INTERVAL_SECONDS = 3600L;
@@ -55,6 +58,15 @@ public record PluginSettings(
     /** Matches {@code paper.ui.PageBounds.MAX_PAGE_SIZE}; a dialog cannot usefully show more rows. */
     public static final int MAX_INBOX_PAGE_SIZE = 20;
     private static final int DEFAULT_INBOX_PAGE_SIZE = 7;
+
+    /**
+     * Targets per chunk of a batched delivery pass: one due query and one seen-marking write each.
+     * 200 already cuts round trips 200-fold, beyond which the per-player mute check and sink calls
+     * dominate; it bounds a chunk's due rows to a few MB even with a backlog; and it is far inside
+     * MariaDB's placeholder and packet limits, which is why the cap can be 1000.
+     */
+    public static final int DEFAULT_DELIVERY_BATCH_SIZE = 200;
+    public static final int MAX_DELIVERY_BATCH_SIZE = 1000;
 
     public PluginSettings {
         if (pruneIntervalSeconds <= 0) {
@@ -68,5 +80,9 @@ public record PluginSettings(
         inboxPageSize = inboxPageSize <= 0
                 ? DEFAULT_INBOX_PAGE_SIZE
                 : Math.min(inboxPageSize, MAX_INBOX_PAGE_SIZE);
+        // The same rule: an absent key is 0, so a non-positive value means "use the default".
+        deliveryBatchSize = deliveryBatchSize <= 0
+                ? DEFAULT_DELIVERY_BATCH_SIZE
+                : Math.min(deliveryBatchSize, MAX_DELIVERY_BATCH_SIZE);
     }
 }

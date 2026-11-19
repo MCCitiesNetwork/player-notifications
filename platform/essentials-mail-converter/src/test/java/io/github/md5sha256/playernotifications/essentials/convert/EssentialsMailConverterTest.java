@@ -25,6 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
+import io.github.md5sha256.playernotifications.api.NotificationAudience;
+import io.github.md5sha256.playernotifications.api.render.RenderableNotification;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Covers every mapping rule in the design doc's table. This is where the converter's behaviour is
@@ -39,6 +42,33 @@ class EssentialsMailConverterTest {
 
     /** Records enqueues and markSeen calls; optionally throws on a nominated message. */
     private static final class RecordingService implements NotificationService {
+
+        @Override
+        public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
+                                                                  boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
+                                                                      @NotNull NotificationAudience audience,
+                                                                      boolean overwriteAllowed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public @NotNull CompletableFuture<Void> deliverTransient(@NotNull String dataType,
+                                                                 @NotNull RenderableNotification notification,
+                                                                 @NotNull NotificationAudience audience) {
+            throw new UnsupportedOperationException();
+        }
+
 
         private final List<TypedNotification<?>> enqueued = new ArrayList<>();
         private final List<String> seen = new ArrayList<>();
