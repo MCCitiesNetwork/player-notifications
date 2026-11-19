@@ -22,4 +22,10 @@ public record TypedNotification<T>(
         @NotNull T notifPayload,
         int notifPriority
 ) {
+
+    /** This notification with {@code target} in place of its own; every other component is kept. */
+    public @NotNull TypedNotification<T> withTarget(@NotNull NotificationTarget target) {
+        return new TypedNotification<>(this.notifKey, this.notifScheduledTime, this.notifExpiryTime, target,
+                this.notifPayloadType, this.notifPayload, this.notifPriority);
+    }
 }

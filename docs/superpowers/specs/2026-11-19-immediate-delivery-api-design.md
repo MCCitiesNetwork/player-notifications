@@ -120,8 +120,9 @@ the preference dialogs.
 
 `Broadcaster`, `PersistentBroadcaster` and `SendCommand`. Their replies need per-recipient counts and
 `--bypass`, which the API deliberately lacks. They call the same `NotificationDelivery` and audiences;
-only `usableMedia` (three lines) is duplicated into `deliverTransient`, judged cheaper than moving
-`Broadcaster`'s `MessageContainer` dependency into `core`. `BroadcastArguments.Chain` stays rather than
+`deliverTransient` reuses `RenderingProcessor` with an identity renderer rather than copying a media
+loop. `Broadcaster` keeps its own loop for `--bypass`'s chat fallback; folding it onto a shared core
+primitive is possible but outside this change. `BroadcastArguments.Chain` stays rather than
 being replaced by `PermissionChain`, to avoid touching every broadcast test for a rename.
 
 ## Compatibility

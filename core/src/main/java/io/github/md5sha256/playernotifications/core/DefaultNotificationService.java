@@ -364,19 +364,15 @@ public class DefaultNotificationService implements NotificationService {
     @Override
     public @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull ResolvedNotification notification,
                                                               boolean overwriteAllowed) {
-        return submit(host -> {
-            enqueueNotification(notification, overwriteAllowed);
-            pushStored(host, notification.notifTarget().playerUUIDs());
-        });
+        return storeAndPush(() -> enqueueNotification(notification, overwriteAllowed),
+                notification.notifTarget().playerUUIDs());
     }
 
     @Override
     public <T> @NotNull CompletableFuture<Void> enqueueAndDeliver(@NotNull TypedNotification<T> notification,
                                                                   boolean overwriteAllowed) {
-        return submit(host -> {
-            enqueueNotification(notification, overwriteAllowed);
-            pushStored(host, notification.notifTarget().playerUUIDs());
-        });
+        return storeAndPush(() -> enqueueNotification(notification, overwriteAllowed),
+                notification.notifTarget().playerUUIDs());
     }
 
     @Override
@@ -389,10 +385,8 @@ public class DefaultNotificationService implements NotificationService {
                 // A target group with no members cannot exist: the trigger would delete the row.
                 return;
             }
-            enqueueNotification(new TypedNotification<>(notification.notifKey(),
-                    notification.notifScheduledTime(), notification.notifExpiryTime(),
-                    new NotificationTarget(List.copyOf(recipients)), notification.notifPayloadType(),
-                    notification.notifPayload(), notification.notifPriority()), overwriteAllowed);
+            enqueueNotification(notification.withTarget(new NotificationTarget(List.copyOf(recipients))),
+                    overwriteAllowed);
             pushStored(host, recipients);
         });
     }
@@ -436,6 +430,14 @@ public class DefaultNotificationService implements NotificationService {
             case NotificationAudience.Players players -> players.players();
             case NotificationAudience.WithPermissions permissions -> host.resolver().resolve(permissions);
         };
+    }
+
+    private @NotNull CompletableFuture<Void> storeAndPush(@NotNull Runnable store,
+                                                         @NotNull Collection<UUID> targets) {
+        return submit(host -> {
+            store.run();
+            pushStored(host, targets);
+        });
     }
 
     private static void pushStored(@NotNull HostWiring host, @NotNull Collection<UUID> targets) {

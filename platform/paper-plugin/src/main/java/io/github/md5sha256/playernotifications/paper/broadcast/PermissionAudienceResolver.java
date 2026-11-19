@@ -40,6 +40,6 @@ public final class PermissionAudienceResolver implements AudienceResolver {
             }
             players.addAll(this.offline.resolve(audience.permissions(), chain));
         }
-        return Set.copyOf(players);
+        return players;
     }
 }
