@@ -17,6 +17,7 @@ import io.github.md5sha256.playernotifications.paper.broadcast.Broadcaster;
 import io.github.md5sha256.playernotifications.paper.broadcast.LuckPermsBinding;
 import io.github.md5sha256.playernotifications.paper.broadcast.OfflineBroadcastAudience;
 import io.github.md5sha256.playernotifications.paper.broadcast.PersistentBroadcaster;
+import io.github.md5sha256.playernotifications.paper.broadcast.PermissionAudienceResolver;
 import io.github.md5sha256.playernotifications.paper.broadcast.OnlineBroadcastAudience;
 import io.github.md5sha256.playernotifications.paper.command.AccountLinkDispatcher;
 import io.github.md5sha256.playernotifications.paper.command.BroadcastCommand;
@@ -451,6 +452,11 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
         BroadcastAudience offlineBroadcastAudience = LuckPermsBinding.tryCreate(this)
                 .map(lookup -> (BroadcastAudience) new OfflineBroadcastAudience(getServer(), lookup))
                 .orElse(null);
+        // The API's immediate, transient and permission-targeted sends. Wired here, not beside the
+        // service's construction, because it needs the delivery loop and both audiences; a supplier for
+        // the delivery for the same reason as above.
+        this.notificationService.attachHost(() -> this.notificationDelivery, asyncExecutor,
+                new PermissionAudienceResolver(broadcastAudience, offlineBroadcastAudience), getLogger());
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(
                     NotificationsCommand.create(this.messages, this.preferenceDialogRouter, this.inboxRouter,
