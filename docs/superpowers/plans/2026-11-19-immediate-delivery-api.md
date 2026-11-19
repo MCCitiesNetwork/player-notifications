@@ -178,3 +178,33 @@ implementing `AudienceResolver`.
   externally broke. Add Task 3's checklist to "Unverified". Remove "No push to already-online players"
   from Known gaps.
 - [ ] Commit `docs: document immediate delivery API`.
+
+## Task 6: Batched delivery
+
+**Files:** create `core/…/core/BatchDeliveryReport.java`, `core/…/core/database/entity/DueNotificationEntity.java`;
+modify `NotificationMapper`/`MariaNotificationMapper` (`selectDueByPlayers`), `NotificationDelivery`
+(constructor taking `int batchSize`, `deliver(Collection<UUID>)`), `DefaultNotificationService.pushStored`,
+`PluginSettings` + bundled `settings.yml` (`delivery-batch-size`), `PlayerNotificationsPlugin` (both
+`NotificationDelivery` constructions). Test `core/…/database/BatchDeliveryTest.java`, `PluginSettings` test.
+
+- [ ] Failing tests (`BatchDeliveryTest`, real MariaDB, batch size 2): three players each with a due
+  notification all delivered and marked seen; `attempted == 3`; a player whose `isMuted` throws is in
+  `failed` and the others still delivered; a muted player gets nothing and counts as attempted; duplicates
+  collapse; a seen notification is not re-sent; a `UNREACHABLE` player stays due. Mapper:
+  `selectDueByPlayers` returns rows tagged with the right player and excludes seen/expired/future rows.
+  Settings: absent key → 200, 5000 → 1000, -1 → 1.
+- [ ] Run `./gradlew :core:test --tests "*BatchDeliveryTest"` — expect FAIL.
+- [ ] Implement; `pushStored` calls `deliver(targets)`.
+- [ ] PASS, `./gradlew build`, commit `feat(core): batch delivery passes for large audiences`.
+
+## Task 7: Broadcast through the batch
+
+**Files:** modify `PersistentBroadcaster` (push type `Function<List<UUID>, BatchDeliveryReport>`, step 2 one
+call), `PlayerNotificationsPlugin` (wire `targets -> this.notificationDelivery.deliver(targets)`),
+`PersistentBroadcasterTest` (every constructor call site; the failing-push case returns a report with a
+`failed` set).
+
+- [ ] Change the failing-push test first: a push returning `new BatchDeliveryReport(1, Set.of(b))` yields
+  `Result(attempted 1, failed 1)`. Run `./gradlew :platform:paper-plugin:test --tests "*PersistentBroadcasterTest"` — expect compile FAIL, then FAIL.
+- [ ] Implement, PASS, `./gradlew build`, commit `refactor(broadcast): push persistent broadcasts through batch delivery`.
+- [ ] Update `CLAUDE.md` (Configuration: `delivery-batch-size`; Delivery: batch path and who uses it).

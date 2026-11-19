@@ -118,12 +118,57 @@ the preference dialogs.
 
 ### Not changed
 
-`Broadcaster`, `PersistentBroadcaster` and `SendCommand`. Their replies need per-recipient counts and
-`--bypass`, which the API deliberately lacks. They call the same `NotificationDelivery` and audiences;
+`Broadcaster` and `SendCommand`'s argument handling. `PersistentBroadcaster` keeps its own API (its
+reply needs counts and `--bypass`) but now pushes through the batch — see "Batched delivery".
 `deliverTransient` reuses `RenderingProcessor` with an identity renderer rather than copying a media
 loop. `Broadcaster` keeps its own loop for `--bypass`'s chat fallback; folding it onto a shared core
 primitive is possible but outside this change. `BroadcastArguments.Chain` stays rather than
 being replaced by `PermissionChain`, to avoid touching every broadcast test for a rename.
+
+## Batched delivery
+
+A delivery pass per recipient costs two database sessions (the due query, then the seen-marking write),
+so a 2,000-player audience took ~4,000 sequential sessions. `NotificationDelivery` gains
+`BatchDeliveryReport deliver(Collection<UUID> targets)`, which processes targets in chunks of
+`delivery-batch-size`. Per chunk:
+
+1. One session runs `selectDueByPlayers` (`t.playerUuid IN (...)`), returning `DueNotificationEntity`
+   rows (the `NotificationEntity` fields plus `playerUuid`), with the per-player query's filters and order.
+2. The session closes. Each player is mute-checked and their rows dispatched by the usual precedence,
+   outside any transaction, so a Discord round trip never holds a connection.
+3. One session marks every `MARK_SEEN` row in the chunk and commits once.
+
+`BatchDeliveryReport(int attempted, Set<UUID> failed)`: `failed` is every target whose pass threw, each
+logged at `WARNING`; a chunk whose query or write throws marks the whole chunk failed and the next chunk
+still runs. Duplicates are collapsed before chunking.
+
+**Still per player:** the mute check (`NotificationPreferences.isMuted` is the seam every test fakes; a
+bulk form would mean an API method or an `instanceof` special case) and preference lookups inside the
+rendering path. The single-player `deliver(UUID)` stays for join delivery and `/notifications test`.
+
+### `delivery-batch-size` (settings.yml, default 200)
+
+Clamped to `1..1000`; `0` (an absent key) falls back to 200, the `inbox-page-size` pattern. Passed to
+`NotificationDelivery`'s constructor, which `/notifications reload` already rebuilds, so a change applies
+on reload with no extra wiring. Why 200:
+
+- **Diminishing returns.** 200 already cuts query round trips 200-fold; beyond it the per-player mute
+  check and sink calls dominate.
+- **Bounded memory.** A chunk materialises every due row for every player in it — usually one each, more
+  with a backlog; 200 keeps that to a few MB even then.
+- **Far inside database limits.** 200 `BINARY(16)` parameters are trivial against MariaDB's 65,535
+  placeholder cap and `max_allowed_packet`, which is why the clamp can safely reach 1000.
+- **Short write transactions.** One commit per 200 players finishes in milliseconds on the pool that join
+  delivery and commands share.
+
+### Who uses it
+
+- **`NotificationService#enqueueAndDeliver`** — `pushStored` calls the batch.
+- **`PersistentBroadcaster`** (so `/broadcast --persistent` and `/notifications send`) — its push becomes
+  `Function<List<UUID>, BatchDeliveryReport>` and its per-recipient try/catch loop is replaced by one call;
+  `attempted`/`failed` in its `Result` come from the report. Storing first and the `--bypass` step are
+  unchanged. Behaviour change, accepted: a failing chunk now counts up to `delivery-batch-size` recipients
+  as failed at once rather than one; all stay stored unread and are pushed on their next join.
 
 ## Compatibility
 
