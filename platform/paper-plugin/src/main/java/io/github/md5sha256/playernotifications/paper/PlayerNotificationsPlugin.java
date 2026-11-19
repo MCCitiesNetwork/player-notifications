@@ -285,7 +285,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.notificationService.dataTypeRegistry(),
                 this.sinkRegistry,
                 this.preferences,
-                getLogger()
+                getLogger(),
+                pluginSettings.deliveryBatchSize()
         );
 
         // Register the built-in test payload before registerCommands(): the preference dialogs enumerate
@@ -523,7 +524,8 @@ public final class PlayerNotificationsPlugin extends JavaPlugin {
                 this.notificationService.dataTypeRegistry(),
                 this.sinkRegistry,
                 this.preferences,
-                getLogger()
+                getLogger(),
+                newSettings.deliveryBatchSize()
         );
         this.preferences.reloadDefaultMedia(newSettings.defaultMedia());
         this.joinDeliveryListener.reloadSettings(

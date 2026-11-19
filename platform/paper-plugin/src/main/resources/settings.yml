@@ -22,3 +22,10 @@ join-delivery-delay-seconds: 3
 # How many inbox entries are shown per page in /notifications.
 # Clamped to 1..20; the dialog cannot usefully show more.
 inbox-page-size: 7
+
+# How many players are handled per chunk when a notification is pushed to many at once
+# (/broadcast --persistent, /notifications send, and other plugins using the API).
+# Each chunk costs one lookup query and one write instead of two per player.
+# Clamped to 1..1000. Raise it for very large audiences on a fast database; lower it if a
+# chunk's lookup is slow. Default 200.
+delivery-batch-size: 200

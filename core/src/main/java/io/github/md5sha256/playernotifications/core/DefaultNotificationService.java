@@ -440,9 +440,9 @@ public class DefaultNotificationService implements NotificationService {
         });
     }
 
+    /** One batched pass; per-target failures are logged by the delivery itself. */
     private static void pushStored(@NotNull HostWiring host, @NotNull Collection<UUID> targets) {
-        NotificationDelivery delivery = currentDelivery(host);
-        forEachTarget(host, targets, delivery::deliver);
+        currentDelivery(host).deliver(targets);
     }
 
     private static @NotNull NotificationDelivery currentDelivery(@NotNull HostWiring host) {
