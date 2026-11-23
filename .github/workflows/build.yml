@@ -45,16 +45,22 @@ jobs:
           chmod +x ./gradlew
           ./gradlew build
 
+      # Project jars only (not buildSrc or the empty root jar). Where a module has an
+      # -all jar, that is the one to install, so its plain jar is left out.
       - name: Collect JARs
         run: |
           mkdir -p jars
-          find . -path "*/build/libs/*.jar" -type f \
+          find api core platform -path "*/build/libs/*.jar" -type f \
             ! -name "*-sources.jar" \
             ! -name "*-javadoc.jar" \
             ! -name "*-tests.jar" \
             ! -name "*-plain.jar" \
             ! -name "*-unshaded.jar" \
             -exec cp {} jars/ \;
+          for all in jars/*-all.jar; do
+            [ -e "$all" ] && rm -f "${all%-all.jar}.jar"
+          done
+          ls -1 jars
 
       - name: Upload JARs
         uses: actions/upload-artifact@v6
