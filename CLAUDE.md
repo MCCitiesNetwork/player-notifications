@@ -48,10 +48,13 @@ ids, unprefixed project names) to `https://maven.minecraftcitiesnetwork.com/rele
 
 - Convention plugin: `buildSrc/src/main/kotlin/player-notifications-publish.gradle.kts`
   (`deployUrl`/`deployUsername`/`deployPassword` properties).
+- `.github/workflows/build.yml` runs `./gradlew build` (tests need the runner's Docker) on push to
+  `main`/`master`/`develop`, every PR and dispatch; uploads the jars for 14 days.
 - `.github/workflows/deploy-api.yml` on release/dispatch; `-SNAPSHOT` → `/snapshots`. Secrets
   `MAVEN_REPOSITORY_*` (URL secret is the bare host).
 - **Version lives only in root `gradle.properties`.**
-- **Publishing is not gated on tests** — run the suite before releasing.
+- `deploy-api.yml` runs `./gradlew build` before publishing, so a failing suite blocks the deploy, and
+  fails a release whose tag (leading `v` ignored) differs from `gradle.properties`.
 
 ## Module architecture
 

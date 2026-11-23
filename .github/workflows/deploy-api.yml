@@ -28,20 +28,33 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Determine repository path
+      - name: Determine the version and repository path
         id: repo-path
+        env:
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          VERSION=$(grep -oP '^version\s*=\s*\K.+' gradle.properties)
+          VERSION=$(sed -n 's/^version[[:space:]]*=[[:space:]]*//p' gradle.properties)
+          # A release must publish the version its tag names (a leading "v" is ignored,
+          # matching the existing v1.3.0 tag). A manual run has no tag.
+          TAG="${TAG#v}"
+          if [ -n "${TAG}" ] && [ "${TAG}" != "${VERSION}" ]; then
+            echo "::error::Release tag ${TAG} does not match version ${VERSION} in gradle.properties."
+            exit 1
+          fi
           if [[ "$VERSION" == *-SNAPSHOT ]]; then
             echo "suffix=/snapshots" >> "$GITHUB_OUTPUT"
           else
             echo "suffix=/releases" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish api and core to Maven
+      # A failing suite blocks the deploy. The database tests use the runner's Docker.
+      - name: Build and test
         run: |
           chmod +x ./gradlew
-          ./gradlew :api:publishMavenPublicationToDeployRepository :core:publishMavenPublicationToDeployRepository
+          ./gradlew build
+
+      - name: Publish api and core to Maven
+        run: ./gradlew :api:publishMavenPublicationToDeployRepository :core:publishMavenPublicationToDeployRepository
         env:
           ORG_GRADLE_PROJECT_deployUrl: ${{ secrets.MAVEN_REPOSITORY_URL }}${{ steps.repo-path.outputs.suffix }}
           ORG_GRADLE_PROJECT_deployUsername: ${{ secrets.MAVEN_REPOSITORY_USERNAME }}
