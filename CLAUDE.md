@@ -49,7 +49,8 @@ ids, unprefixed project names) to `https://maven.minecraftcitiesnetwork.com/rele
 - Convention plugin: `buildSrc/src/main/kotlin/player-notifications-publish.gradle.kts`
   (`deployUrl`/`deployUsername`/`deployPassword` properties).
 - `.github/workflows/build.yml` runs `./gradlew build` (tests need the runner's Docker) on push to
-  `main`/`master`/`develop`, every PR and dispatch; uploads the jars for 14 days.
+  `main`/`master`/`develop`, every PR and dispatch; uploads the jars for 14 days. On a published release,
+  or a dispatch with a `tag` input, it builds that tag and attaches the jars to its GitHub release.
 - `.github/workflows/deploy-api.yml` on release/dispatch; `-SNAPSHOT` → `/snapshots`. Secrets
   `MAVEN_REPOSITORY_*` (URL secret is the bare host).
 - **Version lives only in root `gradle.properties`.**

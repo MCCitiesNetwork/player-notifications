@@ -4,10 +4,17 @@ on:
   push:
     branches: [main, master, develop]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach jars to (e.g. v1.5.0). Leave empty to build the selected branch.
+        required: false
+        default: ''
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag }}
   cancel-in-progress: true
 
 jobs:
@@ -17,8 +24,11 @@ jobs:
       contents: read
 
     steps:
+      # A release builds its own tag; a manual run with a tag builds that tag.
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
 
       # Must equal the Gradle toolchain version in the conventions plugin.
       - name: Set up JDK 25
@@ -53,3 +63,24 @@ jobs:
           path: jars/*.jar
           if-no-files-found: error
           retention-days: 14
+
+  # Only this job may write to the repository, and only to attach release assets.
+  attach:
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download JARs
+        uses: actions/download-artifact@v7
+        with:
+          name: jars-${{ github.sha }}
+          path: jars
+
+      - name: Attach JARs to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG" jars/*.jar --clobber --repo "$GITHUB_REPOSITORY"
